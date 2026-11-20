@@ -9,7 +9,7 @@
 - **Milestone corrente:** M0 chiuso (commit `2f25206`); ondata 1 in corso su M1–M3
 - **Prossimo passo concreto:** vedi "Ondata in corso"
 - **Piano:** `docs/PLAN.md` (v2 approvata il 2026-11-20)
-- **Repository remoto:** nessuno collegato. Il lavoro vive solo nel container finché non viene agganciato un repository GitHub (es. `padosoft/laravel-mobile-push`).
+- **Repository remoto:** `https://github.com/padosoft/laravel-mobile-push` (privato), branch `main`. Push dopo ogni ondata integrata.
 
 ## Stato per milestone
 
@@ -70,3 +70,4 @@ composer check        # pint --test, phpstan max, pest
 - 2026-11-20 22:53 [W1-F] done: src/Core/Guard (RateLimiter, ThrottleGate, AuthBreaker, DestinationQualityBreaker, Guards facade, GuardStore + in-memory); 25 tests green; Laravel-cache GuardStore still to write.
 - 2026-11-20 22:55 [W1-G] done: Core/Policy (ModeResolver, SafeModeGuard, EndpointCatalog+Override, CapabilityMatrix) e Core/Privacy (KeyRing, TokenIndex, TokenCipher, TokenMasker, Redactor) con 60 test verdi, phpstan max pulito, Arch verde.
 - 2026-11-20 22:56 [W1-H] done: docs/contracts (outcomes, identity, ledger, classification, retry, modes, messages, README con le tre domande del gate) e boilerplate (CONTRIBUTING, SECURITY, CHANGELOG, template issue e PR). Discrepanze piano/codice annotate nei documenti e da confermare: Failed assente dal piano §4.1, VoIP assente dal §4.2, NotSent con risposta HTTP, isTerminal su OutcomeUnknown, SendReport a passata singola. Ledger, classificatore e retry restano solo piano (nessun codice in quelle cartelle).
+- 2026-11-20 [orchestratore] Repository GitHub agganciato; push di M0 (2f25206) e delle parti concluse dell'ondata 1: W1-F, W1-G, W1-H (4146fd4). In corso: W1-A, W1-B, W1-C, W1-D, W1-E.

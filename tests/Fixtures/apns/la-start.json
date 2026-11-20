@@ -1,0 +1,45 @@
+{
+  "source": "https://developer.apple.com/tutorials/data/documentation/activitykit/starting-and-updating-live-activities-with-activitykit-push-notifications.json",
+  "section": "Construct the payload that starts a Live Activity",
+  "retrieved": "2026-11-20",
+  "payload": {
+    "aps": {
+      "timestamp": 1234,
+      "event": "start",
+      "content-state": {
+        "currentHealthLevel": 100,
+        "eventDescription": "Adventure has begun!"
+      },
+      "attributes-type": "AdventureAttributes",
+      "attributes": {
+        "hero": {
+          "name": "Power Panda",
+          "avatar": "U+1F43C",
+          "healthLevel": 100,
+          "heroType": "Forest Dweller",
+          "healthRecoveryRatePerHour": 0.25,
+          "url": "game:///panda",
+          "battleCode": "game:///panda/battle",
+          "level": 3,
+          "exp": 600,
+          "bio": "Power Panda loves eating bamboo shoots and leaves."
+        }
+      },
+      "alert": {
+        "title": {
+          "loc-key": "%@ is on an adventure!",
+          "loc-args": [
+            "Power Panda"
+          ]
+        },
+        "body": {
+          "loc-key": "%@ found a sword!",
+          "loc-args": [
+            "Power Panda"
+          ]
+        },
+        "sound": "chime.aiff"
+      }
+    }
+  }
+}

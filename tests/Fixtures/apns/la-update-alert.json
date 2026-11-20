@@ -1,0 +1,30 @@
+{
+  "source": "https://developer.apple.com/tutorials/data/documentation/activitykit/starting-and-updating-live-activities-with-activitykit-push-notifications.json",
+  "section": "Construct the ActivityKit remote push notification payload (update with alert)",
+  "retrieved": "2026-11-20",
+  "payload": {
+    "aps": {
+      "timestamp": 1685952000,
+      "event": "update",
+      "content-state": {
+        "currentHealthLevel": 0.0,
+        "eventDescription": "Power Panda has been knocked down!"
+      },
+      "alert": {
+        "title": {
+          "loc-key": "%@ is knocked down!",
+          "loc-args": [
+            "Power Panda"
+          ]
+        },
+        "body": {
+          "loc-key": "Use a potion to heal %@!",
+          "loc-args": [
+            "Power Panda"
+          ]
+        },
+        "sound": "HeroDown.mp4"
+      }
+    }
+  }
+}

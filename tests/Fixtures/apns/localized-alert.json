@@ -1,0 +1,16 @@
+{
+  "source": "https://developer.apple.com/tutorials/data/documentation/usernotifications/generating-a-remote-notification.json",
+  "section": "Listing 3. A remote notification payload with localized content",
+  "retrieved": "2026-11-20",
+  "payload": {
+    "aps": {
+      "alert": {
+        "loc-key": "GAME_PLAY_REQUEST_FORMAT",
+        "loc-args": [
+          "Shelly",
+          "Rick"
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "source": "https://developer.apple.com/tutorials/data/documentation/usernotifications/sending-notification-requests-to-apns.json",
+  "section": "Send a POST request to APNs (sample request with an authentication token)",
+  "retrieved": "2026-11-20",
+  "headers": {
+    "apns-id": "eabeae54-14a8-11e5-b60b-1697f925ec7b",
+    "apns-push-type": "alert",
+    "apns-expiration": "0",
+    "apns-priority": "10",
+    "apns-topic": "com.example.MyApp"
+  },
+  "note": "Apple's sample sends alert as a bare string; this package always sends the recommended dictionary form, so only the headers are compared.",
+  "payload": {
+    "aps": {
+      "alert": "Hello"
+    }
+  }
+}

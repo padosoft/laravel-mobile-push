@@ -1,0 +1,16 @@
+{
+  "source": "https://developer.apple.com/tutorials/data/documentation/usernotifications/generating-a-remote-notification.json",
+  "section": "Listing 1. A remote notification payload for showing an alert",
+  "retrieved": "2026-11-20",
+  "payload": {
+    "aps": {
+      "alert": {
+        "title": "Game Request",
+        "subtitle": "Five Card Draw",
+        "body": "Bob wants to play poker"
+      },
+      "category": "GAME_INVITATION"
+    },
+    "gameID": "12345678"
+  }
+}
