@@ -58,7 +58,7 @@ final class PrivacyModule implements Module
         $keys = [];
         if (is_array($configured)) {
             foreach ($configured as $version => $encoded) {
-                if (! is_int($version) && ! (is_string($version) && ctype_digit($version))) {
+                if (! is_int($version) && ! ctype_digit($version)) {
                     throw new ConfigurationException("mobile-push.privacy.{$keysKey} must be a map of integer version => base64 key.");
                 }
                 $keys[(int) $version] = self::decode($keysKey, (int) $version, $encoded);

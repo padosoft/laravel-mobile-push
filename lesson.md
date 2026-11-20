@@ -117,3 +117,8 @@ Modello di voce:
 - **Contesto:** W1-E, RetryPlanner.
 - **Fatto:** se un messaggio sostituibile viene ritentato dopo un esito ignoto e i tentativi successivi falliscono (503, budget finito, scadenza), dichiarare `Failed`/`Expired` sarebbe falso: il primo tentativo potrebbe essere stato accettato, e `allowsFallback()` aprirebbe il ripiego. Il budget porta `unknownOutcomeSeen`, e ogni esito finale Failed/Expired diventa `OutcomeUnknown`.
 - **Regola:** chi persiste il budget (ledger, job) deve salvare anche quel flag; mai ricostruire il budget da zero tra un tentativo e l'altro.
+
+## 2026-11-20 — Cache Laravel: lock e valori (W2-P1)
+- **Contesto:** `src/Laravel/Cache`.
+- **Fatto:** `Illuminate\Cache\Repository` non ha `lock()`: si passa da `getStore()` e `instanceof LockProvider` (`NullStore` è LockProvider ma restituisce `NoLock`, che concede sempre). `Lock::block()` dorme a passi di 250 ms: per un'attesa breve limitata si usa `get()` in ciclo con `usleep(5000)`. I messaggi delle eccezioni dei client cache possono contenere URL con password: nei log solo il nome della classe. Il driver redis restituisce le stringhe numeriche come numeri: castare in stringa nella lettura.
+- **Regola:** cifrare il valore con `TokenCipher` usando il nome della chiave come scope (AAD): un valore copiato sotto un'altra chiave non si autentica. Le chiavi di cache sono `prefix:tipo:sha256(nome)`.
