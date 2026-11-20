@@ -123,6 +123,8 @@ final readonly class LedgerRules
             'expires_at' => Row::intOrNull($effect, 'expires_at'),
             'campaign_id' => Row::strOrNull($effect, 'campaign_id'),
             'provider_message_id' => null,
+            // Assigned once, here: stable across every attempt (the id the request and the receipt marker carry).
+            'message_id' => MessageId::generate(),
             'reason_code' => null,
             'raw_reason' => null,
             'hint' => null,
@@ -212,8 +214,9 @@ final readonly class LedgerRules
             'attempt_started_at' => null,
             'version' => Row::int($row, 'version') + 1,
             'provider_message_id' => $result->providerMessageId ?? ($row['provider_message_id'] ?? null),
-            // Receipts: the sender's own message id (what a marker carries) and whether a marker was embedded.
-            'message_id' => $senderId ?? ($row['message_id'] ?? null),
+            // Receipts: the message id is assigned at insert and never replaced (legacy rows without one take the sender's);
+            // `receipt_marker` says whether a marker was embedded.
+            'message_id' => Row::strOrNull($row, 'message_id') ?? $senderId,
             'receipt_marker' => Row::bool($row, 'receipt_marker')
                 || ($result->meta['receipt_marker'] ?? null) === '1'
                 || ($senderId !== null && $markerIssued !== null && $markerIssued($senderId)),

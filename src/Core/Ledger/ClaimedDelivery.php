@@ -38,8 +38,9 @@ final readonly class ClaimedDelivery
         return $this->delivery->budget;
     }
 
+    /** The id to send as the request's message id on every attempt: the ledger-assigned `message_id`. */
     public function providerMessageId(): ?string
     {
-        return $this->delivery->providerMessageId;
+        return $this->delivery->messageId ?? $this->delivery->providerMessageId;
     }
 }
