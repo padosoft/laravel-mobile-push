@@ -38,7 +38,7 @@ final class OutcomeKit
 
     public const APNS_ID = 'e2b4f1a0-0000-4000-8000-000000000001';
 
-    public const FCM_TOKEN ='fake-fcm-registration-token:APA91bFAKE_value_for_tests_only';
+    public const FCM_TOKEN = 'fake-fcm-registration-token:APA91bFAKE_value_for_tests_only';
 
     public static function apnsContext(?Destination $destination = null): ClassifyContext
     {
