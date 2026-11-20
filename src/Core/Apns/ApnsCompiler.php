@@ -204,7 +204,7 @@ final class ApnsCompiler implements MessageCompiler
             'apns-priority' => (string) $priority->value,
         ];
         if ($context->expiresAt !== null) {
-            $headers['apns-expiration'] = (string) max(0, $context->expiresAt->getTimestamp());
+            $headers['apns-expiration'] = (string) $this->expirationHeader($context);
         }
         if ($m->collapseId !== null) {
             $headers['apns-collapse-id'] = $m->collapseId;
@@ -457,7 +457,7 @@ final class ApnsCompiler implements MessageCompiler
 
         if ($broadcast) {
             // Required on a broadcast publish. 0 is valid for every storage policy; a no-storage channel accepts nothing else.
-            $expiration = $context->expiresAt === null ? 0 : max(0, $context->expiresAt->getTimestamp());
+            $expiration = $context->expiresAt === null ? 0 : $this->expirationHeader($context);
             if ($m->channelStoresNoMessages && $expiration !== 0) {
                 $warnings[] = 'channel stores no messages: apns-expiration forced to 0.';
                 $expiration = 0;
@@ -466,7 +466,7 @@ final class ApnsCompiler implements MessageCompiler
             $this->addMessageId($headers, 'apns-request-id', $context);
         } else {
             if ($context->expiresAt !== null) {
-                $headers['apns-expiration'] = (string) max(0, $context->expiresAt->getTimestamp());
+                $headers['apns-expiration'] = (string) $this->expirationHeader($context);
             }
             $this->addMessageId($headers, 'apns-id', $context);
         }
@@ -586,6 +586,20 @@ final class ApnsCompiler implements MessageCompiler
         }
 
         return $map;
+    }
+
+    /**
+     * apns-expiration of the attempt. An expiry at or before the compile instant is "now or never": 0 (do not store),
+     * never a past epoch, which APNs would treat as a stored-then-expired message.
+     */
+    private function expirationHeader(CompileContext $context): int
+    {
+        $expiresAt = $context->expiresAt;
+        if ($expiresAt === null || $expiresAt <= $context->now) {
+            return 0;
+        }
+
+        return max(0, $expiresAt->getTimestamp());
     }
 
     /** @param  array<string, string>  $headers */

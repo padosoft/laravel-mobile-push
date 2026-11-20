@@ -13,6 +13,7 @@ use Padosoft\MobilePush\Core\Exceptions\ValidationException;
 use Padosoft\MobilePush\Core\Guard\BreakerTransition;
 use Padosoft\MobilePush\Core\Guard\GuardRecord;
 use Padosoft\MobilePush\Core\Guard\Guards;
+use Padosoft\MobilePush\Core\Guard\GuardSource;
 use Padosoft\MobilePush\Core\Guard\GuardVerdict;
 use Padosoft\MobilePush\Core\Identity\BindingRef;
 use Padosoft\MobilePush\Core\Identity\Destination;
@@ -206,7 +207,10 @@ final class SendRun
         // re-resolved from the resume time); otherwise the message's own expiry, pinned at the start of this send.
         $expiresAt = $this->options->expiresAt
             ?? ($item->budget !== null ? $item->budget->expiresAt : $this->messageExpiry);
-        $budget = $item->budget ?? RetryBudget::start($this->planner->policy(), $now, $expiresAt);
+        // ttl(0) is "now or never": one attempt, no retry. A caller-pinned expiry replaces the message's own, so then
+        // the message's ttl no longer applies. A resumed budget carries its own flag.
+        $singleAttempt = $this->options->expiresAt === null && $this->message instanceof PushMessage && $this->message->isNowOrNever();
+        $budget = $item->budget ?? RetryBudget::start($this->planner->policy(), $now, $expiresAt, $singleAttempt);
         $messageId = $item->providerMessageId
             ?? ($this->options->effectKey !== null
                 ? MessageIds::forEffect($this->bindingIdentity, $this->options->effectKey, $item->destination)
@@ -437,8 +441,12 @@ final class SendRun
             return null;
         }
 
-        foreach ($verdict->transitions as $transition) {
-            $this->transition(GuardKind::PreSendCheck, $transition, $verdict->credentialGeneration);
+        foreach ($verdict->sourcedTransitions as $sourced) {
+            $kind = match ($sourced->source) {
+                GuardSource::Auth => GuardKind::Auth,
+                GuardSource::DestinationQuality => GuardKind::DestinationQuality,
+            };
+            $this->transition($kind, $sourced->transition, $verdict->credentialGeneration);
         }
 
         return $verdict;

@@ -108,8 +108,8 @@ final class Sender
             $options->retryPolicy ?? $this->retryPolicy,
             $this->redactor,
             $this->sleeper,
-            $this->notify(...),
-            $this->observers !== [],
+            fn (\Closure $call) => $this->notify($call, $options->observers),
+            $this->observers !== [] || $options->observers !== [],
         );
 
         $results = $run->results($destinations);
@@ -128,10 +128,11 @@ final class Sender
      * Calls every observer, isolating failures.
      *
      * @param  \Closure(SendObserver): void  $call
+     * @param  list<SendObserver>  $perCall  observers of this send only, called after the sender's own
      */
-    private function notify(\Closure $call): void
+    private function notify(\Closure $call, array $perCall = []): void
     {
-        foreach ($this->observers as $observer) {
+        foreach ([...$this->observers, ...$perCall] as $observer) {
             try {
                 $call($observer);
             } catch (\Throwable $e) {

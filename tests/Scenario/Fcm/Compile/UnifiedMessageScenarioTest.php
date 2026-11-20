@@ -61,6 +61,10 @@ it('turns a silent message into a data-only message with normal priority', funct
         'token' => FcmKit::token()->value(),
         'data' => ['sync' => 'contacts'],
         'android' => ['collapse_key' => 'sync', 'priority' => 'NORMAL'],
+        'apns' => [
+            'headers' => ['apns-priority' => '5', 'apns-push-type' => 'background'],
+            'payload' => ['aps' => ['content-available' => 1]],
+        ],
     ])->and($json)->not->toHaveKey('notification');
 });
 

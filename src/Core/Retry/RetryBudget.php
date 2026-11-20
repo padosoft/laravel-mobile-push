@@ -29,12 +29,14 @@ final readonly class RetryBudget
         public bool $unknownOutcomeSeen = false,
         /** Immediate retries already granted after a provider-token refresh. */
         public int $tokenRefreshes = 0,
+        /** "Now or never": exactly one attempt, never a retry of any kind (PushMessage::ttl(0)). */
+        public bool $singleAttempt = false,
     ) {}
 
     /**
      * Open the budget at the first attempt.
      */
-    public static function start(RetryPolicy $policy, \DateTimeImmutable $now, ?\DateTimeImmutable $expiresAt = null): self
+    public static function start(RetryPolicy $policy, \DateTimeImmutable $now, ?\DateTimeImmutable $expiresAt = null, bool $singleAttempt = false): self
     {
         $now = self::utc($now);
 
@@ -43,6 +45,9 @@ final readonly class RetryBudget
             $now,
             $now->modify(sprintf('+%d seconds', $policy->maxElapsedSeconds)),
             $expiresAt === null ? null : self::utc($expiresAt),
+            false,
+            0,
+            $singleAttempt,
         );
     }
 
@@ -65,26 +70,31 @@ final readonly class RetryBudget
      */
     public function isExpired(\DateTimeImmutable $now): bool
     {
+        // A now-or-never message is born with expiry == creation instant: its one attempt is still allowed.
+        if ($this->singleAttempt && $this->attempts === 0) {
+            return false;
+        }
+
         return $this->expiresAt !== null && $now >= $this->expiresAt;
     }
 
     public function withAttempt(): self
     {
-        return new self($this->attempts + 1, $this->startedAt, $this->elapsedDeadline, $this->expiresAt, $this->unknownOutcomeSeen, $this->tokenRefreshes);
+        return new self($this->attempts + 1, $this->startedAt, $this->elapsedDeadline, $this->expiresAt, $this->unknownOutcomeSeen, $this->tokenRefreshes, $this->singleAttempt);
     }
 
     public function withUnknownOutcome(): self
     {
-        return new self($this->attempts, $this->startedAt, $this->elapsedDeadline, $this->expiresAt, true, $this->tokenRefreshes);
+        return new self($this->attempts, $this->startedAt, $this->elapsedDeadline, $this->expiresAt, true, $this->tokenRefreshes, $this->singleAttempt);
     }
 
     public function withTokenRefresh(): self
     {
-        return new self($this->attempts, $this->startedAt, $this->elapsedDeadline, $this->expiresAt, $this->unknownOutcomeSeen, $this->tokenRefreshes + 1);
+        return new self($this->attempts, $this->startedAt, $this->elapsedDeadline, $this->expiresAt, $this->unknownOutcomeSeen, $this->tokenRefreshes + 1, $this->singleAttempt);
     }
 
     /**
-     * @return array{v: int, attempts: int, started_at: string, elapsed_deadline: string, expires_at: string|null, unknown_outcome_seen: bool, token_refreshes: int}
+     * @return array{v: int, attempts: int, started_at: string, elapsed_deadline: string, expires_at: string|null, unknown_outcome_seen: bool, token_refreshes: int, single_attempt: bool}
      */
     public function toArray(): array
     {
@@ -96,6 +106,7 @@ final readonly class RetryBudget
             'expires_at' => $this->expiresAt?->format(self::TIME_FORMAT),
             'unknown_outcome_seen' => $this->unknownOutcomeSeen,
             'token_refreshes' => $this->tokenRefreshes,
+            'single_attempt' => $this->singleAttempt,
         ];
     }
 
@@ -117,6 +128,11 @@ final readonly class RetryBudget
             throw new \InvalidArgumentException('Malformed retry budget counters.');
         }
 
+        $single = $data['single_attempt'] ?? false;   // absent in budgets stored before the flag existed
+        if (! is_bool($single)) {
+            throw new \InvalidArgumentException('Malformed retry budget single-attempt flag.');
+        }
+
         $expires = $data['expires_at'] ?? null;
 
         return new self(
@@ -126,6 +142,7 @@ final readonly class RetryBudget
             $expires === null ? null : self::parse($expires),
             $unknown,
             $refreshes,
+            $single,
         );
     }
 

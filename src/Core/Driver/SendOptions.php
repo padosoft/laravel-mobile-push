@@ -50,7 +50,19 @@ final readonly class SendOptions
         public ?\DateTimeImmutable $expiresAt = null,
         /** Requests per window; null = the driver's window. */
         public ?int $window = null,
+        /**
+         * Per-call observers: they receive the same callbacks as the Sender's own observers, after them, with the
+         * same isolation (a throwing observer never changes a result).
+         *
+         * @var list<SendObserver>
+         */
+        public array $observers = [],
     ) {
+        foreach ($observers as $observer) {
+            if (! $observer instanceof SendObserver) {
+                throw new ConfigurationException('Every per-call observer must implement '.SendObserver::class.'.');
+            }
+        }
         if ($effectKey !== null && trim($effectKey) === '') {
             throw new ConfigurationException('The effect key cannot be empty: pass null to send without one.');
         }
@@ -59,5 +71,77 @@ final readonly class SendOptions
         }
         $this->effectiveMode = $mode ?? (new ModeResolver)->resolve($configuredMode, $applicationEnvironment ?? '');
         $this->receiptMarker = $receiptMarker === null ? null : \Closure::fromCallable($receiptMarker);
+    }
+
+    public function withObserver(SendObserver $observer): self
+    {
+        return $this->copy(['observers' => [...$this->observers, $observer]]);
+    }
+
+    public function withGate(DestinationGate $gate): self
+    {
+        return $this->copy(['gates' => [...$this->gates, $gate]]);
+    }
+
+    public function withEffectKey(?string $effectKey): self
+    {
+        return $this->copy(['effectKey' => $effectKey]);
+    }
+
+    public function withExpiresAt(?\DateTimeImmutable $expiresAt): self
+    {
+        return $this->copy(['expiresAt' => $expiresAt]);
+    }
+
+    public function withTrafficClass(TrafficClass $trafficClass): self
+    {
+        return $this->copy(['trafficClass' => $trafficClass]);
+    }
+
+    public function withValidateOnly(bool $validateOnly): self
+    {
+        return $this->copy(['validateOnly' => $validateOnly]);
+    }
+
+    public function withWindow(?int $window): self
+    {
+        return $this->copy(['window' => $window]);
+    }
+
+    public function withRetryPolicy(?RetryPolicy $retryPolicy): self
+    {
+        return $this->copy(['retryPolicy' => $retryPolicy]);
+    }
+
+    /**
+     * @param  (callable(Destination, string): ?string)|null  $receiptMarker
+     */
+    public function withReceiptMarker(?callable $receiptMarker): self
+    {
+        return $this->copy(['receiptMarker' => $receiptMarker]);
+    }
+
+    /**
+     * A new instance with the given fields replaced and every other one carried over, the resolved mode included.
+     *
+     * @param  array<string, mixed>  $changes
+     */
+    private function copy(array $changes): self
+    {
+        return new self(...array_replace([
+            'trafficClass' => $this->trafficClass,
+            'validateOnly' => $this->validateOnly,
+            'effectKey' => $this->effectKey,
+            'applicationEnvironment' => $this->applicationEnvironment,
+            'configuredMode' => $this->configuredMode,
+            'mode' => $this->effectiveMode,
+            'live' => $this->live,
+            'retryPolicy' => $this->retryPolicy,
+            'receiptMarker' => $this->receiptMarker,
+            'gates' => $this->gates,
+            'expiresAt' => $this->expiresAt,
+            'window' => $this->window,
+            'observers' => $this->observers,
+        ], $changes));
     }
 }

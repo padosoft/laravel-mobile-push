@@ -53,6 +53,20 @@
 
 **Meccanismo moduli Laravel:** ogni fetta dello strato Laravel è una classe `Module` elencata in `MobilePushServiceProvider::MODULES`; gli agenti non toccano il provider.
 
+**Ondata 3** (lanciata 2026-11-20; ondate 1 e 2 concluse, suite a 1327 test verdi al momento del lancio):
+
+| Id | Modello | Cartelle | Contenuto |
+|---|---|---|---|
+| W3-A | Opus | `src/Laravel/Sending`, `Facades`, `helpers.php`, `config/mobile-push.php` | PushManager (implementa `PushDispatcher`), PendingSend, facade, helper, config, eventi, cablaggio observer |
+| W3-L | Opus | `src/Laravel/LiveActivities` | Registro attività, macchina a stati, token push-to-start/update, canali broadcast |
+| W3-FIX | Sonnet | file puntuali in `src/Core` | `ttl(0)` = un solo tentativo; transizioni dei guard con nome; push silenziose FCM verso iOS; observer per chiamata e `with…()` in `SendOptions` |
+| W3-B | Opus | `src/Laravel/Queue` | `SendPushJob` (profilo leggero), outbox + `RelayDeliveriesJob` + sweeper (profilo durevole), catena dei timeout |
+| W3-D | Sonnet | `src/Core/Receipts`, `src/Laravel/Receipts` (+ aggiunte al ledger) | Marcatori di ricevuta, endpoint, funnel con copertura |
+| W3-E | Sonnet | `src/Laravel/Health` | Health (liveness/readiness), metriche Prometheus, controllo credenziali, avvisi operativi |
+
+**Da lanciare quando rientra W3-A** (dipendono dall'API del manager): canali Notification + ripiego su altro canale; `PushFake` e `fakeTransport`; comandi Artisan (install, doctor, send, preview, explain, simulator, connections, circuit, relay, prune, health, credentials:check, forget, export, live-activity:*, channels:*, fcm:topic-subscription); modulo Policies (limite di frequenza, contatore badge); Pulse e Telescope; integrazione finale (config del ledger/health/receipts/queue, cablaggio metriche e avvisi).
+**Poi:** campagne (M8), test sui runtime longevi, benchmark, `ConfigSchema` + docs generate, README (M9).
+
 **Dopo l'ondata 1 (orchestratore):** integrare, `composer check`, commit locale, aggiornare questa tabella.
 **Ondata 2 prevista:** interfaccia `Driver`, `ApnsDriver`, `FcmDriver`, `Sender` (compila → guardia di modalità → trasporto → classifica → pianifica retry → report), client canali APNs, client iscrizioni topic FCM, scenari end-to-end sul server mock.
 

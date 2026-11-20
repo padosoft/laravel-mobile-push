@@ -9,7 +9,7 @@ enum GuardKind: string
     case Auth = 'auth';
     case DestinationQuality = 'destination_quality';
     /**
-     * Reported by Guards::before(), whose transitions (half-open) do not say which breaker produced them.
+     * @deprecated No longer produced: Guards::before() labels every transition with its breaker.
      */
     case PreSendCheck = 'pre_send_check';
 }
