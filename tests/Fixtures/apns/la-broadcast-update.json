@@ -1,0 +1,37 @@
+{
+  "source": "https://developer.apple.com/tutorials/data/documentation/usernotifications/sending-broadcast-push-notification-requests-to-apns.json",
+  "section": "Send a POST request to APNs (certificate sample, apns-request-id header)",
+  "retrieved": "2026-11-20",
+  "headers": {
+    "apns-request-id": "eabeae54-14a8-11e5-b60b-1697f925ec7b",
+    "apns-push-type": "liveactivity",
+    "apns-expiration": "0",
+    "apns-priority": "10",
+    "apns-channel-id": "dHN0LXNyY2gtY2hubA=="
+  },
+  "payload": {
+    "aps": {
+      "timestamp": 1685952000,
+      "event": "update",
+      "content-state": {
+        "currentHealthLevel": 0.0,
+        "eventDescription": "Power Panda has been knocked down!"
+      },
+      "alert": {
+        "title": {
+          "loc-key": "%@ is knocked down!",
+          "loc-args": [
+            "Power Panda"
+          ]
+        },
+        "body": {
+          "loc-key": "Use a potion to heal %@!",
+          "loc-args": [
+            "Power Panda"
+          ]
+        },
+        "sound": "HeroDown.mp4"
+      }
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "source": "https://developer.apple.com/tutorials/data/documentation/usernotifications/generating-a-remote-notification.json",
+  "section": "Listing 2. A remote notification payload for playing a sound",
+  "retrieved": "2026-11-20",
+  "payload": {
+    "aps": {
+      "badge": 9,
+      "sound": "bingbong.aiff"
+    },
+    "messageID": "ABCDEFGHIJ"
+  }
+}

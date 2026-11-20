@@ -1,0 +1,16 @@
+{
+  "source": "https://developer.apple.com/tutorials/data/documentation/activitykit/starting-and-updating-live-activities-with-activitykit-push-notifications.json",
+  "section": "Display the most important Live Activity in the Dynamic Island",
+  "retrieved": "2026-11-20",
+  "payload": {
+    "aps": {
+      "timestamp": 1685952000,
+      "event": "update",
+      "relevance-score": 100,
+      "content-state": {
+        "currentHealthLevel": 0.941,
+        "eventDescription": "Power Panda found a sword!"
+      }
+    }
+  }
+}
