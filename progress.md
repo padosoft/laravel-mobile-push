@@ -6,7 +6,7 @@
 ## Dove siamo
 
 - **Porta corrente:** Contratto → Alpha (invio diretto)
-- **Milestone corrente:** ondata 1 conclusa e verificata; ondata 2 in corso (W2-A Sender/driver, W2-P4 ledger)
+- **Milestone corrente:** ondate 1 e 2 concluse; ondata 3 in corso (W3-A manager/facade/eventi, W3-L Live Activities, W3-FIX correzioni)
 - **Prossimo passo concreto:** vedi "Ondata in corso"
 - **Piano:** `docs/PLAN.md` (v2 approvata il 2026-11-20)
 - **Repository remoto:** `https://github.com/padosoft/laravel-mobile-push` (privato), branch `main`. Push dopo ogni ondata integrata.
@@ -104,3 +104,4 @@ composer check        # pint --test, phpstan max, pest
 - 2026-11-20 [orchestratore] W2-P6 rientrato (sink log/database/OpenTelemetry, 43 test); blocco log aggiunto al config. Da cablare in M4: SinkManager::recordResult() dal SendObserver, passando i segreti a runtime (bearer, marcatore di ricevuta) nel contesto 'secrets'. In corso: W2-A, W2-P4.
 - 2026-11-20 23:30 [W2-P4] done: registro durevole degli effetti (src/Core/Ledger: contratti EffectStore/DeliveryStore/Ledger, macchina a stati, PayloadFingerprint, MessageVault, InMemoryLedger; src/Laravel/Ledger: DatabaseLedger su query builder con claim SKIP LOCKED/ottimistico, LedgerModule, due migration); contratto condiviso eseguito su memoria, DB ottimistico e DB skip-locked, 300 test verdi (+1 milione in gruppo slow, 51 s). Manca: relay/job, chiavi config in config/mobile-push.php, prova su MySQL/PostgreSQL reali.
 - 2026-11-20 [orchestratore] W2-A rientrato (Driver, Sender, ApnsDriver, FcmDriver; end-to-end su CurlTransport + mock). Suite completa: 1327 test verdi. Aggiunti i contratti src/Laravel/Contracts (PushDispatcher, QueuedSender, QueueOptions). Difetti da correggere (W3-FIX): PushMessage::ttl(0) non invia mai; transizioni di Guards::before senza nome del breaker.
+- 2026-11-20 [orchestratore] ONDATA 2 CONCLUSA: W2-P4 rientrato (ledger: 299 test; concorrenza provata solo su SQLite, il percorso SKIP LOCKED di MySQL/PostgreSQL va provato in CI). Lanciata ondata 3: W3-A (Opus: PushManager, PendingSend, facade, helper, config, eventi, cablaggio observer), W3-L (Opus: modulo Live Activities), W3-FIX (Sonnet: ttl(0), transizioni dei guard con nome, push silenziose FCM verso iOS, observer per chiamata in SendOptions). Chiavi config del ledger da aggiungere quando W3-A rilascia config/mobile-push.php. Lista MODULES estesa (Queue, Notifications, Policies, Pulse, Telescope, Testing).

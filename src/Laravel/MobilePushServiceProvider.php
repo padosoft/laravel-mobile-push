@@ -19,14 +19,20 @@ final class MobilePushServiceProvider extends ServiceProvider
     public const MODULES = [
         'Padosoft\MobilePush\Laravel\Privacy\PrivacyModule',
         'Padosoft\MobilePush\Laravel\Cache\CacheModule',
-        'Padosoft\MobilePush\Laravel\Sending\SendingModule',
+        'Padosoft\MobilePush\Laravel\Logging\LoggingModule',
         'Padosoft\MobilePush\Laravel\Devices\DevicesModule',
         'Padosoft\MobilePush\Laravel\Ledger\LedgerModule',
+        'Padosoft\MobilePush\Laravel\Sending\SendingModule',
+        'Padosoft\MobilePush\Laravel\Queue\QueueModule',
+        'Padosoft\MobilePush\Laravel\Notifications\NotificationsModule',
+        'Padosoft\MobilePush\Laravel\Policies\PoliciesModule',
         'Padosoft\MobilePush\Laravel\LiveActivities\LiveActivitiesModule',
-        'Padosoft\MobilePush\Laravel\Logging\LoggingModule',
-        'Padosoft\MobilePush\Laravel\Health\HealthModule',
         'Padosoft\MobilePush\Laravel\Campaigns\CampaignsModule',
         'Padosoft\MobilePush\Laravel\Receipts\ReceiptsModule',
+        'Padosoft\MobilePush\Laravel\Health\HealthModule',
+        'Padosoft\MobilePush\Laravel\Pulse\PulseModule',
+        'Padosoft\MobilePush\Laravel\Telescope\TelescopeModule',
+        'Padosoft\MobilePush\Laravel\Testing\TestingModule',
         'Padosoft\MobilePush\Laravel\Console\ConsoleModule',
     ];
 
