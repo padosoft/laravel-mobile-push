@@ -1,0 +1,12 @@
+* text=auto eol=lf
+/.github export-ignore
+/tests export-ignore
+/benchmarks export-ignore
+/docs/PLAN.md export-ignore
+/progress.md export-ignore
+/lesson.md export-ignore
+/AGENTS.md export-ignore
+/CLAUDE.md export-ignore
+/phpunit.xml export-ignore
+/phpstan.neon.dist export-ignore
+/pint.json export-ignore
