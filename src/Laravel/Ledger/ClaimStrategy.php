@@ -45,13 +45,13 @@ enum ClaimStrategy: string
             return false;
         }
 
-        if (preg_match('/(\d+)\.(\d+)\.(\d+)/', $version, $m) !== 1) {
+        $mariadb = stripos($version, 'mariadb') !== false || $connection->getDriverName() === 'mariadb';
+        // MariaDB may report "5.5.5-10.6.12-MariaDB": the real version is the one right before "-MariaDB".
+        $pattern = $mariadb && stripos($version, '-mariadb') !== false ? '/(\d+\.\d+\.\d+)-mariadb/i' : '/(\d+\.\d+\.\d+)/';
+        if (preg_match($pattern, $version, $m) !== 1) {
             return false;
         }
-        $numeric = sprintf('%d.%d.%d', $m[1], $m[2], $m[3]);
 
-        return stripos($version, 'mariadb') !== false || $connection->getDriverName() === 'mariadb'
-            ? version_compare($numeric, '10.6.0', '>=')
-            : version_compare($numeric, '8.0.1', '>=');
+        return version_compare($m[1], $mariadb ? '10.6.0' : '8.0.1', '>=');
     }
 }

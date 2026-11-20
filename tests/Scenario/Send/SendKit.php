@@ -116,7 +116,6 @@ final class SendKit
 
     public static function live(mixed ...$overrides): SendOptions
     {
-        /** @phpstan-ignore argument.type */
         return new SendOptions(...array_replace(['applicationEnvironment' => 'production', 'configuredMode' => 'live'], $overrides));
     }
 
@@ -218,20 +217,26 @@ final class SendKit
         return substr($request->url, (int) strrpos($request->url, '/') + 1);
     }
 
+    /** @param  array<string, mixed>  $extra */
     public static function apnsReason(int $status, string $reason, array $extra = []): Response
     {
         return new Response($status, ['apns-id' => '00000000-0000-4000-8000-000000000000'], (string) json_encode(['reason' => $reason] + $extra));
     }
 
-    /** @return array{0: string, 1: string, 2: string} */
-    public static function fcmError(int $status, string $rpc, ?string $code = null): array
+    /** @param  array<string, string>  $headers */
+    public static function fcmError(int $status, string $rpc, ?string $code = null, array $headers = []): Response
     {
         $error = ['code' => $status, 'message' => 'fake error', 'status' => $rpc];
         if ($code !== null) {
             $error['details'] = [['@type' => 'type.googleapis.com/google.firebase.fcm.v1.FcmError', 'errorCode' => $code]];
         }
 
-        return [(string) $status, $rpc, (string) json_encode(['error' => $error])];
+        return new Response($status, $headers, (string) json_encode(['error' => $error]));
+    }
+
+    public static function fcmOk(int $n = 1): Response
+    {
+        return new Response(200, [], '{"name":"projects/example-project/messages/0:'.$n.'"}');
     }
 
     /** @return list<SendResult> */

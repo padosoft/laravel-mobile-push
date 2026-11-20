@@ -65,7 +65,7 @@ final class SendRun
 
     private readonly RetryPlanner $planner;
 
-    private readonly ?\DateTimeImmutable $pinnedExpiry;
+    private readonly ?\DateTimeImmutable $messageExpiry;
 
     private readonly int $windowSize;
 
@@ -106,8 +106,7 @@ final class SendRun
         $this->replaceable = $driver->isReplaceable($message);
         $this->planner = new RetryPlanner($policy);
         $this->windowSize = $options->window ?? max(1, $driver->window());
-        $this->pinnedExpiry = $options->expiresAt
-            ?? ($message instanceof PushMessage ? $message->resolveExpiry($clock->now()) : null);
+        $this->messageExpiry = $message instanceof PushMessage ? $message->resolveExpiry($clock->now()) : null;
     }
 
     /**
@@ -203,7 +202,10 @@ final class SendRun
 
     private function workItem(int $position, SendItem $item, \DateTimeImmutable $now): WorkItem
     {
-        $expiresAt = $this->pinnedExpiry ?? $item->budget?->expiresAt;
+        // A caller-pinned expiry wins; a resumed budget keeps the expiry it was opened with (a relative ttl must not be
+        // re-resolved from the resume time); otherwise the message's own expiry, pinned at the start of this send.
+        $expiresAt = $this->options->expiresAt
+            ?? ($item->budget !== null ? $item->budget->expiresAt : $this->messageExpiry);
         $budget = $item->budget ?? RetryBudget::start($this->planner->policy(), $now, $expiresAt);
         $messageId = $item->providerMessageId
             ?? ($this->options->effectKey !== null
@@ -295,6 +297,21 @@ final class SendRun
             return [];
         }
 
+        // Compile every destination of the pass (validation errors become results, or throw for a globally
+        // invalid message before anything was sent).
+        /** @var list<array{0: WorkItem, 1: CompiledMessage}> $compiledItems */
+        $compiledItems = [];
+        foreach ($allowed as $work) {
+            $work->generation = $generation;
+            $compiled = $this->prepare($work, $now, true, $results);
+            if ($compiled !== null) {
+                $compiledItems[] = [$work, $compiled];
+            }
+        }
+        if ($compiledItems === []) {
+            return [];
+        }
+
         // Bearer: once per pass, from the generation the authentication breaker selected.
         $provider = $this->driver->tokenProvider($generation);
         $token = null;
@@ -302,21 +319,16 @@ final class SendRun
             try {
                 $token = $provider->token();
             } catch (\Throwable $e) {
-                return $this->tokenUnavailable($allowed, $generation, $e, $results);
+                return $this->tokenUnavailable(array_column($compiledItems, 0), $generation, $e, $results);
             }
         }
 
-        // Compile and build the requests, grouped by connection pool.
+        // Build the requests, grouped by connection pool.
         /** @var array<string, array{profile: ConnectionProfile, requests: list<Request>}> $groups */
         $groups = [];
         /** @var array<string, WorkItem> $byId */
         $byId = [];
-        foreach ($allowed as $work) {
-            $work->generation = $generation;
-            $compiled = $this->prepare($work, $now, true, $results);
-            if ($compiled === null) {
-                continue;
-            }
+        foreach ($compiledItems as [$work, $compiled]) {
             try {
                 $profile = $this->driver->connectionProfile($this->driver->endpointRole($compiled), $generation);
                 $request = $this->driver->buildRequest('r'.(++$this->sequence), $compiled, $work->destination(), $token);

@@ -309,7 +309,9 @@ final readonly class LedgerRules
         }
 
         if ($transition->requestsCancel) {
-            return ['cancel_requested' => true, 'version' => Row::int($row, 'version') + 1, 'updated_at' => $nowMs];
+            // No version bump: the worker's lease stays valid, so the real outcome of its request is still recorded
+            // (a Deferred one then becomes Cancelled). Writers guard on cancel_requested to not lose this flag.
+            return ['cancel_requested' => true, 'updated_at' => $nowMs];
         }
 
         $cancelled = $transition->to === DeliveryState::Cancelled;
