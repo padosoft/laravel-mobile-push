@@ -28,7 +28,7 @@ The status table at the top of `progress.md` is maintained by the orchestrator o
 ## Hard rules
 
 - **Stay in your lane.** Only create or edit files inside the directories your brief assigns to you. Never edit `composer.json`, `phpunit.xml`, `phpstan.neon.dist`, `pint.json`, `tests/Pest.php`, `tests/TestCase.php`, `AGENTS.md`, `CLAUDE.md`, `docs/PLAN.md`, or the shared contracts listed below. If you need a change there, do not make it: describe it in your final message.
-- **Shared contracts are frozen** (owned by the orchestrator): everything directly in `src/Core/Transport/` except the `Curl/` sub-directory, `src/Core/Outcome/{SendStatus,ReasonCode,Reason,Decision,DestinationAction,CredentialAction,SendResult,SendReport}.php`, `src/Core/Identity/**`, `src/Core/Message/{Message,MessagePriority,CompileContext,CompiledMessage,MessageCompiler,PushMessage}.php`, `src/Core/Auth/{Signer,SecretResolver,AuthToken,TokenStore,AccessTokenProvider}.php`, `src/Core/Exceptions/**`.
+- **Shared contracts are frozen** (owned by the orchestrator): everything directly in `src/Core/Transport/` except the `Curl/` sub-directory, `src/Laravel/Contracts/**`, `src/Laravel/Module.php`, `src/Core/Outcome/{SendStatus,ReasonCode,Reason,Decision,DestinationAction,CredentialAction,SendResult,SendReport}.php`, `src/Core/Identity/**`, `src/Core/Message/{Message,MessagePriority,CompileContext,CompiledMessage,MessageCompiler,PushMessage}.php`, `src/Core/Auth/{Signer,SecretResolver,AuthToken,TokenStore,AccessTokenProvider}.php`, `src/Core/Exceptions/**`.
 - **`src/Core` never imports the framework**: no `Illuminate\*`, `Laravel\*`, `Carbon\*`. Use `Psr\Clock\ClockInterface` for time and `Psr\Log\LoggerInterface` for logging. An architecture test enforces this.
 - `declare(strict_types=1);` in every PHP file. `final` classes by default, `readonly` value objects, backed enums.
 - **Never install dependencies** and never run `composer require/update`. If you need a package, say so.
@@ -43,6 +43,12 @@ The status table at the top of `progress.md` is maintained by the orchestrator o
 ## Laravel layer: modules
 
 `src/Laravel/MobilePushServiceProvider.php` is owned by the orchestrator. Each slice of the Laravel layer is a **module**: a class implementing `Padosoft\MobilePush\Laravel\Module` (`static register(Application)`, `static boot(Application)`) at the path listed in `MobilePushServiceProvider::MODULES`. Put your container bindings, migrations, commands and listeners in your module; never edit the provider. Read config with explicit defaults (`config('mobile-push.devices.table', 'mobile_push_devices')`) and list in your final message every config key you introduced (name, env var, default, allowed values): the orchestrator adds them to `config/mobile-push.php`. Use `Psr\Clock\ClockInterface` from the container for time. Migrations are publishable stubs in `database/migrations/` and are also loaded by the module only when that module is enabled.
+
+## Laravel layer: contracts
+
+`src/Laravel/Contracts/**` is frozen (orchestrator): `PushDispatcher` (resolve a binding, send through the full pipeline, get a driver, default send options), `QueuedSender` and `QueueOptions`. Modules depend on these contracts, never on the manager class; in tests, bind a small fake `PushDispatcher` or bind `FakeTransport` as `Transport`.
+
+The send pipeline lives in `src/Core/Driver` (`Sender`, `Driver`, `SendOptions`, `SendItem`, `SendObserver`, `DestinationGate`, `GateDenial`). The report returned by a send is a cursor and must be consumed.
 
 ## Testing style (what the project owner asked for)
 
