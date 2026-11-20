@@ -19,6 +19,13 @@ final readonly class LedgerSettings
         public int $chunkSize = 500,
         /** Decides what an expired lease after a started attempt becomes (unknown-outcome policy, attempts, deadline). */
         public RetryPolicy $retry = new RetryPolicy,
+        /**
+         * Receipts: tells whether a receipt marker was issued for a sender message id in this process. Optional extra
+         * evidence next to the result's `receipt_marker` meta entry; it decides the `receipt_marker` column.
+         *
+         * @var (\Closure(string): bool)|null
+         */
+        public ?\Closure $markerIssued = null,
     ) {
         if ($leaseSeconds < 1) {
             throw new ConfigurationException('ledger.lease_seconds must be at least 1.');

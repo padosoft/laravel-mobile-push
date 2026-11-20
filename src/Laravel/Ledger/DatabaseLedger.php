@@ -11,6 +11,9 @@ use Illuminate\Database\Query\Expression;
 use Padosoft\MobilePush\Core\Exceptions\IdempotencyConflictException;
 use Padosoft\MobilePush\Core\Identity\Destination;
 use Padosoft\MobilePush\Core\Ledger\ClaimedDelivery;
+use Padosoft\MobilePush\Core\Ledger\ClientEvent;
+use Padosoft\MobilePush\Core\Ledger\ClientEventRecording;
+use Padosoft\MobilePush\Core\Ledger\ClientReceiptStore;
 use Padosoft\MobilePush\Core\Ledger\Delivery;
 use Padosoft\MobilePush\Core\Ledger\DeliveryCounts;
 use Padosoft\MobilePush\Core\Ledger\DeliveryEvent;
@@ -28,6 +31,7 @@ use Padosoft\MobilePush\Core\Ledger\LedgerTime;
 use Padosoft\MobilePush\Core\Ledger\MessageVault;
 use Padosoft\MobilePush\Core\Ledger\PayloadFingerprint;
 use Padosoft\MobilePush\Core\Ledger\PruneResult;
+use Padosoft\MobilePush\Core\Ledger\ReceiptFunnel;
 use Padosoft\MobilePush\Core\Ledger\ReclaimReport;
 use Padosoft\MobilePush\Core\Ledger\Recording;
 use Padosoft\MobilePush\Core\Ledger\Row;
@@ -49,7 +53,7 @@ use Psr\Clock\ClockInterface;
  * rules, one statement per source state. No method keeps a transaction open after it returns; claimDue() uses
  * one short transaction only for the SKIP LOCKED strategy.
  */
-final class DatabaseLedger implements Ledger
+final class DatabaseLedger implements ClientReceiptStore, Ledger
 {
     /** Bound parameters per INSERT statement stay below every driver's limit (SQLite 32766, PostgreSQL 65535). */
     private const MAX_BINDINGS = 30_000;
@@ -418,7 +422,7 @@ final class DatabaseLedger implements Ledger
                 return $verdict;
             }
 
-            $changes = LedgerRules::recordChanges($row, $result, $budget, $now);
+            $changes = LedgerRules::recordChanges($row, $result, $budget, $now, $this->rules->settings->markerIssued);
             if ($changes === null) {
                 return Recording::IgnoredStaleLease;
             }
@@ -621,6 +625,88 @@ final class DatabaseLedger implements Ledger
         }
 
         return $changed;
+    }
+
+    // ---------------------------------------------------------------- client receipts
+
+    public function deliveryByMessageId(string $scope, string $messageId): ?Delivery
+    {
+        $row = $this->deliveries()
+            ->where('scope', LedgerRules::scope($scope))
+            ->where('message_id', $messageId)
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->first();
+
+        return $row === null ? null : Delivery::fromRow($row);
+    }
+
+    public function recordClientEvent(string $scope, string $deliveryId, ClientEvent $event, \DateTimeImmutable $at): ClientEventRecording
+    {
+        $scope = LedgerRules::scope($scope);
+        $column = $event->column();
+
+        // First write wins: the UPDATE only matches while the column is still empty, so two concurrent reports
+        // cannot both be recorded. State, version and updated_at stay as they are.
+        $updated = $this->deliveries()
+            ->where('id', $deliveryId)
+            ->where('scope', $scope)
+            ->whereNull($column)
+            ->whereIn('state', DeliveryState::values(DeliveryState::Accepted, DeliveryState::OutcomeUnknown))
+            ->update([$column => LedgerTime::ms($at), 'receipt_marker' => true]);
+        if ($updated === 1) {
+            return ClientEventRecording::Recorded;
+        }
+
+        $row = $this->deliveries()->where('id', $deliveryId)->where('scope', $scope)->first();
+        if ($row === null) {
+            return ClientEventRecording::NotFound;
+        }
+        $row = Row::of($row);
+        $state = DeliveryState::from(Row::str($row, 'state'));
+
+        if ($state !== DeliveryState::Accepted && $state !== DeliveryState::OutcomeUnknown) {
+            return ClientEventRecording::NotEligible;
+        }
+
+        return ClientEventRecording::Duplicate;
+    }
+
+    public function effectFunnel(string $scope, string $effectId): ReceiptFunnel
+    {
+        return $this->funnel($this->deliveries()->where('scope', LedgerRules::scope($scope))->where('effect_id', $effectId));
+    }
+
+    public function campaignFunnel(string $scope, string $campaignId): ReceiptFunnel
+    {
+        return $this->funnel($this->deliveries()->where('scope', LedgerRules::scope($scope))->where('campaign_id', $campaignId));
+    }
+
+    private function funnel(Builder $query): ReceiptFunnel
+    {
+        $rows = $query
+            ->whereIn('state', DeliveryState::values(DeliveryState::Accepted, DeliveryState::OutcomeUnknown))
+            ->groupBy('state')
+            ->selectRaw(
+                'state, count(*) as n,'
+                .' sum(case when receipt_marker or client_received_at is not null or client_opened_at is not null then 1 else 0 end) as marker,'
+                .' sum(case when client_received_at is not null then 1 else 0 end) as received,'
+                .' sum(case when client_opened_at is not null then 1 else 0 end) as opened,'
+                .' sum(case when client_received_at is not null or client_opened_at is not null then 1 else 0 end) as confirmed',
+            )
+            ->get();
+
+        $funnel = array_fill_keys(['a', 'm', 'r', 'o', 'u', 'ur', 'uo', 'uc'], 0);
+        foreach ($rows as $row) {
+            $row = Row::of($row);
+            if (Row::str($row, 'state') === DeliveryState::Accepted->value) {
+                [$funnel['a'], $funnel['m'], $funnel['r'], $funnel['o']] = [Row::int($row, 'n'), Row::int($row, 'marker'), Row::int($row, 'received'), Row::int($row, 'opened')];
+            } else {
+                [$funnel['u'], $funnel['ur'], $funnel['uo'], $funnel['uc']] = [Row::int($row, 'n'), Row::int($row, 'received'), Row::int($row, 'opened'), Row::int($row, 'confirmed')];
+            }
+        }
+
+        return new ReceiptFunnel($funnel['a'], $funnel['m'], $funnel['r'], $funnel['o'], $funnel['u'], $funnel['ur'], $funnel['uo'], $funnel['uc']);
     }
 
     /** @param \Closure(Builder): Builder $match */
