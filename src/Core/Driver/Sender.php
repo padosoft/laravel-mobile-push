@@ -147,9 +147,4 @@ final class Sender
             }
         }
     }
-
-    public function hasObservers(): bool
-    {
-        return $this->observers !== [];
-    }
 }

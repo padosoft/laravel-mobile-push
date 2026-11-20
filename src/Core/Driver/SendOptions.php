@@ -31,7 +31,7 @@ final readonly class SendOptions
 
     /**
      * @param  (callable(Destination, string): ?string)|null  $receiptMarker  called once per live destination with the
-     *                                                                         provider message id; returns the opaque marker to embed (or null)
+     *                                                                        provider message id; returns the opaque marker to embed (or null)
      * @param  list<DestinationGate>  $gates  evaluated in order, see DestinationGate
      */
     public function __construct(

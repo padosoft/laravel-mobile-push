@@ -40,7 +40,7 @@ final readonly class RecordedDestination implements Destination
 
     public function withRef(DestinationRef $ref): static
     {
-        return new static($this->kind, $this->logicalKey, $ref);
+        return new self($this->kind, $this->logicalKey, $ref);
     }
 
     public function equals(Destination $other): bool

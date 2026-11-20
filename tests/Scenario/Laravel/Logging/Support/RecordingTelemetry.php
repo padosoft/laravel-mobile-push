@@ -26,7 +26,7 @@ use OpenTelemetry\API\Trace\TracerProviderInterface;
 use OpenTelemetry\Context\ContextInterface;
 
 /** In-memory tracer and meter providers implemented against the OpenTelemetry API interfaces. */
-final class RecordingTelemetry implements TracerProviderInterface, MeterProviderInterface
+final class RecordingTelemetry implements MeterProviderInterface, TracerProviderInterface
 {
     /** @var list<array{name: string, kind: int, attributes: array<string, mixed>, status: string|null, start: int|null, end: int|null}> */
     public array $spans = [];

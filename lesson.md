@@ -172,3 +172,33 @@ Modello di voce:
 - **Contesto:** src/Core/Credentials, GoogleAuthLibraryProvider.
 - **Fatto:** (1) una arrow fn `static fn () => openssl_pkcs12_read($b, $out, ...)` cattura $out per valore: serve `function () use (&$out)`. (2) `@` non basta nei test Pest: il warning PHP di openssl_x509_read compare comunque; usare set_error_handler locale. (3) Un provider che riceve un oggetto google/auth lo espone in var_export (la chiave privata del service account): va tenuto in uno SplObjectStorage come TokenSlot. (4) Estensioni Apple 1.2.840.113635.100.6.3.4 (topic) e .6.3.6 (universale): decodificate con un lettore DER proprio, non con openssl_x509_parse (valori grezzi per OID ignoti); la semantica esatta delle etichette (app/voip/...) e il contenuto di .6.3.6 NON sono verificati su certificati Apple reali. Un CN 'Apple Push Services: x' senza .6.3.6 resta Unknown. (5) Validita' di un certificato di test: openssl_csr_sign accetta solo giorni, quindi i test spostano il FakeClock rispetto a notAfter.
 - **Regola:** niente chiavi o credenziali di terzi come proprieta' visibili a var_export; ambiente del certificato mai dedotto oltre CN/estensioni.
+
+## 2026-11-20 — Log sink: trappole Laravel/OTel (W2-P6)
+- **Contesto:** `src/Laravel/Logging`, test con canale monolog e provider OTel in memoria.
+- **Fatto:** (1) il driver `monolog` di Laravel costruisce l'handler con `make($handler, ['level'=>...])`: un'istanza legata con `app()->instance()` viene ignorata (parametri non vuoti); nei test usare un handler che scrive in una proprieta' statica. (2) `open-telemetry/api` non include le semantic conventions (nessun pacchetto `sem-conv` installato): i nomi `messaging.*`, `error.type`, `http.response.status_code` sono scritti a memoria dalla specifica, non verificati sulle sorgenti. (3) Gli strumenti OTel (`CounterInterface`, `HistogramInterface`) richiedono anche `isEnabled()` (da `Instrument`); `Span` e' una classe astratta da estendere, non un'interfaccia da implementare. (4) Una arrow function `fn` cattura per valore al momento della creazione: un `use (&$x)` annidato non vede le modifiche successive. (5) `Illuminate\Database\Query\Builder::newQuery()` non porta la tabella: riaprire `connection->table()` per ogni chunk. (6) PHPStan max vuole attributi OTel come `non-empty-array<non-empty-string,...>`: costruirli esplicitamente, non con `array_filter`.
+- **Regola:** i segreti a runtime (bearer, marcatori di ricevuta) arrivano al `LogRecordFactory` solo nel contesto `secrets`: senza, i marcatori in URL o payload non sono riconosciuti (verificato togliendoli dal test: perdono).
+
+## 2026-11-20 — Sender: avvio del primo blocco dentro send() (W2-A)
+- **Contesto:** `src/Core/Driver/Sender.php`, `SendReport` a cursore.
+- **Fatto:** con un generatore puro, `send()` non fa nulla finché il report non viene letto: un report ignorato non invia niente e un messaggio globalmente invalido esploderebbe dal report, non da `send()`. `send()` chiama `$generator->current()` prima di costruire il `SendReport` (che usa solo valid/current/next, mai rewind), così la prima finestra parte subito e le eccezioni globali escono da `send()`.
+- **Regola:** chi usa il Sender deve consumare il report (`counts()`, `each()`); dopo la prima finestra nessuna eccezione per destinazione può più uscire, tutto diventa `SendResult`.
+
+## 2026-11-20 — Ripresa da ledger: la scadenza relativa non va ricalcolata
+- **Contesto:** W2-A, `SendItem` con `RetryBudget` ripreso.
+- **Fatto:** `PushMessage::resolveExpiry(now)` con `ttl()` ricalcola la scadenza dall'istante della ripresa: un messaggio ripreso dopo 10 minuti avrebbe vissuto 10 minuti in più. Il Sender usa, in ordine: `SendOptions::$expiresAt`, poi `RetryBudget::$expiresAt` del budget ripreso (anche se null), poi la scadenza del messaggio fissata all'inizio dell'invio.
+- **Regola:** il relay passa sempre il budget salvato (o `expiresAt` dell'effetto) e mai si affida al ttl relativo del messaggio.
+
+## 2026-11-20 — PushMessage::ttl(0) non invia mai
+- **Contesto:** W2-A.
+- **Fatto:** `ttl(0)` è documentato come «ora o mai», ma pinna `expiresAt = createdAt` e `RetryBudget::isExpired()` usa `now >= expiresAt`: `beforeAttempt()` restituisce subito `Expired`, zero richieste. Non corretto (file fuori corsia), segnalato.
+- **Regola:** finché non si decide, usare `ttl(1)` o più per «ora o mai».
+
+## 2026-11-20 — @ non basta con failOnWarning
+- **Contesto:** W2-A, `ApnsCredential::certificate()` con `openssl_x509_fingerprint()` su un PEM non valido.
+- **Fatto:** con `@openssl_x509_fingerprint(...)` PHPUnit (failOnWarning=true) segnala comunque il warning «X.509 Certificate cannot be retrieved». `set_error_handler(fn () => true)` attorno alle chiamate OpenSSL, poi `restore_error_handler()` e svuotamento di `openssl_error_string()`, lo elimina.
+- **Regola:** per le funzioni openssl che emettono warning su input invalido usare un error handler temporaneo, non `@`.
+
+## 2026-11-20 — FakeTransport e invii enormi
+- **Contesto:** W2-A, scenario «un milione di destinazioni».
+- **Fatto:** `FakeTransport` registra ogni richiesta (body compreso): 1M richieste non stanno in memoria. Nel test l'handler `respondUsing` conta e chiama `$transport->reset()` ogni 1000 richieste (sicuro dentro `send()`). Con questo la crescita di memoria del Sender misurata è ~2,2 MB sia a 10k sia a 100k destinazioni (i 1000 risultati trattenuti dal report); 100k in ~2 s, 1M in ~20 s.
+- **Regola:** nei test di volume contare nel callback e azzerare il registro; asserire il tetto di memoria campionando durante `each()`.

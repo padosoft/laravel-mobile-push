@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Padosoft\MobilePush\Core\Exceptions\InvalidMessageException;
 use Padosoft\MobilePush\Core\Exceptions\UnsupportedCapabilityException;
+use Padosoft\MobilePush\Core\Identity\Destination\ApnsLiveActivityToken;
 use Padosoft\MobilePush\Core\Identity\Destination\FcmTopic;
 use Padosoft\MobilePush\Core\Message\PushMessage;
 use Padosoft\MobilePush\Core\Outcome\ReasonCode;
@@ -43,7 +44,7 @@ it('throws for a globally invalid message before any request is sent', function 
 it('rejects a destination of the wrong kind without stopping the batch', function () {
     $kit = new SendKit;
     $transport = new FakeTransport;
-    $activity = \Padosoft\MobilePush\Core\Identity\Destination\ApnsLiveActivityToken::of(str_repeat('0e', 32));
+    $activity = ApnsLiveActivityToken::of(str_repeat('0e', 32));
 
     $results = SendKit::all($kit->sender($transport)->send($kit->apnsDriver(), PushMessage::make('A', 'B'), [SendKit::apnsToken(1), $activity, SendKit::apnsToken(2)], SendKit::live()));
 

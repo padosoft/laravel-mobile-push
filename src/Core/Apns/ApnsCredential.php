@@ -62,11 +62,17 @@ final readonly class ApnsCredential
         #[\SensitiveParameter] ?string $passphrase = null,
         ?Environment $environment = null,
     ): self {
-        $fingerprint = @openssl_x509_fingerprint($certificatePem, 'sha256');
-        $key = @openssl_pkey_get_private($privateKeyPem ?? $certificatePem, $passphrase ?? '');
-        $matches = $fingerprint !== false && $key !== false && @openssl_x509_check_private_key($certificatePem, $key);
-        while (is_string(openssl_error_string())) {
-            // drain: never expose OpenSSL's text
+        // OpenSSL reports parse errors as PHP warnings: keep them (and their text) out of the error handler.
+        set_error_handler(static fn (): bool => true);
+        try {
+            $fingerprint = openssl_x509_fingerprint($certificatePem, 'sha256');
+            $key = openssl_pkey_get_private($privateKeyPem ?? $certificatePem, $passphrase ?? '');
+            $matches = $fingerprint !== false && $key !== false && openssl_x509_check_private_key($certificatePem, $key);
+        } finally {
+            restore_error_handler();
+            while (is_string(openssl_error_string())) {
+                // drain: never expose OpenSSL's text
+            }
         }
         if ($fingerprint === false) {
             throw new ConfigurationException('The APNs client certificate is not a valid PEM certificate.');

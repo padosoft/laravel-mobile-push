@@ -13,7 +13,11 @@ use Padosoft\MobilePush\Core\Outcome\Reason;
 use Padosoft\MobilePush\Core\Outcome\ReasonCode;
 use Padosoft\MobilePush\Core\Outcome\SendResult;
 use Padosoft\MobilePush\Core\Outcome\SendStatus;
+use Padosoft\MobilePush\Laravel\Logging\LoggingModule;
+use Padosoft\MobilePush\Laravel\Logging\LogRecord;
+use Padosoft\MobilePush\Laravel\Logging\LogRecordFactory;
 use Padosoft\MobilePush\Laravel\Logging\LogSink;
+use Padosoft\MobilePush\Laravel\Logging\SinkManager;
 
 final class LoggingFixtures
 {
@@ -47,7 +51,7 @@ final class LoggingFixtures
         {
             public function __construct(private int &$calls) {}
 
-            public function write(\Padosoft\MobilePush\Laravel\Logging\LogRecord ...$records): void
+            public function write(LogRecord ...$records): void
             {
                 $this->calls++;
 
@@ -61,7 +65,7 @@ final class LoggingFixtures
     /** Create the log table with the package migration (table and connection from config). */
     public static function migrate(): void
     {
-        $migration = require \Padosoft\MobilePush\Laravel\Logging\LoggingModule::migrationPath();
+        $migration = require LoggingModule::migrationPath();
         $migration->up();
     }
 
@@ -83,12 +87,12 @@ final class LoggingFixtures
         foreach ($config as $key => $value) {
             config(['mobile-push.log.'.$key => $value]);
         }
-        app()->forgetInstance(\Padosoft\MobilePush\Laravel\Logging\SinkManager::class);
-        app()->forgetInstance(\Padosoft\MobilePush\Laravel\Logging\LogRecordFactory::class);
+        app()->forgetInstance(SinkManager::class);
+        app()->forgetInstance(LogRecordFactory::class);
     }
 
-    public static function manager(): \Padosoft\MobilePush\Laravel\Logging\SinkManager
+    public static function manager(): SinkManager
     {
-        return app(\Padosoft\MobilePush\Laravel\Logging\SinkManager::class);
+        return app(SinkManager::class);
     }
 }

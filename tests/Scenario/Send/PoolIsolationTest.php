@@ -6,7 +6,6 @@ use Padosoft\MobilePush\Core\Fcm\FcmConfig;
 use Padosoft\MobilePush\Core\Fcm\FcmDriver;
 use Padosoft\MobilePush\Core\Message\PushMessage;
 use Padosoft\MobilePush\Core\Outcome\ReasonCode;
-use Padosoft\MobilePush\Core\Outcome\SendStatus;
 use Padosoft\MobilePush\Core\Policy\EndpointRole;
 use Padosoft\MobilePush\Core\Transport\FakeTransport;
 use Padosoft\MobilePush\Tests\Scenario\Send\SendKit;

@@ -6,9 +6,12 @@ use Padosoft\MobilePush\Core\Message\PushMessage;
 use Padosoft\MobilePush\Core\Outcome\DestinationAction;
 use Padosoft\MobilePush\Core\Outcome\ReasonCode;
 use Padosoft\MobilePush\Core\Outcome\SendStatus;
+use Padosoft\MobilePush\Core\Transport\ConnectionProfile;
+use Padosoft\MobilePush\Core\Transport\Exchange;
 use Padosoft\MobilePush\Core\Transport\FakeTransport;
 use Padosoft\MobilePush\Core\Transport\Request;
 use Padosoft\MobilePush\Core\Transport\Response;
+use Padosoft\MobilePush\Core\Transport\Transport;
 use Padosoft\MobilePush\Core\Transport\TransportEvidence;
 use Padosoft\MobilePush\Core\Transport\TransportFailure;
 use Padosoft\MobilePush\Tests\Scenario\Send\SendKit;
@@ -81,18 +84,18 @@ it('sends what APNs expects on the wire: official URL, bearer JWT, topic, push t
 
 it('keeps every destination in the report when the transport loses an exchange or throws mid-batch', function () {
     $kit = new SendKit;
-    $transport = new class implements \Padosoft\MobilePush\Core\Transport\Transport
+    $transport = new class implements Transport
     {
         public int $requests = 0;
 
-        public function send(iterable $requests, \Padosoft\MobilePush\Core\Transport\ConnectionProfile $profile): \Generator
+        public function send(iterable $requests, ConnectionProfile $profile): Generator
         {
             foreach ($requests as $request) {
                 $this->requests++;
                 if ($this->requests === 2) {
-                    throw new \RuntimeException('transport bug after writing two requests');
+                    throw new RuntimeException('transport bug after writing two requests');
                 }
-                yield $request->id => \Padosoft\MobilePush\Core\Transport\Exchange::responded($request, new Response(200));
+                yield $request->id => Exchange::responded($request, new Response(200));
             }
         }
 
