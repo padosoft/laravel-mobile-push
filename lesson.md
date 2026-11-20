@@ -72,3 +72,33 @@ Modello di voce:
 - **Contesto:** W1-B.
 - **Fatto:** un `while (openssl_error_string() !== false)` iniziale viene segnalato «always false»; `is_string(...)` nel ciclo dopo la chiamata a openssl funziona.
 - **Regola:** svuotare la coda errori OpenSSL dopo le chiamate, mai esporne il testo nei messaggi.
+
+## 2026-11-20 — FCM: Discovery usa camelCase, il filo accetta snake_case
+- **Contesto:** W1-D, compilatore FCM e test di contratto sullo schema.
+- **Fatto:** il Discovery (rev. 20261112) nomina le proprieta in camelCase (`androidV2`, `validateOnly`, `collapseKey`); il compilatore emette i nomi protobuf snake_case (`android_v2`, `validate_only`), che l'API accetta (JSON proto3). Il test di contratto converte snake→camel prima del confronto. Il Discovery dice che le chiavi `data` riservate sono "from", "message_type", prefissi "google." e "gcm.notification." (non tutto "gcm."): noi rifiutiamo l'intero prefisso "gcm." (insieme piu prudente). `AndroidConfigV2` non ha `priority`; `proxy`/`bypassProxyNotification` esistono solo in `AndroidNotification` (V1), `id` solo in `AndroidNotificationV2`; `AndroidBackgroundSyncMessage` e un oggetto vuoto.
+- **Regola:** per ogni nuovo campo FCM aggiornare prima lo snapshot e far fallire il test di copertura inversa (`DiscoverySchemaContractTest`).
+
+## 2026-11-20 — PHP: lo spread di array rinumera le chiavi intere
+- **Contesto:** `PushMessage::data()` fa `[...$this->data, ...$data]`.
+- **Fatto:** con lo spread, le chiavi intere (anche stringhe numeriche come "7") vengono rinumerate da 0; le chiavi stringa restano. Un dato `['7' => 'x']` diventa `[0 => 'x']`.
+- **Regola:** per unire mappe usare `array_replace()` o `+`. Segnalato all'orchestratore (file congelato `PushMessage.php`); nel codice FCM si usa `array_replace`.
+
+## 2026-11-20 — PCRE2 10.42 `\X` incolla le emoji consecutive
+- **Contesto:** W1-C, `Truncator` percorso di ripiego senza ext-intl.
+- **Fatto:** con PCRE 10.42 `preg_match_all('/\X/u', '👍👍')` restituisce 1 cluster (anche `👍🏽👍🏿`); ICU (`grapheme_extract`) ne dà 2 (UAX #29: nessuna regola unisce due ExtPict senza ZWJ). Il fallback grezzo avrebbe troncato intere sequenze di emoji in un colpo.
+- **Regola:** il ripiego PCRE ri-divide ogni cluster prima di ogni `\p{Extended_Pictographic}` non preceduto da U+200D; test di equivalenza intl/PCRE su famiglie ZWJ, bandiere, tonalità di pelle, combinanti, CJK a ogni limite di byte.
+
+## 2026-11-20 — Broadcast APNs: nome dell'header di identificazione ambiguo
+- **Contesto:** W1-C, JSON Apple `sending-broadcast-push-notification-requests-to-apns` (letto il 2026-11-20).
+- **Fatto:** la tabella degli header della pubblicazione broadcast elenca `apns-request-id` (non `apns-id`) e la risposta restituisce `apns-request-id`; l'esempio con token usa però `apns-id`, quello con certificato `apns-request-id`. Il broadcast non ha `apns-topic` (il bundle id sta nel path `/4/broadcasts/apps/<bundle id>`); `apns-expiration`, `apns-priority`, `apns-push-type` (`liveactivity`) e `apns-channel-id` sono obbligatori; payload max 5120 byte; expiration diversa da 0 su canale senza storage = rifiuto.
+- **Regola:** il compilatore emette `apns-request-id` sul broadcast e `apns-id` sul per-dispositivo; verificare con un'integrazione reale quale dei due l'host broadcast accetta.
+
+## 2026-11-20 — Live Activity: forma dell'alert nei payload Apple
+- **Contesto:** W1-C.
+- **Fatto:** negli esempi Apple di Live Activity `alert.title` e `alert.body` possono essere dizionari `{"loc-key","loc-args"}` (non `title-loc-key`), e `sound` compare dentro `alert`. `start` richiede `alert`, `attributes-type`, `attributes`; `timestamp` = secondi correnti; `dismissal-date` nel passato = rimozione immediata; `input-push-token: 1` / `input-push-channel` solo all'avvio (iOS 18); broadcast non può avviare.
+- **Regola:** `ApnsCompiler` converte i campi di localizzazione di `Alert` in questa forma annidata per le Live Activity e colloca il suono dentro `alert`.
+
+## 2026-11-20 — Lo spread di array rinumera le chiavi numeriche
+- **Contesto:** `PushMessage::data()` (segnalato da W1-D).
+- **Fatto:** `[...$a, ...$b]` rinumera le chiavi intere o "tipo intero": `['7' => 'x']` diventa `[0 => 'x']`, corrompendo le chiavi dei dati FCM/APNs.
+- **Regola:** per unire mappe chiave → valore usare `array_replace($a, $b)`, mai lo spread né `array_merge`.

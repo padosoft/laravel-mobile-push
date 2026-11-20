@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Padosoft\MobilePush\Core\Apns\LiveActivity\LiveActivityMessage;
 use Padosoft\MobilePush\Core\Apns\Message\ApnsMessage;
 use Padosoft\MobilePush\Core\Exceptions\InvalidDestinationException;
 use Padosoft\MobilePush\Core\Identity\Destination\FcmFid;
@@ -9,6 +10,7 @@ use Padosoft\MobilePush\Core\Identity\Destination\FcmToken;
 use Padosoft\MobilePush\Core\Identity\Destination\FcmTopic;
 use Padosoft\MobilePush\Core\Identity\Provider;
 use Padosoft\MobilePush\Core\Message\CompileContext;
+use Padosoft\MobilePush\Core\Message\Message;
 use Padosoft\MobilePush\Core\Message\PushMessage;
 use Padosoft\MobilePush\Tests\Scenario\Apns\Compile\ApnsKit;
 
@@ -50,6 +52,6 @@ it('supports exactly the three APNs message types', function () {
 
     expect($compiler->supports(PushMessage::make('x')))->toBeTrue()
         ->and($compiler->supports(ApnsMessage::alert('x')))->toBeTrue()
-        ->and($compiler->supports(Padosoft\MobilePush\Core\Apns\LiveActivity\LiveActivityMessage::end()))->toBeTrue()
-        ->and($compiler->supports(new class implements Padosoft\MobilePush\Core\Message\Message {}))->toBeFalse();
+        ->and($compiler->supports(LiveActivityMessage::end()))->toBeTrue()
+        ->and($compiler->supports(new class implements Message {}))->toBeFalse();
 });

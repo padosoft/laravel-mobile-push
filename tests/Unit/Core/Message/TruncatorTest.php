@@ -52,11 +52,20 @@ it('never exceeds the byte budget and never splits a grapheme at any limit', fun
     for ($max = 0; $max <= strlen($text) + 2; $max++) {
         $result = Truncator::truncateToBytes($text, $max);
 
-        expect(strlen($result))->toBeLessThanOrEqual(max($max, strlen($text) <= $max ? strlen($text) : 0));
         expect(preg_match('//u', $result))->toBe(1);
-        if ($result !== $text && $result !== '') {
-            expect($result)->toEndWith('…')
-                ->and($boundaries)->toContain(strlen(substr($result, 0, -3)) + (strlen($text) > 0 && str_ends_with(substr($result, 0, -3), ' ') ? 0 : 0));
+        if ($result === $text) {
+            expect(strlen($text))->toBeLessThanOrEqual($max);
+
+            continue;
+        }
+
+        expect(strlen($result))->toBeLessThanOrEqual($max);
+        if ($result !== '') {
+            expect($result)->toEndWith('…');
+            // Trailing whitespace before the ellipsis is trimmed, so compare against the untrimmed prefix.
+            $kept = substr($result, 0, -strlen('…'));
+            expect(str_starts_with($text, $kept))->toBeTrue()
+                ->and(array_filter($boundaries, fn (int $b): bool => $b >= strlen($kept) && trim(substr($text, strlen($kept), $b - strlen($kept))) === ''))->not->toBeEmpty();
         }
     }
 })->with('modes')->with('texts');

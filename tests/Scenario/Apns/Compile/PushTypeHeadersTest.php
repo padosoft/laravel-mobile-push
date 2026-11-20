@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Padosoft\MobilePush\Core\Apns\LiveActivity\LiveActivityMessage;
 use Padosoft\MobilePush\Core\Apns\Message\ApnsMessage;
+use Padosoft\MobilePush\Core\Apns\PushType;
 use Padosoft\MobilePush\Core\Exceptions\InvalidMessageException;
 use Padosoft\MobilePush\Tests\Scenario\Apns\Compile\ApnsKit;
 
@@ -64,7 +65,7 @@ it('sends the live activity header set to a device token and to a channel', func
 });
 
 it('refuses an mdm push without an explicit topic', function () {
-    $message = ApnsMessage::alert()->pushType(Padosoft\MobilePush\Core\Apns\PushType::Mdm);
+    $message = ApnsMessage::alert()->pushType(PushType::Mdm);
 
     ApnsKit::compiler()->compile($message, ApnsKit::device(), ApnsKit::context());
 })->throws(InvalidMessageException::class, 'explicit topic');

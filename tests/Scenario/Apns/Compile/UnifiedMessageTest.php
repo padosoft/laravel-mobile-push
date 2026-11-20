@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Padosoft\MobilePush\Core\Apns\InterruptionLevel;
 use Padosoft\MobilePush\Core\Apns\Message\ApnsMessage;
 use Padosoft\MobilePush\Core\Apns\Priority;
 use Padosoft\MobilePush\Core\Apns\PushType;
@@ -69,7 +70,7 @@ it('lays the APNs overlay on top of the compiled base', function () {
     $message = orderShipped()->apns(fn (ApnsMessage $apns) => $apns
         ->title('Overridden title')
         ->badge(0)
-        ->interruptionLevel(Padosoft\MobilePush\Core\Apns\InterruptionLevel::Passive)
+        ->interruptionLevel(InterruptionLevel::Passive)
         ->targetContentId('window-1')
         ->custom('order_id', 99)
         ->custom('extra', 'x')
