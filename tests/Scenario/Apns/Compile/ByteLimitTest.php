@@ -42,7 +42,7 @@ dataset('tails', [
     'flags' => ['🇮🇹🇯🇵🇧🇷🇨🇭'],
     'accents' => ["caffe\u{0301} è à ö ñ ç ß 日本語の通知 한국어 "],
     'json escapes' => ["say \"hi\" \\ back/slash \t tab \u{2028} \x01 end"],
-    'mixed' => ["é👨‍👩‍👧‍👦🇮🇹\"\\ ok 🏳️‍🌈"],
+    'mixed' => ['é👨‍👩‍👧‍👦🇮🇹"\\ ok 🏳️‍🌈'],
 ]);
 
 /**

@@ -109,7 +109,8 @@ final class PushMessage implements Message
     /** @param array<string, scalar|null> $data */
     public function data(array $data): static
     {
-        $this->data = [...$this->data, ...$data];
+        // array_replace keeps integer-like keys ("7"); the spread operator would renumber them.
+        $this->data = array_replace($this->data, $data);
 
         return $this;
     }
