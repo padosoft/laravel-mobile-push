@@ -6,7 +6,7 @@
 ## Dove siamo
 
 - **Porta corrente:** Contratto → Alpha (invio diretto)
-- **Milestone corrente:** M0 chiuso (commit `2f25206`); ondata 1 in corso su M1–M3
+- **Milestone corrente:** ondata 1 conclusa e verificata; ondata 2 in corso (W2-A Sender/driver, W2-P4 ledger)
 - **Prossimo passo concreto:** vedi "Ondata in corso"
 - **Piano:** `docs/PLAN.md` (v2 approvata il 2026-11-20)
 - **Repository remoto:** `https://github.com/padosoft/laravel-mobile-push` (privato), branch `main`. Push dopo ogni ondata integrata.
@@ -16,11 +16,11 @@
 | Milestone | Stato | Note |
 |---|---|---|
 | M0 Contratto e scheletro | fatto (salvo `docs/contracts`, in W1-H) | Scheletro, dipendenze, contratti `src/Core`, AGENTS.md, CI |
-| M1 Trasporto HTTP/2 + mock | in corso (W1-A) | |
-| M2 APNs | in corso (W1-B auth, W1-C messaggi, W1-E classificatore) | Driver e Sender nell'ondata 2 |
-| M3 FCM | in corso (W1-B auth, W1-D messaggi, W1-E classificatore) | Driver nell'ondata 2 |
+| M1 Trasporto HTTP/2 + mock | fatto | `CurlTransport`, pool per chiave, server mock Node; 89 test. Vedi `docs/transport.md` |
+| M2 APNs | in corso | Fatti auth, messaggi, compiler, classificatore, client canali. Manca il driver (W2-A) |
+| M3 FCM | in corso | Fatti auth, messaggi, compiler, classificatore, client topic. Manca il driver (W2-A) |
 | M4 Strato Laravel (profilo leggero) → 0.1 alpha | da fare | |
-| M5 Invio durevole → 0.5 beta | da fare | |
+| M5 Invio durevole → 0.5 beta | in corso | Fatti: registro dispositivi (W2-P2), adattatori cache (W2-P1). In corso: ledger (W2-P4). Mancano relay, eleggibilità come gate, runtime longevi |
 | M6 Live Activities → RC1 | da fare | |
 | M7 Osservabilità, health, credenziali | da fare | |
 | M8 Campagne, cap, badge, ripiego, ricevute → RC2 | da fare | |
@@ -94,3 +94,5 @@ composer check        # pint --test, phpstan max, pest
 - 2026-11-20 [orchestratore] Lanciato W2-P4 (Opus): registro durevole degli effetti (store, macchina a stati, lease, outbox) in src/Core/Ledger e src/Laravel/Ledger; il relay verso il Sender è un compito successivo. In corso: W1-A, W2-A, W2-P2, W2-P3, W2-P4.
 - 2026-11-20 [orchestratore] W2-P2 (dispositivi) e W2-P3 (client canali/topic) rientrati; blocco devices aggiunto al config. Backlog minore: EndpointCatalog::fcmTopicSubscriptionItemUrl() dedicato; ReasonCode dedicato per il limite canali APNs (oggi QuotaExceeded). In corso: W1-A, W2-A, W2-P4.
 - 2026-11-20 [orchestratore] Verifica d'insieme sulle parti concluse: 781 test verdi, PHPStan max pulito (esclusi i lavori in corso: Transport/Curl, Driver/Sender, Ledger).
+- 2026-11-20 23:16 [W1-A] done: CurlTransport (curl_multi, finestra scorrevole, input pigro, pool persistenti con registro LRU/idle/fork, capacità, classificazione NotSent con prova) + server mock HTTP/2 Node (regole, contatori lato server, mTLS, proxy CONNECT) + 37 scenari e 48 unit in tests/Scenario/Transport e tests/Unit/Core/Transport; indagine REFUSED_STREAM/GOAWAY/MAXAGE/upkeep in docs/transport.md. Resta: escludere il gruppo 'slow' di default in phpunit.xml (orchestratore), benchmark reali in M9.
+- 2026-11-20 [orchestratore] ONDATA 1 CONCLUSA: W1-A rientrato (trasporto). Scoperta chiave: libcurl 8.5 rinvia da solo le richieste con corpo in memoria (duplicato reale misurato); il trasporto ora invia ogni corpo in streaming, così il server riceve la richiesta una sola volta. Gruppo `slow` escluso dalla suite di default (composer test:slow). In corso: W2-A, W2-P4.

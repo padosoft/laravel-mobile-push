@@ -48,10 +48,11 @@ final readonly class CurlCapabilities
         }
 
         $version = curl_version();
-        $features = is_array($version) ? (int) ($version['features'] ?? 0) : 0;
-        $number = is_array($version) ? (int) ($version['version_number'] ?? 0) : 0;
-        $libcurl = is_array($version) ? (string) ($version['version'] ?? '') : '';
-        $ssl = is_array($version) ? (string) ($version['ssl_version'] ?? '') : '';
+        $version = is_array($version) ? $version : [];
+        $features = is_int($version['features'] ?? null) ? $version['features'] : 0;
+        $number = is_int($version['version_number'] ?? null) ? $version['version_number'] : 0;
+        $libcurl = is_string($version['version'] ?? null) ? $version['version'] : '';
+        $ssl = is_string($version['ssl_version'] ?? null) ? $version['ssl_version'] : '';
 
         $required = [
             'CURLMOPT_MAX_HOST_CONNECTIONS', 'CURLMOPT_MAX_CONCURRENT_STREAMS', 'CURLMOPT_PIPELINING', 'CURLPIPE_MULTIPLEX',

@@ -137,3 +137,33 @@ Modello di voce:
 - **Contesto:** `src/Laravel/Devices`, test con SQLite.
 - **Fatto:** (1) il query builder formatta i `DateTimeInterface` legati come `Y-m-d H:i:s` (senza millisecondi) anche se il modello ha `$dateFormat` con `.v`: i confronti `registered_at` vs timestamp APNs in millisecondi vanno fatti in PHP, e gli `update()` di massa vanno passati con `$model->fromDateTime()`. (2) `Migrator::path()` accetta il percorso di un singolo file `.php`: un modulo carica solo la propria migration senza trascinare quelle degli altri moduli nella stessa cartella. (3) Una corsa vera tra due richieste si simula con un file SQLite e due connessioni: la seconda scrive e committa dentro l'evento `creating` della prima (transazione differita, nessun lock ancora); con `:memory:` il rollback della transazione cancellerebbe anche la riga concorrente. (4) `ServiceProvider::publishes()` e' protected: un provider anonimo registra il tag senza toccare quello principale. (5) `Orchestra\Testbench\TestCase::$app` e' protected: negli helper usare `app()`.
 - **Regola:** timestamp ms confrontati in PHP; per registrare un tag di publish da un modulo usare un provider anonimo.
+
+## 2026-11-20 — libcurl 8.5 rimanda da solo le richieste (anche già elaborate) → duplicati
+- **Contesto:** W1-A, `src/Core/Transport/Curl`, server mock `tests/Support/H2Mock`.
+- **Fatto:** `Curl_retry_request()` (lib/transfer.c) ripete in silenzio, su una connessione nuova e fino a 5 volte, un trasferimento senza byte di risposta se lo stream è stato rifiutato (`REFUSED_STREAM`, o id sopra il last-stream-id di `GOAWAY`) **oppure** se la connessione era «riusata» (ogni connessione multiplex) ed è caduta. Misurato con `CURLOPT_POSTFIELDS`: una richiesta elaborata dal server e poi persa con la connessione è stata elaborata **due volte**, e PHP ha visto un 200 normale (`CURLINFO_REQUEST_SIZE` raddoppiato 131→262). Rifiuto permanente → errno 56 «Connection died, tried 5 times», il server l'ha ricevuta 6 volte.
+- **Regola:** inviare sempre il body con `CURLOPT_READFUNCTION` + `CURLOPT_UPLOAD` + `CURLOPT_CUSTOMREQUEST` + `CURLOPT_INFILESIZE`, senza seek callback (PHP 8.3 non lo imposta): il re-invio fallisce con errno 65 «necessary data rewind wasn't possible» e il server riceve la richiesta una volta sola. Le richieste senza body (GET/DELETE) restano ripetibili da libcurl: usarle solo per chiamate idempotenti.
+
+## 2026-11-20 — REFUSED_STREAM e GOAWAY non si possono promuovere a NotSent da PHP
+- **Contesto:** W1-A, indagine richiesta da PLAN §4.1/§13.
+- **Fatto:** il binding PHP 8.3 non espone codici di frame HTTP/2 né last-stream-id; con body in memoria i casi sono invisibili (errno 0) o errno 56; con body in streaming danno errno 65 con lo stesso messaggio di una connessione riusata chiusa pulita dopo aver elaborato la richiesta. Non distinguibili in modo affidabile.
+- **Regola:** restano `Unknown`. Rivalutare solo con PHP ≥ 8.4 (`CURLOPT_DEBUGFUNCTION`) o se libcurl espone lo stato.
+
+## 2026-11-20 — Prova di NotSent: errno da solo non basta
+- **Contesto:** W1-A, `CurlErrorClassifier`.
+- **Fatto:** misurato errno 7 «Couldn't connect» con `CURLINFO_REQUEST_SIZE` 131: era il retry interno di libcurl di una richiesta già scritta. `REQUEST_SIZE` è cumulativo tra i retry interni, `PRETRANSFER_TIME_T` non viene azzerato, `SIZE_UPLOAD_T` invece sì (non usarlo come prova). Con TLS 1.3 un certificato client mancante emerge dopo che la richiesta è stata scritta (errno 56, REQUEST_SIZE 53) → `Unknown`, non NotSent.
+- **Regola:** NotSent solo se errno di fase pre-richiesta **e** REQUEST_SIZE = 0 **e** PRETRANSFER = 0 **e** nessun byte di body letto né di risposta ricevuto.
+
+## 2026-11-20 — Variabili d'ambiente proxy, ALPN, MAXAGE_CONN, curl_upkeep
+- **Contesto:** W1-A, misure nel container.
+- **Fatto:** libcurl usa `HTTPS_PROXY`/`NO_PROXY` dell'ambiente (qui il proxy dell'agente ha intercettato un test DNS e `NO_PROXY=localhost` scavalcava un proxy esplicito). `CURL_HTTP_VERSION_2_PRIOR_KNOWLEDGE` su TLS offre comunque `http/1.1` in ALPN e degrada in silenzio. Default di `CURLOPT_MAXAGE_CONN` = 118 s (url.c; misurato: riuso dopo 110 s, nuova connessione dopo 125 s). `curl_upkeep()` non invia PING HTTP/2: per gli handle in un multi ritorna subito, e in 8.5 i protocolli HTTP(S) non hanno `connection_check` (0 PING contati dal server).
+- **Regola:** impostare sempre `CURLOPT_PROXY` (anche '') e `CURLOPT_NOPROXY=''`; verificare `CURLINFO_HTTP_VERSION` dopo la risposta; impostare `MAXAGE_CONN` esplicitamente; affidare la vitalità a TCP keepalive, non a `curl_upkeep()`.
+
+## 2026-11-20 — fork(): il figlio non deve chiudere i pool ereditati, ma lo shutdown di PHP lo fa comunque
+- **Contesto:** W1-A, `CurlPoolRegistry`, test con `pcntl_fork`.
+- **Fatto:** chiudere un handle ereditato fa `SSL_read` + `SSL_shutdown` sul socket del padre (`ossl_close()` 8.5). Il registro li abbandona al cambio di PID, ma se il figlio termina normalmente lo shutdown di PHP li libera: misurato, la connessione del padre viene chiusa dal server (il padre si riprende al send successivo; gli in-flight di quel momento sarebbero `Unknown`). Anche il `register_shutdown_function` del `MockServer` veniva eseguito dal figlio e fermava il server del padre.
+- **Regola:** non inviare prima di un fork; un figlio che deve uscire senza toccare le connessioni ereditate termina con `posix_kill(getmypid(), SIGKILL)`. Le funzioni di shutdown dei test devono controllare `getmypid()`.
+
+## 2026-11-20 — Server mock Node: trappole
+- **Contesto:** W1-A, `tests/Support/H2Mock/server.mjs`.
+- **Fatto:** `session.socket` HTTP/2 è un proxy: `destroy()` lancia `ERR_HTTP2_NO_SOCKET_MANIPULATION` (serve il TLSSocket reale da `secureConnection`). Nel compat API `res.writableFinished` è true anche per stream resettati: usare `stream.rstCode`. Gli stream aperti dopo un GOAWAY con last-stream-id più basso vengono scartati da nghttp2 e non arrivano all'applicazione (non contabili come ricevuti). libcurl 8.5 accoda il `RST_STREAM` degli handle rimossi e lo spedisce solo alla successiva attività sulla connessione.
+- **Regola:** negli oracoli dei test contare «elaborate» dal server e confrontarle con gli Exchange, non pretendere che il server conti stream mai consegnati all'applicazione.

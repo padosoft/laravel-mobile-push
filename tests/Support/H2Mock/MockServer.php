@@ -282,8 +282,12 @@ final class MockServer
         $this->controlPort = (int) $ready['controlPort'];
         $this->proxyPort = isset($ready['proxyPort']) ? (int) $ready['proxyPort'] : null;
 
-        register_shutdown_function(function (): void {
-            $this->stop();
+        $owner = getmypid();
+        register_shutdown_function(function () use ($owner): void {
+            // A forked child inherits this shutdown function: only the process that started the server stops it.
+            if (getmypid() === $owner) {
+                $this->stop();
+            }
         });
     }
 
