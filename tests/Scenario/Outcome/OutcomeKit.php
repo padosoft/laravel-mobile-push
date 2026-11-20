@@ -15,11 +15,19 @@ use Padosoft\MobilePush\Core\Identity\Destination\FcmTopic;
 use Padosoft\MobilePush\Core\Identity\Environment;
 use Padosoft\MobilePush\Core\Identity\Provider;
 use Padosoft\MobilePush\Core\Outcome\ClassifyContext;
+use Padosoft\MobilePush\Core\Outcome\Decision;
+use Padosoft\MobilePush\Core\Outcome\OutcomeClassifier;
+use Padosoft\MobilePush\Core\Retry\RetryBudget;
+use Padosoft\MobilePush\Core\Retry\RetryPlan;
+use Padosoft\MobilePush\Core\Retry\RetryPlanner;
+use Padosoft\MobilePush\Core\Transport\ConnectionProfile;
 use Padosoft\MobilePush\Core\Transport\Exchange;
+use Padosoft\MobilePush\Core\Transport\FakeTransport;
 use Padosoft\MobilePush\Core\Transport\Request;
 use Padosoft\MobilePush\Core\Transport\Response;
 use Padosoft\MobilePush\Core\Transport\TransportEvidence;
 use Padosoft\MobilePush\Core\Transport\TransportFailure;
+use Padosoft\MobilePush\Tests\Support\FakeClock;
 
 /**
  * Builders shared by the outcome/retry tests (fake values only: no real token anywhere).
@@ -121,5 +129,58 @@ final class OutcomeKit
     public static function unknown(?Request $request = null): Exchange
     {
         return Exchange::failed($request ?? self::apnsRequest(), new TransportFailure(TransportEvidence::Unknown, 92, 'HTTP/2 stream 1 was not closed cleanly: INTERNAL_ERROR'));
+    }
+
+    /**
+     * Drive one destination the way the sender does: expiry check, one attempt on the transport, classification,
+     * planning, wait (by moving the fake clock) until a terminal plan. Returns every plan in order.
+     *
+     * @return list<RetryPlan>
+     */
+    public static function drive(
+        FakeTransport $transport,
+        OutcomeClassifier $classifier,
+        ClassifyContext $context,
+        RetryPlanner $planner,
+        FakeClock $clock,
+        Request $request,
+        bool $replaceable = false,
+        ?\DateTimeImmutable $expiresAt = null,
+    ): array {
+        $budget = RetryBudget::start($planner->policy(), $clock->now(), $expiresAt);
+        $plans = [];
+        $lastCause = null;
+
+        for ($guard = 0; $guard < 100; $guard++) {
+            $stop = $planner->beforeAttempt($budget, $clock->now(), $lastCause);
+            if ($stop !== null) {
+                $plans[] = $stop;
+
+                return $plans;
+            }
+
+            foreach ($transport->send([$request], new ConnectionProfile('test-pool')) as $exchange) {
+                $plan = $planner->plan($classifier->classify($exchange, $context), $budget, $replaceable, $clock->now());
+                $plans[] = $plan;
+                $budget = $plan->budget;
+                $lastCause = $plan->cause();
+
+                if ($plan->isTerminal()) {
+                    return $plans;
+                }
+                $clock->set($plan->nextAttemptAt ?? $clock->now());
+            }
+        }
+
+        throw new \LogicException('The retry loop did not terminate.');
+    }
+
+    /**
+     * @param  list<RetryPlan>  $plans
+     * @return list<Decision>
+     */
+    public static function decisions(array $plans): array
+    {
+        return array_values(array_filter(array_map(static fn (RetryPlan $p): ?Decision => $p->decision, $plans)));
     }
 }

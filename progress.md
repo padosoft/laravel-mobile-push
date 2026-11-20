@@ -41,6 +41,18 @@
 | W1-G | Sonnet | `src/Core/Policy`, `src/Core/Privacy` | Modalità, endpoint ufficiali, matrice di capacità, redazione, indice HMAC, cifratura |
 | W1-H | Haiku | `docs/contracts`, boilerplate repository | Documenti dei contratti |
 
+**Stato ondata 1 (aggiornato):** conclusi W1-B, W1-C, W1-D, W1-F, W1-G, W1-H (483 test verdi insieme, PHPStan max pulito). In corso: W1-A (trasporto) e W1-E (classificatori e retry planner).
+
+**Ondata 2-pre** (lanciata 2026-11-20, compiti che non dipendono da trasporto e classificatori):
+
+| Id | Modello | Cartelle | Contenuto |
+|---|---|---|---|
+| W2-P1 | Sonnet | `src/Laravel/Cache`, `src/Laravel/Privacy` | `CacheTokenStore`, `CacheGuardStore`, chiavi e binding di riservatezza |
+| W2-P2 | Sonnet | `src/Laravel/Devices`, migration dispositivi | Registro dispositivi, generazioni, quarantena/invalidazione, eleggibilità |
+| W2-P3 | Sonnet | `src/Core/Apns/Channels`, `src/Core/Fcm/Topics` | Client gestione canali broadcast APNs, client iscrizioni topic FCM |
+
+**Meccanismo moduli Laravel:** ogni fetta dello strato Laravel è una classe `Module` elencata in `MobilePushServiceProvider::MODULES`; gli agenti non toccano il provider.
+
 **Dopo l'ondata 1 (orchestratore):** integrare, `composer check`, commit locale, aggiornare questa tabella.
 **Ondata 2 prevista:** interfaccia `Driver`, `ApnsDriver`, `FcmDriver`, `Sender` (compila → guardia di modalità → trasporto → classifica → pianifica retry → report), client canali APNs, client iscrizioni topic FCM, scenari end-to-end sul server mock.
 
