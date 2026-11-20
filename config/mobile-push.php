@@ -9,7 +9,7 @@ declare(strict_types=1);
  * never edit that document by hand.
  */
 
-$key = static fn (string $name): array => array_filter([1 => env($name)], static fn ($value): bool => is_string($value) && $value !== '');
+$versionedKey = static fn (string $name): array => array_filter([1 => env($name)], static fn ($value): bool => is_string($value) && $value !== '');
 
 return [
 
@@ -45,9 +45,9 @@ return [
     | and keep the old ones until every row has been re-indexed / re-encrypted.
     */
     'privacy' => [
-        'index_keys' => $key('MOBILE_PUSH_INDEX_KEY'),
+        'index_keys' => $versionedKey('MOBILE_PUSH_INDEX_KEY'),
         'index_key_current' => (int) env('MOBILE_PUSH_INDEX_KEY_VERSION', 0),
-        'encryption_keys' => $key('MOBILE_PUSH_ENCRYPTION_KEY'),
+        'encryption_keys' => $versionedKey('MOBILE_PUSH_ENCRYPTION_KEY'),
         'encryption_key_current' => (int) env('MOBILE_PUSH_ENCRYPTION_KEY_VERSION', 0),
     ],
 

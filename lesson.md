@@ -122,3 +122,8 @@ Modello di voce:
 - **Contesto:** `src/Laravel/Cache`.
 - **Fatto:** `Illuminate\Cache\Repository` non ha `lock()`: si passa da `getStore()` e `instanceof LockProvider` (`NullStore` è LockProvider ma restituisce `NoLock`, che concede sempre). `Lock::block()` dorme a passi di 250 ms: per un'attesa breve limitata si usa `get()` in ciclo con `usleep(5000)`. I messaggi delle eccezioni dei client cache possono contenere URL con password: nei log solo il nome della classe. Il driver redis restituisce le stringhe numeriche come numeri: castare in stringa nella lettura.
 - **Regola:** cifrare il valore con `TokenCipher` usando il nome della chiave come scope (AAD): un valore copiato sotto un'altra chiave non si autentica. Le chiavi di cache sono `prefix:tipo:sha256(nome)`.
+
+## 2026-11-20 — Mai dichiarare variabili "comuni" in un file di config
+- **Contesto:** `config/mobile-push.php`, 22 test Laravel falliti con `array_key_exists(): Argument #1 ($key) must be a valid array offset type`.
+- **Fatto:** `ServiceProvider::mergeConfigFrom($path, $key)` fa `require $path` dentro il metodo: una variabile `$key` (o `$path`) dichiarata nel file di config sovrascrive il parametro del framework.
+- **Regola:** nei file di config usare nomi di variabile specifici (es. `$versionedKey`) o nessuna variabile locale.
