@@ -20,9 +20,28 @@ final class FakeTransport implements Transport
 
     private Response|TransportFailure $default;
 
+    /** Keep at most this many recorded requests (null = unbounded). Counters are never capped. */
+    private ?int $recordLimit = null;
+
+    private int $sent = 0;
+
     public function __construct()
     {
         $this->default = new Response(200);
+    }
+
+    /** Cap the recorded requests so very large batches do not accumulate in memory. */
+    public function keepLast(?int $limit): self
+    {
+        $this->recordLimit = $limit;
+
+        return $this;
+    }
+
+    /** Number of requests handed to this transport, including those no longer recorded. */
+    public function sentCount(): int
+    {
+        return $this->sent;
     }
 
     /** Queue answers consumed in order, one per request. */
@@ -55,7 +74,11 @@ final class FakeTransport implements Transport
     public function send(iterable $requests, ConnectionProfile $profile): \Generator
     {
         foreach ($requests as $request) {
+            $this->sent++;
             $this->recorded[] = ['request' => $request, 'profile' => $profile];
+            if ($this->recordLimit !== null && count($this->recorded) > $this->recordLimit) {
+                array_shift($this->recorded);
+            }
 
             $answer = $this->handler !== null ? ($this->handler)($request, $profile) : null;
             $answer ??= array_shift($this->queue) ?? $this->default;
@@ -84,5 +107,6 @@ final class FakeTransport implements Transport
     {
         $this->recorded = [];
         $this->queue = [];
+        $this->sent = 0;
     }
 }

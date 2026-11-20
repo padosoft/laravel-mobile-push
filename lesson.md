@@ -202,3 +202,13 @@ Modello di voce:
 - **Contesto:** W2-A, scenario «un milione di destinazioni».
 - **Fatto:** `FakeTransport` registra ogni richiesta (body compreso): 1M richieste non stanno in memoria. Nel test l'handler `respondUsing` conta e chiama `$transport->reset()` ogni 1000 richieste (sicuro dentro `send()`). Con questo la crescita di memoria del Sender misurata è ~2,2 MB sia a 10k sia a 100k destinazioni (i 1000 risultati trattenuti dal report); 100k in ~2 s, 1M in ~20 s.
 - **Regola:** nei test di volume contare nel callback e azzerare il registro; asserire il tetto di memoria campionando durante `each()`.
+
+## 2026-11-20 — Ledger: concorrenza simulata su SQLite e limiti (W2-P4)
+- **Contesto:** `src/Laravel/Ledger/DatabaseLedger`, test `tests/Scenario/Laravel/Ledger/ConcurrentClaimTest.php`.
+- **Fatto:** (1) `SQLiteGrammar::compileLock()` restituisce `''`: `->lock('for update skip locked')` su SQLite viene ignorato, quindi il percorso SKIP LOCKED si può eseguire ma non dimostrare. (2) Una gara vera tra SELECT e UPDATE si inietta con `DB::connection('a')->beforeExecuting(fn (string $sql) => ...)` e una seconda connessione allo stesso file SQLite: funziona solo se la prima connessione NON è in transazione; dentro la transazione del percorso SKIP LOCKED la seconda connessione resta bloccata fino al busy timeout (60 s) e fallisce con «database is locked». (3) `memory_get_peak_usage()` non conta la memoria di SQLite (malloc di libsqlite): con `memory_reset_peak_usage()` (PHP 8.2+) si misura solo la crescita PHP; 1.000.000 di righe da un generatore in chunk da 1000 restano sotto 24 MB e richiedono ~51 s su SQLite in memoria. (4) Un cancel su una riga in volo che incrementa `version` rende stantia la lease del worker e fa perdere l'esito reale della richiesta: il flag `cancel_requested` si scrive SENZA cambiare versione, e chi scrive dopo (record, reclaim) fa guardia anche su quel flag.
+- **Regola:** nel ledger ogni scrittura è un UPDATE con guardia su `version` (+ lease owner, + `cancel_requested` dove serve), calcolato da `LedgerRules`; le prove di concorrenza «vere» su MySQL/PostgreSQL vanno fatte in CI con quei database.
+
+## 2026-11-20 — Il budget «contaminato» vale anche per scadenza e cancel nel ledger
+- **Contesto:** W2-P4, `DeliveryStateMachine`.
+- **Fatto:** una riga rimessa in coda dopo un esito ignoto (lease persa dopo l'inizio dell'invio, messaggio sostituibile) che poi scade o viene annullata non può diventare `Expired`/`Cancelled`: il primo tentativo potrebbe essere stato accettato. Il ledger tiene la colonna `unknown_seen` (copia di `RetryBudget::$unknownOutcomeSeen`) e in quei casi termina con `OutcomeUnknown`.
+- **Regola:** ogni transizione «di stop» del ledger consulta `unknown_seen`.
