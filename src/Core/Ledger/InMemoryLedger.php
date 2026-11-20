@@ -17,7 +17,7 @@ use Psr\Clock\ClockInterface;
  * In-process ledger with the same rules as the database one (tests, single-process tools). Not durable: it is the
  * reference implementation of the contract, not a production store. Rows are kept in the database column layout.
  */
-final class InMemoryLedger implements Ledger
+final class InMemoryLedger implements ClientReceiptStore, Ledger
 {
     /** @var array<string, array<string, mixed>> */
     private array $effects = [];
@@ -242,7 +242,7 @@ final class InMemoryLedger implements Ledger
             return Recording::IgnoredStaleLease;
         }
 
-        $changes = LedgerRules::recordChanges($row, $result, $budget, $this->nowMs());
+        $changes = LedgerRules::recordChanges($row, $result, $budget, $this->nowMs(), $this->rules->settings->markerIssued);
         if ($changes === null) {
             return Recording::IgnoredStaleLease;
         }
@@ -374,6 +374,54 @@ final class InMemoryLedger implements Ledger
         sort($scopes);
 
         return array_slice(array_map('strval', $scopes), 0, $limit);
+    }
+
+    public function deliveryByMessageId(string $scope, string $messageId): ?Delivery
+    {
+        $scope = LedgerRules::scope($scope);
+        $best = null;
+        foreach ($this->deliveries as $row) {
+            if ($row['scope'] === $scope && ($row['message_id'] ?? null) === $messageId
+                && ($best === null || [Row::int($row, 'created_at'), Row::str($row, 'id')] > [Row::int($best, 'created_at'), Row::str($best, 'id')])) {
+                $best = $row;
+            }
+        }
+
+        return $best === null ? null : Delivery::fromRow($best);
+    }
+
+    public function recordClientEvent(string $scope, string $deliveryId, ClientEvent $event, \DateTimeImmutable $at): ClientEventRecording
+    {
+        $row = $this->deliveryRow($scope, $deliveryId);
+        if ($row === null) {
+            return ClientEventRecording::NotFound;
+        }
+        $state = DeliveryState::from(Row::str($row, 'state'));
+        if ($state !== DeliveryState::Accepted && $state !== DeliveryState::OutcomeUnknown) {
+            return ClientEventRecording::NotEligible;
+        }
+        if (Row::intOrNull($row, $event->column()) !== null) {
+            return ClientEventRecording::Duplicate;
+        }
+        // Neither the state, the version nor updated_at change: a report never moves the delivery's own timeline.
+        $this->deliveries[$deliveryId][$event->column()] = LedgerTime::ms($at);
+        $this->deliveries[$deliveryId]['receipt_marker'] = true;
+
+        return ClientEventRecording::Recorded;
+    }
+
+    public function effectFunnel(string $scope, string $effectId): ReceiptFunnel
+    {
+        $scope = LedgerRules::scope($scope);
+
+        return ReceiptFunnel::fromRows(array_filter($this->deliveries, static fn (array $row): bool => $row['scope'] === $scope && $row['effect_id'] === $effectId));
+    }
+
+    public function campaignFunnel(string $scope, string $campaignId): ReceiptFunnel
+    {
+        $scope = LedgerRules::scope($scope);
+
+        return ReceiptFunnel::fromRows(array_filter($this->deliveries, static fn (array $row): bool => $row['scope'] === $scope && $row['campaign_id'] === $campaignId));
     }
 
     /**

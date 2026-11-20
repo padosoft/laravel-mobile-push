@@ -3,14 +3,20 @@
 declare(strict_types=1);
 
 use Padosoft\MobilePush\Core\Exceptions\IdempotencyConflictException;
+use Padosoft\MobilePush\Core\Ledger\ClientEvent;
+use Padosoft\MobilePush\Core\Ledger\ClientEventRecording;
+use Padosoft\MobilePush\Core\Ledger\ClientReceiptStore;
 use Padosoft\MobilePush\Core\Ledger\DeliveryState;
 use Padosoft\MobilePush\Core\Ledger\EffectIntent;
 use Padosoft\MobilePush\Core\Ledger\EffectOrigin;
 use Padosoft\MobilePush\Core\Ledger\RecordedDestination;
 use Padosoft\MobilePush\Core\Ledger\Recording;
+use Padosoft\MobilePush\Core\Outcome\Reason;
 use Padosoft\MobilePush\Core\Outcome\ReasonCode;
 use Padosoft\MobilePush\Core\Outcome\SendReport;
+use Padosoft\MobilePush\Core\Outcome\SendResult;
 use Padosoft\MobilePush\Core\Outcome\SendStatus;
+use Padosoft\MobilePush\Core\Receipts\ClientEvidence;
 use Padosoft\MobilePush\Tests\Scenario\Ledger\LedgerHarness as H;
 
 /*
@@ -388,5 +394,153 @@ function ledgerContract(Closure $make): void
         }
         // ... and yet the relay can read the message back.
         expect($h->ledger->message('default', $effect->id)?->body)->toBe('SECRET-MARKER-BODY');
+    });
+
+    clientReceiptLedgerContract($make);
+}
+
+/*
+ * Client-reported events (receipts module): first write wins per (delivery, event), scoped, eligible states only,
+ * the provider outcome is never rewritten, and the funnel keeps accepted / reported / unknown apart.
+ */
+function clientReceiptLedgerContract(Closure $make): void
+{
+    $store = static fn (H $h): ClientReceiptStore => $h->ledger instanceof ClientReceiptStore ? $h->ledger : throw new LogicException('not a ClientReceiptStore');
+    $messageId = static fn (int $n): string => sprintf('00000000-0000-4000-8000-%012d', $n);
+    // Accept every pending delivery of the scope, tagging each with a sender message id (and the marker flag).
+    $acceptWithIds = static function (H $h, string $scope, bool $marker = true) use ($messageId): array {
+        $ids = [];
+        foreach ($h->ledger->claimDue($scope, 'w', 100) as $i => $claimed) {
+            $h->ledger->markAttemptStarted($claimed->lease);
+            $accepted = $h->accepted($claimed);
+            $id = $messageId($i + 1);
+            $result = new SendResult($accepted->destination, SendStatus::Accepted, $accepted->reason, 1, 'prov-'.$i, 200, deliveryId: $claimed->id(),
+                meta: ['message_id' => $id] + ($marker ? ['receipt_marker' => '1'] : []));
+            $h->ledger->record($claimed->lease, $result, $h->budgetAfterOneAttempt());
+            $ids[$claimed->id()] = $id;
+        }
+
+        return $ids;
+    };
+
+    it('receipts: a delivery is found by the sender message id, in its own scope only', function () use ($make, $store, $acceptWithIds): void {
+        /** @var H $h */
+        $h = $make();
+        $h->ledger->recordIntent(H::intent(H::alert(), 'k', 'tenant-a'), [H::token(1)]);
+        $ids = $acceptWithIds($h, 'tenant-a');
+        [$deliveryId, $messageId] = [array_key_first($ids), reset($ids)];
+
+        expect($store($h)->deliveryByMessageId('tenant-a', $messageId)?->id)->toBe($deliveryId)
+            ->and($store($h)->deliveryByMessageId('tenant-b', $messageId))->toBeNull()
+            ->and($store($h)->deliveryByMessageId('tenant-a', '99999999-9999-4999-8999-999999999999'))->toBeNull();
+    });
+
+    it('receipts: first write wins per event, out of order is fine, the timeline of the row is untouched', function () use ($make, $store, $acceptWithIds): void {
+        /** @var H $h */
+        $h = $make();
+        $h->ledger->recordIntent(H::intent(H::alert()), [H::token(1)]);
+        $deliveryId = array_key_first($acceptWithIds($h, 'default', false));
+        $before = $h->ledger->delivery('default', $deliveryId);
+        $t1 = $h->clock->now()->modify('+5 seconds');
+        $t2 = $h->clock->now()->modify('+9 seconds');
+
+        expect($store($h)->recordClientEvent('default', $deliveryId, ClientEvent::Opened, $t1))->toBe(ClientEventRecording::Recorded)
+            ->and($store($h)->recordClientEvent('default', $deliveryId, ClientEvent::Received, $t2))->toBe(ClientEventRecording::Recorded)
+            ->and($store($h)->recordClientEvent('default', $deliveryId, ClientEvent::Opened, $t2))->toBe(ClientEventRecording::Duplicate)
+            ->and($store($h)->recordClientEvent('default', $deliveryId, ClientEvent::Received, $t1))->toBe(ClientEventRecording::Duplicate);
+
+        $after = $h->ledger->delivery('default', $deliveryId);
+        expect($after->clientOpenedAt?->getTimestamp())->toBe($t1->getTimestamp())
+            ->and($after->clientReceivedAt?->getTimestamp())->toBe($t2->getTimestamp())
+            ->and($after->state)->toBe(DeliveryState::Accepted)
+            ->and($after->version)->toBe($before->version)
+            ->and($after->updatedAt)->toEqual($before->updatedAt);
+    });
+
+    it('receipts: another scope, an unknown id and a delivery that was never accepted take nothing', function () use ($make, $store): void {
+        /** @var H $h */
+        $h = $make();
+        $h->ledger->recordIntent(H::intent(H::alert(), 'k', 'tenant-a'), [H::token(1), H::token(2)]);
+        $pending = $h->ledger->recordIntent(H::intent(H::alert('other'), 'k2', 'tenant-a'), [H::token(3)]);
+        $claimed = $h->ledger->claimDue('tenant-a', 'w', 1, $pending->effect->id)[0];
+        $h->ledger->markAttemptStarted($claimed->lease);
+        $h->ledger->record($claimed->lease, new SendResult($h->accepted($claimed)->destination, SendStatus::Rejected, Reason::of(ReasonCode::DestinationRejected), 1, httpStatus: 400, deliveryId: $claimed->id()));
+        $still = $h->ledger->claimDue('tenant-a', 'w2', 10);
+        $waiting = $still[0]->id();
+        $now = $h->clock->now();
+
+        expect($store($h)->recordClientEvent('tenant-b', $waiting, ClientEvent::Received, $now))->toBe(ClientEventRecording::NotFound)
+            ->and($store($h)->recordClientEvent('tenant-a', 'nope', ClientEvent::Received, $now))->toBe(ClientEventRecording::NotFound)
+            ->and($store($h)->recordClientEvent('tenant-a', $waiting, ClientEvent::Received, $now))->toBe(ClientEventRecording::NotEligible)
+            ->and($store($h)->recordClientEvent('tenant-a', $claimed->id(), ClientEvent::Received, $now))->toBe(ClientEventRecording::NotEligible)
+            ->and($h->ledger->delivery('tenant-a', $waiting)?->clientReceivedAt)->toBeNull();
+    });
+
+    it('receipts: an unknown outcome keeps its provider outcome, gains the client event and lands in its own funnel bucket', function () use ($make, $store): void {
+        /** @var H $h */
+        $h = $make();
+        $effect = $h->ledger->recordIntent(H::intent(H::alert()), [H::token(1), H::token(2)])->effect;
+        $claimed = $h->ledger->claimDue('default', 'a', 10);
+        $h->ledger->markAttemptStarted($claimed[0]->lease);
+        $h->ledger->markAttemptStarted($claimed[1]->lease);
+        $h->expireLeases();
+        $h->ledger->reclaimExpiredLeases('default');   // both end as OutcomeUnknown (alert: no automatic retry)
+
+        $unknown = $claimed[0]->id();
+        expect($h->ledger->delivery('default', $unknown)?->state)->toBe(DeliveryState::OutcomeUnknown)
+            ->and($store($h)->recordClientEvent('default', $unknown, ClientEvent::Received, $h->clock->now()))->toBe(ClientEventRecording::Recorded);
+
+        $row = $h->ledger->delivery('default', $unknown);
+        $funnel = $store($h)->effectFunnel('default', $effect->id);
+        expect($row->state)->toBe(DeliveryState::OutcomeUnknown)
+            ->and($row->reason->code)->toBe(ReasonCode::TransportUnknown)
+            ->and(ClientEvidence::acceptedOrClientConfirmed($row))->toBeTrue()
+            ->and(ClientEvidence::acceptedOrClientConfirmed($h->ledger->delivery('default', $claimed[1]->id())))->toBeFalse()
+            ->and($funnel->accepted)->toBe(0)
+            ->and($funnel->unknownOutcome)->toBe(2)
+            ->and($funnel->unknownClientConfirmed)->toBe(1)
+            ->and($funnel->unknownReportedReceived)->toBe(1)
+            ->and($funnel->acceptedOrClientConfirmed())->toBe(1);
+    });
+
+    it('receipts: the funnel shows denominator and coverage per effect and per campaign, scoped', function () use ($make, $store, $acceptWithIds): void {
+        /** @var H $h */
+        $h = $make();
+        $effect = $h->ledger->recordIntent(H::intent(H::alert(), 'k', 'default', 'camp-1'), [H::token(1), H::token(2), H::token(3), H::token(4)])->effect;
+        $h->ledger->recordIntent(H::intent(H::alert('other'), 'k', 'tenant-b', 'camp-1'), [H::token(1)]);
+        $ids = $acceptWithIds($h, 'default');
+        $order = array_keys($ids);
+        $h->ledger->claimDue('tenant-b', 'w', 5);
+
+        $store($h)->recordClientEvent('default', $order[0], ClientEvent::Received, $h->clock->now());
+        $store($h)->recordClientEvent('default', $order[0], ClientEvent::Opened, $h->clock->now());
+        $store($h)->recordClientEvent('default', $order[1], ClientEvent::Opened, $h->clock->now());   // opened without received
+        $store($h)->recordClientEvent('default', $order[0], ClientEvent::Received, $h->clock->now()); // duplicate
+
+        foreach ([$store($h)->effectFunnel('default', $effect->id), $store($h)->campaignFunnel('default', 'camp-1')] as $funnel) {
+            expect($funnel->accepted)->toBe(4)
+                ->and($funnel->acceptedWithMarker)->toBe(4)
+                ->and($funnel->reportedReceived)->toBe(1)
+                ->and($funnel->reportedOpened)->toBe(2)
+                ->and($funnel->receivedNotObserved())->toBe(3)
+                ->and($funnel->markerCoverage())->toBe(1.0)
+                ->and($funnel->receivedRate())->toBe(0.25)
+                ->and($funnel->unknownOutcome)->toBe(0);
+        }
+        expect($store($h)->effectFunnel('tenant-b', $effect->id)->accepted)->toBe(0)
+            ->and($store($h)->effectFunnel('default', 'missing')->markerCoverage())->toBeNull();
+    });
+
+    it('receipts: deliveries sent without a marker are counted as unable to report', function () use ($make, $store, $acceptWithIds): void {
+        /** @var H $h */
+        $h = $make();
+        $effect = $h->ledger->recordIntent(H::intent(H::alert()), [H::token(1), H::topic('news')])->effect;
+        $acceptWithIds($h, 'default', false);
+        $funnel = $store($h)->effectFunnel('default', $effect->id);
+
+        expect($funnel->accepted)->toBe(2)
+            ->and($funnel->acceptedWithMarker)->toBe(0)
+            ->and($funnel->acceptedWithoutMarker())->toBe(2)
+            ->and($funnel->markerCoverage())->toBe(0.0);
     });
 }

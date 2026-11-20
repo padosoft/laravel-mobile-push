@@ -7,6 +7,7 @@ namespace Padosoft\MobilePush\Laravel\Ledger;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\ServiceProvider;
 use Padosoft\MobilePush\Core\Exceptions\ConfigurationException;
+use Padosoft\MobilePush\Core\Ledger\ClientReceiptStore;
 use Padosoft\MobilePush\Core\Ledger\DeliveryStore;
 use Padosoft\MobilePush\Core\Ledger\EffectStore;
 use Padosoft\MobilePush\Core\Ledger\Ledger;
@@ -17,6 +18,7 @@ use Padosoft\MobilePush\Core\Privacy\TokenIndex;
 use Padosoft\MobilePush\Core\Retry\RetryPolicy;
 use Padosoft\MobilePush\Core\Retry\UnknownOutcomeRetry;
 use Padosoft\MobilePush\Laravel\Module;
+use Padosoft\MobilePush\Laravel\Receipts\ReceiptMarkerIssuer;
 use Psr\Clock\ClockInterface;
 
 /**
@@ -34,6 +36,7 @@ final class LedgerModule implements Module
     public const MIGRATIONS = [
         '2026_11_20_000010_create_mobile_push_ledger_effects_table.php',
         '2026_11_20_000011_create_mobile_push_ledger_deliveries_table.php',
+        '2026_11_20_000012_create_mobile_push_ledger_receipt_columns.php',
     ];
 
     public static function register(Application $app): void
@@ -52,6 +55,7 @@ final class LedgerModule implements Module
         $app->alias(DatabaseLedger::class, Ledger::class);
         $app->alias(DatabaseLedger::class, EffectStore::class);
         $app->alias(DatabaseLedger::class, DeliveryStore::class);
+        $app->alias(DatabaseLedger::class, ClientReceiptStore::class);
         $app->singleton(MessageVault::class, static fn (Application $app): MessageVault => new MessageVault($app->make(TokenCipher::class)));
     }
 
@@ -101,6 +105,9 @@ final class LedgerModule implements Module
             self::intConfig('mobile-push.ledger.dedupe_seconds', 86_400),
             self::intConfig('mobile-push.ledger.chunk_size', 500),
             self::retryPolicy($app),
+            $app->bound(ReceiptMarkerIssuer::class)
+                ? static fn (string $messageId): bool => $app->make(ReceiptMarkerIssuer::class)->wasIssued($messageId)
+                : null,
         );
     }
 

@@ -176,9 +176,10 @@ final readonly class LedgerRules
      * Changes for recording `$result` on `$row`, or null when the state machine ignores it.
      *
      * @param  array<string, mixed>  $row
+     * @param  (\Closure(string): bool)|null  $markerIssued  receipts: was a marker issued for this sender message id
      * @return array<string, mixed>|null
      */
-    public static function recordChanges(array $row, SendResult $result, ?RetryBudget $budget, int $nowMs): ?array
+    public static function recordChanges(array $row, SendResult $result, ?RetryBudget $budget, int $nowMs, ?\Closure $markerIssued = null): ?array
     {
         $unknownSeen = $budget !== null ? $budget->unknownOutcomeSeen : Row::bool($row, 'unknown_seen');
         $transition = DeliveryStateMachine::apply(
@@ -194,6 +195,8 @@ final readonly class LedgerRules
 
         $to = $transition->to;
         $reason = $result->reason;
+        $candidate = $result->meta['message_id'] ?? null;
+        $senderId = is_string($candidate) && preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/', $candidate) === 1 ? $candidate : null;
         if ($to === DeliveryState::Cancelled) {
             $reason = Reason::of(ReasonCode::Cancelled, null, 'Cancelled while an attempt was planned.');
         }
@@ -209,6 +212,11 @@ final readonly class LedgerRules
             'attempt_started_at' => null,
             'version' => Row::int($row, 'version') + 1,
             'provider_message_id' => $result->providerMessageId ?? ($row['provider_message_id'] ?? null),
+            // Receipts: the sender's own message id (what a marker carries) and whether a marker was embedded.
+            'message_id' => $senderId ?? ($row['message_id'] ?? null),
+            'receipt_marker' => Row::bool($row, 'receipt_marker')
+                || ($result->meta['receipt_marker'] ?? null) === '1'
+                || ($senderId !== null && $markerIssued !== null && $markerIssued($senderId)),
             'reason_code' => $reason->code === ReasonCode::None ? null : $reason->code->value,
             'raw_reason' => $reason->rawReason,
             'hint' => $reason->hint,
