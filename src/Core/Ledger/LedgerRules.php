@@ -328,6 +328,28 @@ final readonly class LedgerRules
         ];
     }
 
+    /**
+     * A claimed raw destination that no longer decrypts (key removed, row tampered with): it cannot be sent, so it
+     * ends as Skipped before any request instead of being handed to a worker.
+     *
+     * @param  array<string, mixed>  $row
+     * @return array<string, mixed>
+     */
+    public static function unreadableChanges(array $row, int $nowMs): array
+    {
+        return [
+            'state' => DeliveryState::Skipped->value,
+            'next_attempt_at' => null,
+            'lease_owner' => null,
+            'lease_expires_at' => null,
+            'version' => Row::int($row, 'version') + 1,
+            'reason_code' => ReasonCode::Unknown->value,
+            'raw_reason' => 'destination_unreadable',
+            'hint' => 'The stored destination could not be decrypted (encryption key removed or value altered).',
+            'updated_at' => $nowMs,
+        ];
+    }
+
     /** @return array<string, mixed> personal data of a delivery row, erased */
     public static function forgetDeliveryChanges(int $nowMs): array
     {

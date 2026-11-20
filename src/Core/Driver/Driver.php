@@ -55,6 +55,9 @@ interface Driver
     /** AccountKey::of(provider, team id | project id): shared by every alias of the same provider account. */
     public function accountKey(): string;
 
+    /** Whether the provider can validate a request without sending it (FCM validate_only; APNs has no dry run). */
+    public function supportsValidateOnly(): bool;
+
     public function operationKind(Message $message, Destination $destination, bool $validateOnly): OperationKind;
 
     /**

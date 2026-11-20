@@ -57,12 +57,6 @@ final readonly class SendOptions
         if ($window !== null && ($window < 1 || $window > self::MAX_WINDOW)) {
             throw new ConfigurationException('The send window must be between 1 and '.self::MAX_WINDOW.'.');
         }
-        foreach ($gates as $i => $gate) {
-            if (! $gate instanceof DestinationGate) {   // @phpstan-ignore instanceof.alwaysTrue (runtime guard for untyped callers)
-                throw new ConfigurationException("Gate #{$i} does not implement DestinationGate.");
-            }
-        }
-
         $this->effectiveMode = $mode ?? (new ModeResolver)->resolve($configuredMode, $applicationEnvironment ?? '');
         $this->receiptMarker = $receiptMarker === null ? null : \Closure::fromCallable($receiptMarker);
     }

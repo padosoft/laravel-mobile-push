@@ -12,7 +12,10 @@ namespace Padosoft\MobilePush\Core\Ledger;
  */
 final class Row
 {
-    /** @return array<string, mixed> */
+    /**
+     * @param  object|array<mixed>  $row
+     * @return array<string, mixed>
+     */
     public static function of(object|array $row): array
     {
         $data = [];
