@@ -84,6 +84,6 @@ enum DeliveryState: string
     /** @return list<string> */
     public static function values(self ...$states): array
     {
-        return array_map(static fn (self $state): string => $state->value, $states);
+        return array_values(array_map(static fn (self $state): string => $state->value, $states));
     }
 }

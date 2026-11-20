@@ -693,7 +693,7 @@ final class SendRun
             $status,
             $reason,
             $work->budget->attempts,
-            $decision?->providerMessageId ?? ($work->sent && $work->messageIdOnWire ? $work->messageId : null),
+            $decision->providerMessageId ?? ($work->sent && $work->messageIdOnWire ? $work->messageId : null),
             $decision?->httpStatus,
             $status === SendStatus::Deferred ? $nextAttemptAt : null,
             $decision === null ? DestinationAction::None : $decision->destinationAction,

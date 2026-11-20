@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Padosoft\MobilePush\Core\Driver;
 
+use Padosoft\MobilePush\Core\Exceptions\UnsupportedCapabilityException;
 use Padosoft\MobilePush\Core\Exceptions\ValidationException;
 use Padosoft\MobilePush\Core\Guard\Guards;
 use Padosoft\MobilePush\Core\Identity\Destination;
@@ -90,6 +91,10 @@ final class Sender
     {
         if (! $driver->compiler()->supports($message)) {
             throw new ValidationException(sprintf('The %s driver cannot send a message of type %s.', $driver->binding()->provider->value, $message::class));
+        }
+
+        if ($options->validateOnly && ! $driver->supportsValidateOnly()) {
+            throw new UnsupportedCapabilityException(sprintf('The %s provider has no validate-only (dry run) mode.', $driver->binding()->provider->value));
         }
 
         $run = new SendRun(
