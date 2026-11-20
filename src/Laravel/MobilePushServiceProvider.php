@@ -60,12 +60,20 @@ final class MobilePushServiceProvider extends ServiceProvider
     private function modules(): array
     {
         $modules = [];
-        foreach (self::MODULES as $module) {
+        foreach (self::candidates() as $module) {
             if (class_exists($module) && is_subclass_of($module, Module::class)) {
                 $modules[] = $module;
             }
         }
 
         return $modules;
+    }
+
+    /**
+     * @return list<string> class names that may or may not exist yet
+     */
+    private static function candidates(): array
+    {
+        return self::MODULES;
     }
 }
