@@ -240,6 +240,8 @@ final class CurlTransport implements Transport
             CURLOPT_FOLLOWLOCATION => false,
             // An empty string disables the http(s)_proxy environment variables: the proxy is explicit or none.
             CURLOPT_PROXY => $profile->proxy ?? '',
+            // ... and the no_proxy environment variable must not bypass an explicitly configured proxy.
+            CURLOPT_NOPROXY => '',
             CURLOPT_SUPPRESS_CONNECT_HEADERS => true,
             CURLOPT_HEADERFUNCTION => static function (\CurlHandle $ch, string $line) use ($transfer): int {
                 $transfer->responseBytes += strlen($line);

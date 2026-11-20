@@ -23,11 +23,11 @@
 //   POST /close-sessions         -> destroy every open connection, keep counters
 //
 // A rule: {
-//   "method": "POST", "path": "^/3/device/", "headers": {"apns-topic": "^com\\."},  (regexes; all optional)
+//   "method": "POST", "path": "^/3/device/", "matchHeaders": {"apns-topic": "^com\\."},  (regexes; all optional)
 //   "afterRequests": n,          only match once the server has already received n requests (since reset)
 //   "times": n,                  only the first n matches use this rule
 //   "action": "respond" | "drop" | "refuse" | "goaway" | "hang" | "close-mid-body",
-//   "status": 200, "headers": {..}, "body": "..", "delayMs": 0,
+//   "status": 200, "headers": {..response headers..}, "body": "..", "delayMs": 0,
 //   "lastStreamId": "previous" | "current" | <int>,   (goaway only, default "previous")
 //   "goawayCode": 0                                    (goaway only, HTTP/2 error code)
 // }
@@ -93,9 +93,9 @@ function matchRule(method, path, headers) {
         if (rule.method && rule.method.toUpperCase() !== method) continue;
         if (rule.path && !new RegExp(rule.path).test(path)) continue;
         if (rule.afterRequests !== undefined && stats.received <= rule.afterRequests) continue;
-        if (rule.headers) {
+        if (rule.matchHeaders) {
             let ok = true;
-            for (const [name, re] of Object.entries(rule.headers)) {
+            for (const [name, re] of Object.entries(rule.matchHeaders)) {
                 const value = headers[name.toLowerCase()];
                 if (value === undefined || !new RegExp(re).test(String(value))) { ok = false; break; }
             }
