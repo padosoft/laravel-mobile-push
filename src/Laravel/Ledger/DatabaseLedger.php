@@ -471,7 +471,8 @@ final class DatabaseLedger implements Ledger
             if ($lost === null) {
                 continue;
             }
-            $updated = $this->deliveries()->where('id', Row::str($row, 'id'))->where('version', Row::int($row, 'version'))->update($lost[1]);
+            $updated = $this->deliveries()->where('id', Row::str($row, 'id'))->where('version', Row::int($row, 'version'))
+                ->where('cancel_requested', Row::bool($row, 'cancel_requested'))->update($lost[1]);
             if ($updated === 1) {
                 $counts[$lost[0]->value] = ($counts[$lost[0]->value] ?? 0) + 1;
             }
@@ -608,7 +609,9 @@ final class DatabaseLedger implements Ledger
                 if ($changes === null) {
                     continue;
                 }
-                $changes['version'] = $version;
+                if (array_key_exists('version', $changes)) {
+                    $changes['version'] = $version;
+                }
                 $changed += $match($this->deliveries()->where('scope', $scope))
                     ->where('state', $state->value)
                     ->where('unknown_seen', $unknownSeen)
