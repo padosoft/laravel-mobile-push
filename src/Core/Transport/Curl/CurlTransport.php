@@ -91,9 +91,6 @@ final class CurlTransport implements Transport
                 while ($input->valid() && count($inflight) < ($pilotPending ? 1 : $window)) {
                     $request = $input->current();
                     $input->next();
-                    if (! $request instanceof Request) {
-                        continue;
-                    }
                     if ($stopReason !== null) {
                         yield $request->id => Exchange::failed($request, CurlErrorClassifier::notDispatched($stopReason));
 

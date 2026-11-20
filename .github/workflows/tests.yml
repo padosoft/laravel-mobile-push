@@ -34,6 +34,9 @@ jobs:
           composer update --${{ matrix.stability }} --prefer-dist --no-interaction
       - name: Tests
         run: vendor/bin/pest
+      - name: Slow tests (large batches)
+        if: matrix.php == '8.3' && matrix.laravel == '13.*' && matrix.stability == 'prefer-stable'
+        run: vendor/bin/pest --group=slow
 
   static:
     runs-on: ubuntu-latest

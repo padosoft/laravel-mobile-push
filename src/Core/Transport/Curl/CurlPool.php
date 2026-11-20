@@ -207,7 +207,7 @@ final class CurlPool
             if ($owner === null) {
                 continue;
             }
-            $this->completed[$owner][] = ['handle' => $handle, 'result' => (int) $info['result']];
+            $this->completed[$owner][] = ['handle' => $handle, 'result' => is_int($info['result'] ?? null) ? $info['result'] : -1];
         }
     }
 

@@ -80,16 +80,13 @@ final class CurlPoolRegistry
         if ($pool->inUse()) {
             return;
         }
-        foreach ($this->closing as $i => $candidate) {
-            if ($candidate === $pool) {
-                unset($this->closing[$i]);
-                $this->closing = array_values($this->closing);
-                if ((int) getmypid() === $this->pid) {
-                    $pool->close();
-                }
-
-                return;
+        if (in_array($pool, $this->closing, true)) {
+            $this->closing = array_values(array_filter($this->closing, static fn (CurlPool $p): bool => $p !== $pool));
+            if ((int) getmypid() === $this->pid) {
+                $pool->close();
             }
+
+            return;
         }
         $this->enforceLimit();
     }
@@ -126,6 +123,12 @@ final class CurlPoolRegistry
     public function evictions(): int
     {
         return $this->evictions;
+    }
+
+    /** Pools inherited from a parent process and deliberately left untouched in this one. */
+    public static function inheritedCount(): int
+    {
+        return count(self::$inherited);
     }
 
     public function maxPools(): int

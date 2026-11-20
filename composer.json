@@ -55,6 +55,7 @@
         "test": "pest",
         "test:unit": "pest --testsuite=Unit",
         "test:scenario": "pest --testsuite=Scenario",
+        "test:slow": "pest --group=slow",
         "analyse": "phpstan analyse --memory-limit=1G",
         "format": "pint",
         "format:check": "pint --test",
