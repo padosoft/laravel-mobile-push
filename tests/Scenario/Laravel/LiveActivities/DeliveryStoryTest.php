@@ -3,10 +3,12 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\DB;
+use Padosoft\MobilePush\Core\Exceptions\InvalidMessageException;
 use Padosoft\MobilePush\Core\Outcome\ReasonCode;
 use Padosoft\MobilePush\Core\Outcome\SendStatus;
 use Padosoft\MobilePush\Laravel\LiveActivities\ActivityReport;
 use Padosoft\MobilePush\Laravel\LiveActivities\ActivityState;
+use Padosoft\MobilePush\Laravel\LiveActivities\ActivityTicket;
 use Padosoft\MobilePush\Laravel\LiveActivities\LiveActivity;
 use Padosoft\MobilePush\Laravel\LiveActivities\PushActivity;
 use Padosoft\MobilePush\Laravel\LiveActivities\TransitionOutcome;
@@ -184,7 +186,7 @@ it('order delivered: the end carries the dismissal date, the row is ended, and a
 
     $count = count($pushes);
     $this->world->kit->clock->advance(5);
-    $late = LiveActivity::replay(\Padosoft\MobilePush\Laravel\LiveActivities\ActivityTicket::fromArray($staleJob->toArray()));
+    $late = LiveActivity::replay(ActivityTicket::fromArray($staleJob->toArray()));
     $direct = LiveActivity::for($activity)->update(['eta' => 1])->send();
 
     expect($late->outcome)->toBe(TransitionOutcome::Skipped)
@@ -201,7 +203,7 @@ it('a start with no push-to-start token sends nothing and creates no row; a star
 
     expect($none->count())->toBe(0)->and($this->world->pushes())->toBe([]);
     expect(fn () => LiveActivity::start(DeliveryActivity::class, [], ['eta' => 1])->to($this->rider)->send())
-        ->toThrow(\Padosoft\MobilePush\Core\Exceptions\InvalidMessageException::class);
+        ->toThrow(InvalidMessageException::class);
     expect($this->world->pushes())->toBe([])->and(DB::table('mobile_push_live_activities')->count())->toBe(0);
 });
 

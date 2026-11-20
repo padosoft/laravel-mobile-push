@@ -14,6 +14,7 @@ use Padosoft\MobilePush\Laravel\LiveActivities\PushActivity;
 use Padosoft\MobilePush\Laravel\LiveActivities\TransitionOutcome;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\LiveActivities\DeliveryActivity;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\LiveActivities\LiveWorld;
+use Padosoft\MobilePush\Tests\Scenario\Send\SendKit;
 
 require_once __DIR__.'/LiveWorld.php';
 
@@ -137,7 +138,7 @@ it('a start APNs refused closes its row without pretending it was never sent', f
     $world = LiveWorld::install();
     $rider = LiveWorld::rider(3);
     $rider->registerPushToStartToken($world->binding(), DeliveryActivity::class, LiveWorld::pushToStart('s2'));
-    $world->pushAnswers = [\Padosoft\MobilePush\Tests\Scenario\Send\SendKit::apnsReason(400, 'BadDeviceToken')];
+    $world->pushAnswers = [SendKit::apnsReason(400, 'BadDeviceToken')];
 
     $start = LiveActivity::start(DeliveryActivity::class, [], ['eta' => 30])->alert('Order confirmed')->to($rider)->send();
 
