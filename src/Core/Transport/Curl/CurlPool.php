@@ -129,7 +129,7 @@ final class CurlPool
         } while ($status === CURLM_CALL_MULTI_PERFORM);
 
         $this->collect();
-        if ($running > 0 && $this->completedCountTotal() === 0) {
+        if ($running > 0 && $waitSeconds > 0 && $this->completedCountTotal() === 0) {
             curl_multi_select($this->multi, $waitSeconds);
             do {
                 $status = curl_multi_exec($this->multi, $running);

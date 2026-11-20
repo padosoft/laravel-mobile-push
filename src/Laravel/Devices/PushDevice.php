@@ -51,6 +51,11 @@ use Padosoft\MobilePush\Core\Privacy\TokenCipher;
  * @property CarbonInterface $registered_at
  * @property CarbonInterface|null $last_seen_at
  * @property CarbonInterface|null $last_sent_at
+ * @property string|null $locale
+ * @property string|null $timezone
+ * @property string|null $app_version
+ * @property string|null $os_version
+ * @property string|null $device_model
  * @property array<string, mixed>|null $metadata
  */
 class PushDevice extends Model
@@ -139,7 +144,7 @@ class PushDevice extends Model
 
     public function ref(): DestinationRef
     {
-        return new DestinationRef((string) $this->getKey(), $this->generation, $this->owner_type, $this->owner_id);
+        return new DestinationRef(self::keyOf($this), $this->generation, $this->owner_type, $this->owner_id);
     }
 
     /** The typed destination of this row (decrypted), carrying its DestinationRef. */
@@ -175,6 +180,14 @@ class PushDevice extends Model
         };
     }
 
+    /** The primary key or morph key of a model as a string (owner ids are stored as strings). */
+    public static function keyOf(Model $model): string
+    {
+        $key = $model->getKey();
+
+        return is_scalar($key) ? (string) $key : throw new \InvalidArgumentException('A device owner needs a scalar primary key.');
+    }
+
     /** Unix milliseconds of a datetime attribute. */
     public static function msOf(CarbonInterface $at): int
     {
@@ -183,9 +196,6 @@ class PushDevice extends Model
 
     private function cipher(): TokenCipher
     {
-        $cipher = app(TokenCipher::class);
-        assert($cipher instanceof TokenCipher);
-
-        return $cipher;
+        return app(TokenCipher::class);
     }
 }

@@ -114,7 +114,7 @@ final readonly class DeviceRegistrar
                 return false;
             }
 
-            if ($owner !== null && ($device->owner_type !== $owner->getMorphClass() || $device->owner_id !== (string) $owner->getKey())) {
+            if ($owner !== null && ($device->owner_type !== $owner->getMorphClass() || $device->owner_id !== PushDevice::keyOf($owner))) {
                 return false;
             }
 
@@ -136,7 +136,7 @@ final readonly class DeviceRegistrar
         $model = $this->newModel();
         $query = $model->newQuery()
             ->where('owner_type', $owner->getMorphClass())
-            ->where('owner_id', (string) $owner->getKey());
+            ->where('owner_id', PushDevice::keyOf($owner));
 
         if ($scope !== null) {
             $query->where('scope', $scope);
@@ -214,7 +214,7 @@ final readonly class DeviceRegistrar
         $device->forceFill([
             'scope' => $binding->scope,
             'owner_type' => $owner?->getMorphClass(),
-            'owner_id' => $owner === null ? null : (string) $owner->getKey(),
+            'owner_id' => $owner === null ? null : PushDevice::keyOf($owner),
             'binding_name' => $binding->name,
             'binding_identity' => $binding->identity(),
             'provider' => $binding->provider,
@@ -255,7 +255,7 @@ final readonly class DeviceRegistrar
 
             $now = $this->now();
             $ownerType = $owner?->getMorphClass();
-            $ownerId = $owner === null ? null : (string) $owner->getKey();
+            $ownerId = $owner === null ? null : PushDevice::keyOf($owner);
 
             if ($device->state !== DeviceState::Active || $device->owner_type !== $ownerType || $device->owner_id !== $ownerId) {
                 $device->generation = $device->generation + 1;

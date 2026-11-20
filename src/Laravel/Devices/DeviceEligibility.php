@@ -41,7 +41,7 @@ final readonly class DeviceEligibility
         /** @var array<string, PushDevice> $rows */
         $rows = [];
         foreach ($query->get() as $row) {
-            $rows[(string) $row->getKey()] = $row;
+            $rows[PushDevice::keyOf($row)] = $row;
         }
 
         $out = [];

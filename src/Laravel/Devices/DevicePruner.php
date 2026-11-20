@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Padosoft\MobilePush\Laravel\Devices;
 
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Builder;
 use Psr\Clock\ClockInterface;
 
 /** Deletes dead registrations in bounded chunks. */
@@ -42,7 +43,7 @@ final readonly class DevicePruner
         return new PruneReport($invalidated, $inactive, $dryRun);
     }
 
-    /** @param  \Closure(\Illuminate\Database\Eloquent\Builder<PushDevice>): mixed  $constrain */
+    /** @param  \Closure(Builder<PushDevice>): mixed  $constrain */
     private function delete(bool $dryRun, \Closure $constrain): int
     {
         $model = new (PushDevice::modelClass());
@@ -65,7 +66,7 @@ final readonly class DevicePruner
                 break;
             }
 
-            $total += $model->newQuery()->whereIn($key, $ids)->delete();
+            $total += (int) $model->newQuery()->whereIn($key, $ids)->toBase()->delete();
         } while (count($ids) === self::CHUNK);
 
         return $total;

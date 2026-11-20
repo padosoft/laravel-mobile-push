@@ -119,9 +119,11 @@ it('expires a pool idle for longer than maxIdleSeconds', function () use (&$serv
 });
 
 it('cleans up when the consumer stops after the first exchange, and the pool keeps working', function () use (&$server): void {
-    $server->rules(['path' => '^/r/(?!0$)', 'action' => 'respond', 'delayMs' => 200]);
     $transport = new CurlTransport(new CurlPoolRegistry);
     $profile = Batch::profile($server, 'early-exit', ['window' => 20]);
+    // warm the pool: HTTP/2 is known to be negotiated, so the full window is used from the first request
+    Batch::collect($transport->send(Batch::requests($server->baseUrl().'/warmup', 1), $profile));
+    $server->rules(['path' => '^/r/(?!0$)', 'action' => 'respond', 'delayMs' => 200]);
 
     foreach ($transport->send(Batch::requests($server->baseUrl(), 1_000), $profile) as $id => $exchange) {
         expect($exchange->response?->status)->toBe(200);
@@ -137,7 +139,7 @@ it('cleans up when the consumer stops after the first exchange, and the pool kee
     expect($byId)->toHaveCount(30)
         ->and(array_filter($byId, fn (array $e): bool => $e[0]->response?->status === 200))->toHaveCount(30)
         ->and($stats['connections'])->toBe(1)
-        ->and($stats['received'])->toBeLessThanOrEqual(1 + 20 + 30) // never more than one window was pulled
+        ->and($stats['received'])->toBeLessThanOrEqual(1 + 20 + 30) // warm-up + at most one window + the second batch
         ->and($stats['clientResets'])->toBeGreaterThanOrEqual(1);
 });
 
