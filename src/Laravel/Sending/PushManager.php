@@ -157,6 +157,8 @@ final class PushManager implements PushDispatcher
      * destination of every send. Per destination (default): fn (Destination $d, GateContext $c): bool|GateDenial.
      * With `$batch`: fn (GateContext $c, list<SendItem> $items): array<int, bool|GateDenial|null> keyed by position.
      * `false` = Skipped with PolicyIneligible. Never bypassed by PushMessage::bypassFrequencyCap().
+     *
+     * @param  callable(mixed, mixed): mixed  $check
      */
     public function eligibleUsing(callable $check, bool $batch = false): void
     {
@@ -223,7 +225,7 @@ final class PushManager implements PushDispatcher
     {
         $current = $this->current($binding);
         if (! $current instanceof ResolvedConnection) {
-            return $this->mismatch($binding->scope, $binding->name, $binding, $current, $destinations, $options?->trafficClass ?? TrafficClass::Transactional);
+            return $this->mismatch($binding->scope, $binding->name, $binding, $current, $destinations, $options === null ? TrafficClass::Transactional : $options->trafficClass);
         }
 
         $options ??= $this->optionsFor($current);
@@ -339,12 +341,8 @@ final class PushManager implements PushDispatcher
         if (! $this->app->bound(QueuedSender::class)) {
             throw new ConfigurationException('Queued sending is not available: no Padosoft\MobilePush\Laravel\Contracts\QueuedSender is bound (the queue module is not installed or not enabled). Use ->send() to send now.');
         }
-        $sender = $this->app->make(QueuedSender::class);
-        if (! $sender instanceof QueuedSender) {
-            throw new ConfigurationException('The service bound as QueuedSender does not implement Padosoft\MobilePush\Laravel\Contracts\QueuedSender.');
-        }
 
-        return $sender;
+        return $this->app->make(QueuedSender::class);
     }
 
     /**
@@ -464,10 +462,6 @@ final class PushManager implements PushDispatcher
         if ($this->resolver !== null) {
             $config = ($this->resolver)($name, $scope);
             if ($config !== null) {
-                if (! is_array($config)) {
-                    throw new ConfigurationException('MobilePush::resolveConnectionUsing() must return a connection config array or null.');
-                }
-
                 return $config;
             }
         }
@@ -495,9 +489,7 @@ final class PushManager implements PushDispatcher
 
     private function config(string $key, mixed $default): mixed
     {
-        $config = $this->app->make('config');
-
-        return $config instanceof \Illuminate\Contracts\Config\Repository ? $config->get($key, $default) : $default;
+        return $this->app->make('config')->get($key, $default);
     }
 
     private function scopeOrCurrent(?string $scope): string
@@ -510,9 +502,8 @@ final class PushManager implements PushDispatcher
         if (! $this->app->bound('events')) {
             return null;
         }
-        $events = $this->app->make('events');
 
-        return $events instanceof Dispatcher ? $events : null;
+        return $this->app->make('events');
     }
 
     private function sinks(): ?SinkManager
@@ -520,20 +511,17 @@ final class PushManager implements PushDispatcher
         if (! $this->app->bound(SinkManager::class)) {
             return null;
         }
-        $sinks = $this->app->make(SinkManager::class);
 
-        return $sinks instanceof SinkManager ? $sinks : null;
+        return $this->app->make(SinkManager::class);
     }
 
     private function logger(): ?LoggerInterface
     {
         try {
-            $logger = $this->app->make(LoggerInterface::class);
+            return $this->app->make(LoggerInterface::class);
         } catch (\Throwable) {
             return null;
         }
-
-        return $logger instanceof LoggerInterface ? $logger : null;
     }
 
     private function dispatchSafely(object $event): void

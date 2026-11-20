@@ -32,16 +32,21 @@ final class ReceiptRecorder
     ) {}
 
     /**
-     * Two ways to the row. (1) The sender used the delivery id as its message id (see DeliveryReference): the row is
-     * there even when its outcome was never recorded, which is exactly the "response lost" case. (2) Otherwise the id
-     * the worker recorded with the result.
+     * Two ways to the row. (1) Primary: the ledger assigned the delivery its message id when it inserted the row and
+     * the relay sent it on every attempt, so the lookup by stored `message_id` finds the row even when its outcome
+     * was never recorded (response lost, worker died). (2) Fallback, only for markers issued before the ledger
+     * assigned ids: the message id derived from the delivery ULID (see DeliveryReference).
      */
     private function find(string $scope, string $reference): ?Delivery
     {
-        $id = DeliveryReference::deliveryIdFor($reference);
-        $delivery = $id === null ? null : $this->ledger->delivery($scope, $id);
+        $delivery = $this->store->deliveryByMessageId($scope, $reference);
+        if ($delivery !== null) {
+            return $delivery;
+        }
 
-        return $delivery ?? $this->store->deliveryByMessageId($scope, $reference);
+        $id = DeliveryReference::deliveryIdFor($reference);
+
+        return $id === null ? null : $this->ledger->delivery($scope, $id);
     }
 
     public function record(ReceiptReport $report): ReceiptOutcome

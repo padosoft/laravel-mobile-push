@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Padosoft\MobilePush\Laravel\Queue;
 
 use Illuminate\Contracts\Bus\Dispatcher;
+use Illuminate\Database\Connection;
 use Illuminate\Database\ConnectionResolverInterface;
 use Padosoft\MobilePush\Core\Guard\TrafficClass;
 use Padosoft\MobilePush\Laravel\Contracts\QueueOptions;
@@ -51,7 +52,7 @@ final readonly class SendJobDispatcher
 
         try {
             $connection = $this->db->connection($ledgerConnection);
-            if ($connection instanceof \Illuminate\Database\Connection) {
+            if ($connection instanceof Connection) {
                 $connection->afterCommit($send);
 
                 return;

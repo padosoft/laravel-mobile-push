@@ -65,17 +65,19 @@ final class ReceiptsWorld
     /**
      * Send one push the way the relay does: the issuer is asked for a marker with the sender's message id, the
      * provider answers, the worker records the result with that message id in its meta.
+     * (Never recorded when the status is OutcomeUnknown: the marker still finds the row.)
      *
      * @return array{deliveryId: string, marker: ?string, messageId: string, effectId: string}
      */
-    public function send(Destination $destination, SendStatus $status = SendStatus::Accepted, string $scope = 'default', ?string $campaign = null, bool $deliveryIdAsMessageId = true): array
+    public function send(Destination $destination, SendStatus $status = SendStatus::Accepted, string $scope = 'default', ?string $campaign = null, bool $legacyDerivedId = false): array
     {
         $n = ++$this->sequence;
         $effect = $this->ledger->recordIntent(H::intent(H::alert("body {$n}"), "key-{$n}", $scope, $campaign), [$destination])->effect;
         $claimed = $this->ledger->claimDue($scope, 'worker', 1, $effect->id)[0];
         $this->ledger->markAttemptStarted($claimed->lease);
-        // A relay that follows the contract passes the delivery id as the message id; otherwise a random one.
-        $messageId = ($deliveryIdAsMessageId ? DeliveryReference::messageIdFor($claimed->id()) : null) ?? sprintf('00000000-0000-4000-8000-%012d', $n);
+        // The relay sends the ledger-assigned message id on every attempt; `legacyDerivedId` simulates a marker
+        // issued before that, with the id derived from the delivery ULID.
+        $messageId = ($legacyDerivedId ? DeliveryReference::messageIdFor($claimed->id()) : $claimed->providerMessageId()) ?? throw new LogicException('no message id');
         $marker = $this->issuer()->issue($scope, $destination, $messageId);
 
         if ($status === SendStatus::OutcomeUnknown) {

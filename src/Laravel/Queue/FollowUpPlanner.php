@@ -34,21 +34,18 @@ final readonly class FollowUpPlanner
         usort($deferred, static fn (array $a, array $b): int => $a[1] <=> $b[1]);
 
         $plans = [];
+        $first = $last = $deferred[0][1];
         $bucket = [];
-        $first = $last = null;
         foreach ($deferred as [$destination, $at]) {
-            if ($first !== null && $last !== null && self::ms($at) - self::ms($first) > $this->bucketSeconds * 1000) {
+            if (self::ms($at) - self::ms($first) > $this->bucketSeconds * 1000) {
                 $plans[] = new FollowUp($bucket, $last, self::delaySeconds($last, $now));
                 $bucket = [];
-                $first = null;
+                $first = $at;
             }
-            $first ??= $at;
             $last = $at;
             $bucket[] = $destination;
         }
-        if ($bucket !== [] && $last !== null) {
-            $plans[] = new FollowUp($bucket, $last, self::delaySeconds($last, $now));
-        }
+        $plans[] = new FollowUp($bucket, $last, self::delaySeconds($last, $now));
 
         return $plans;
     }

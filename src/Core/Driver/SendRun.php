@@ -707,6 +707,11 @@ final class SendRun
         if ($decision !== null) {
             $meta = array_replace($meta, $decision->meta);
         }
+        // Receipts: true only when the marker really went into the compiled payload (a simulated or validated send
+        // never resolves one, and a callback that returned null or a compiler that dropped it leaves no trace).
+        if ($work->receiptMarker !== null && $work->compiled !== null && str_contains($work->compiled->body, $work->receiptMarker)) {
+            $meta['receipt_marker'] = '1';
+        }
 
         $result = new SendResult(
             $work->destination(),

@@ -21,6 +21,7 @@ use Padosoft\MobilePush\Core\Outcome\SendStatus;
 use Padosoft\MobilePush\Core\Policy\OperationKind;
 use Padosoft\MobilePush\Core\Privacy\PrivacyException;
 use Padosoft\MobilePush\Laravel\Contracts\PushDispatcher;
+use Padosoft\MobilePush\Laravel\Receipts\ReceiptMarkerIssuer;
 use Psr\Clock\ClockInterface;
 
 /**
@@ -33,7 +34,8 @@ use Psr\Clock\ClockInterface;
  *  3. registry devices are resolved in one query per chunk; an ineligible device is Skipped(PolicyIneligible);
  *  4. markAttemptStarted() right before the Sender takes the item; an item whose lease was lost is not sent;
  *  5. PushDispatcher::send() with the default options of the binding plus the effect's traffic class, effect key,
- *     absolute expiry and a per-call observer that records every result with its final budget as it arrives;
+ *     absolute expiry, the receipt marker callback (when the receipts module is present) and a per-call
+ *     observer that records every result with its final budget as it arrives;
  *  6. the report is consumed fully and every write is flushed before the run returns (i.e. before the job is acked).
  *
  * Deferred deliveries are only recorded with their next attempt: nothing sleeps, nothing is redispatched per
@@ -49,6 +51,8 @@ final readonly class DeliveryRelay
         private RelayFollowUps $followUps,
         private ClockInterface $clock,
         private QueueSettings $settings,
+        /** Receipts module: issues the `mp_r` marker per individual destination (null when the module is absent). */
+        private ?ReceiptMarkerIssuer $receipts = null,
     ) {}
 
     public function run(string $scope, ?string $effectId = null, ?string $owner = null): RelayReport
@@ -139,6 +143,10 @@ final readonly class DeliveryRelay
             ->withExpiresAt($effect->expiresAt)
             ->withValidateOnly($effect->operation === OperationKind::Validate)
             ->withObserver($recorder);
+        if ($this->receipts !== null) {
+            // The issuer itself returns null when receipts are off or the destination is not one installation.
+            $options = $options->withReceiptMarker($this->receipts->callback($scope));
+        }
 
         [$toSend, $toSkip] = $this->resolver->resolve($effect->binding, $claimed);
         foreach ($toSkip as [$c, $reason]) {

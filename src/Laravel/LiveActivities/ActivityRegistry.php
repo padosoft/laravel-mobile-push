@@ -260,6 +260,8 @@ final readonly class ActivityRegistry implements TransitionStore
             'version' => 1,
             'stale_at' => $staleAt === null ? null : CarbonImmutable::instance($staleAt),
             'local_expires_at' => $now->addHours($this->config->localExpiryHours),
+            'created_at' => $now,
+            'updated_at' => $now,
         ]);
         $row->save();
 
@@ -627,6 +629,7 @@ final readonly class ActivityRegistry implements TransitionStore
             $row->state = $quarantine ? TokenState::Quarantined : TokenState::Invalidated;
             $row->state_reason = substr($reason, 0, 64);
             $row->state_changed_at = $this->rows->now();
+            $row->updated_at = $this->rows->now();
             $row->save();
 
             return $quarantine ? TokenChange::Quarantined : TokenChange::Invalidated;
@@ -759,6 +762,8 @@ final readonly class ActivityRegistry implements TransitionStore
             'version' => 1,
             'started_at' => $started,
             'local_expires_at' => $started->addHours($this->config->localExpiryHours),
+            'created_at' => $now,
+            'updated_at' => $now,
         ]);
         $row->save();
 
@@ -792,6 +797,8 @@ final readonly class ActivityRegistry implements TransitionStore
             'state_changed_at' => $now,
             'registered_at' => $now,
             'last_seen_at' => $now,
+            'created_at' => $now,
+            'updated_at' => $now,
         ]);
         $row->save();
 
@@ -829,6 +836,7 @@ final readonly class ActivityRegistry implements TransitionStore
             $row->token_index = $index;
             $row->binding_name = $binding->name;
             $row->last_seen_at = $now;
+            $row->updated_at = $now;
             $row->save();
 
             return $row;

@@ -86,6 +86,8 @@ final readonly class ChannelRegistry implements TransitionStore
             'applied_seq' => 0,
             'pending_attempts' => 0,
             'version' => 1,
+            'created_at' => $now,
+            'updated_at' => $now,
         ]);
         $row->save();
 
@@ -118,7 +120,8 @@ final readonly class ChannelRegistry implements TransitionStore
         if ($row->state === ChannelState::Deleted) {
             return $row;
         }
-        if ($row->channel_id === null) {
+        $channelId = $row->channel_id;
+        if ($channelId === null) {
             throw new InvalidDestinationException('This channel has no APNs id (its creation outcome is unknown): run sync() first.');
         }
 
@@ -127,7 +130,7 @@ final readonly class ChannelRegistry implements TransitionStore
         $this->force($row, ['state' => ChannelState::Deleting, 'state_changed_at' => $this->rows->now()]);
 
         try {
-            $client->delete($row->channel_id);
+            $client->delete($channelId);
         } catch (ChannelApiException $e) {
             if ($e->status === 404 || $e->reason->code === ReasonCode::ChannelUnknown) {
                 $this->force($row, ['state' => ChannelState::Deleted, 'closed_reason' => CloseReason::DeletedRemotely, 'state_changed_at' => $this->rows->now()]);
@@ -248,13 +251,14 @@ final readonly class ChannelRegistry implements TransitionStore
             return [];
         }
 
-        $ids = $candidates->pluck('channel_id')->all();
-        $referenced = array_fill_keys(PushActivity::blank()->newQuery()
-            ->forBinding($binding)
-            ->open()
-            ->whereIn('broadcast_channel_id', $ids)
-            ->pluck('broadcast_channel_id')
-            ->all(), true);
+        $ids = [];
+        foreach ($candidates as $channel) {
+            $ids[] = (string) $channel->channel_id;
+        }
+        $referenced = [];
+        foreach (PushActivity::blank()->newQuery()->forBinding($binding)->open()->whereIn('broadcast_channel_id', $ids)->get(['broadcast_channel_id']) as $activity) {
+            $referenced[(string) $activity->broadcast_channel_id] = true;
+        }
 
         $out = [];
         foreach ($candidates as $channel) {
