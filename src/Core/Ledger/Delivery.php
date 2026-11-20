@@ -50,6 +50,8 @@ final readonly class Delivery
         public bool $hasStoredDestination,
         public \DateTimeImmutable $createdAt,
         public \DateTimeImmutable $updatedAt,
+        /** The ledger-assigned UUIDv4 sent as the request's id on every attempt; what a receipt marker names. */
+        public ?string $messageId = null,
     ) {}
 
     /** @param array<string, mixed>|object $row a stored deliveries row */
@@ -98,6 +100,7 @@ final readonly class Delivery
             Row::strOrNull($row, 'destination') !== null,
             LedgerTime::date(Row::int($row, 'created_at')),
             LedgerTime::date(Row::int($row, 'updated_at')),
+            Row::strOrNull($row, 'message_id'),
         );
     }
 
