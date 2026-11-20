@@ -102,3 +102,18 @@ Modello di voce:
 - **Contesto:** `PushMessage::data()` (segnalato da W1-D).
 - **Fatto:** `[...$a, ...$b]` rinumera le chiavi intere o "tipo intero": `['7' => 'x']` diventa `[0 => 'x']`, corrompendo le chiavi dei dati FCM/APNs.
 - **Regola:** per unire mappe chiave → valore usare `array_replace($a, $b)`, mai lo spread né `array_merge`.
+
+## 2026-11-20 — APNs: testo esatto sui 5xx e tabelle degli errori
+- **Contesto:** W1-E, classificatore APNs; JSON `developer.apple.com/tutorials/data/documentation/usernotifications/handling-notification-responses-from-apns.json`.
+- **Fatto:** testo Apple: «After 15 minutes, you can retry JSON payloads that receive response status codes that begin with 5XX. While retrying, you may employ a back-off technique.» e «Don't retry … `BadDeviceToken`, `DeviceTokenNotForTopic`, `Forbidden`, `ExpiredToken`, `Unregistered`, or `PayloadTooLarge`. You can retry with a delay, if you get the error code `TooManyRequests`.» Il `timestamp` del 410 è in millisecondi. La tabella documenta solo `BadEnvironmentKeyIdInToken` (la variante `BadEnvironmentKeyInToken` non compare). `TopicMismatch` (403) e gli errori broadcast/canali (`FeatureNotEnabled`, `ChannelNotRegistered`, `CannotCreateChannelConfig`, …) stanno in una pagina diversa: `handling-error-responses-from-apns.json`, dove 503 è scritto `Service Unavailable` con lo spazio. Il broadcast restituisce `apns-request-id` (non `apns-id`); creazione canale 201, cancellazione 204.
+- **Regola:** leggere entrambe le pagine Apple; accettare entrambe le grafie; trattare ogni 2xx come accettato.
+
+## 2026-11-20 — FCM: codici d'errore non presenti nel Discovery
+- **Contesto:** W1-E, classificatore FCM.
+- **Fatto:** il Discovery rev. 20261112 non elenca `FcmError` né i codici (`UNREGISTERED`, `QUOTA_EXCEEDED`, …); `firebase.google.com` resta irraggiungibile. Verificati sui sorgenti di firebase-admin-go (`messaging.go`, `handleFCMError`: cerca il primo detail con `@type` `type.googleapis.com/google.firebase.fcm.v1.FcmError`) e firebase-admin-node (che tratta anche `NOT_FOUND` + `fid` come non registrato). Esiste ancora il nome legacy `APNS_AUTH_ERROR`. firebase-admin-python rispetta `Retry-After` (delta-seconds o HTTP-date) solo su 413/429/503.
+- **Regola:** codici FCM e ritardi minimi sono «verificati solo su SDK ufficiali», non sulla pagina Google: ricontrollare quando `firebase.google.com` è raggiungibile.
+
+## 2026-11-20 — Un esito ignoto «contamina» il budget
+- **Contesto:** W1-E, RetryPlanner.
+- **Fatto:** se un messaggio sostituibile viene ritentato dopo un esito ignoto e i tentativi successivi falliscono (503, budget finito, scadenza), dichiarare `Failed`/`Expired` sarebbe falso: il primo tentativo potrebbe essere stato accettato, e `allowsFallback()` aprirebbe il ripiego. Il budget porta `unknownOutcomeSeen`, e ogni esito finale Failed/Expired diventa `OutcomeUnknown`.
+- **Regola:** chi persiste il budget (ledger, job) deve salvare anche quel flag; mai ricostruire il budget da zero tra un tentativo e l'altro.

@@ -20,7 +20,7 @@ enum SendStatus: string
     case Deferred = 'deferred';
     /** It is not known whether the provider processed the request. Never treated as failed-without-sending. */
     case OutcomeUnknown = 'outcome_unknown';
-    /** The logical expiry passed before an attempt could be made: nothing was sent. */
+    /** The logical expiry passed before a (further) attempt could be made: known not accepted. */
     case Expired = 'expired';
     /** A local rule prevented the attempt (consent, frequency cap, safe mode, open circuit, binding mismatch). */
     case Skipped = 'skipped';
