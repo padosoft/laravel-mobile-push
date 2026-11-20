@@ -212,3 +212,8 @@ Modello di voce:
 - **Contesto:** W2-P4, `DeliveryStateMachine`.
 - **Fatto:** una riga rimessa in coda dopo un esito ignoto (lease persa dopo l'inizio dell'invio, messaggio sostituibile) che poi scade o viene annullata non può diventare `Expired`/`Cancelled`: il primo tentativo potrebbe essere stato accettato. Il ledger tiene la colonna `unknown_seen` (copia di `RetryBudget::$unknownOutcomeSeen`) e in quei casi termina con `OutcomeUnknown`.
 - **Regola:** ogni transizione «di stop» del ledger consulta `unknown_seen`.
+
+## 2026-11-20 — ttl(0), origine delle transizioni, silent FCM su iOS (W3-FIX)
+- **Contesto:** correzioni a RetryBudget/Planner, Guards, FcmCompiler, ApnsCompiler.
+- **Fatto:** (1) con ttl(0) la scadenza coincide con l'istante di creazione: il flag `singleAttempt` nel budget (serializzato, default false) rende lecito il primo tentativo e vieta ogni retry, failover incluso; un 503 termina Expired, un esito ignoto resta OutcomeUnknown. ApnsCompiler emetteva un epoch passato: ora scrive 0 se expiresAt <= now. (2) Il Discovery di FCM (Message.data) conferma che i messaggi solo-dati verso iOS ammettono solo apns-priority 5. (3) Un 503 APNs mette in pausa l'account 60 s (throttle): in un test di ripresa far avanzare il clock prima di reinviare.
+- **Regola:** una proprietà che cambia il comportamento del retry viaggia nel budget, non in un confronto di timestamp.

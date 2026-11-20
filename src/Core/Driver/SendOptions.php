@@ -59,7 +59,8 @@ final readonly class SendOptions
         public array $observers = [],
     ) {
         foreach ($observers as $observer) {
-            if (! $observer instanceof SendObserver) {
+            // Runtime guard for callers that ignore the phpdoc.
+            if (! $observer instanceof SendObserver) { // @phpstan-ignore instanceof.alwaysTrue
                 throw new ConfigurationException('Every per-call observer must implement '.SendObserver::class.'.');
             }
         }
@@ -128,20 +129,33 @@ final readonly class SendOptions
      */
     private function copy(array $changes): self
     {
-        return new self(...array_replace([
+        /** @var array{trafficClass: TrafficClass, validateOnly: bool, effectKey: ?string, expiresAt: ?\DateTimeImmutable, window: ?int, retryPolicy: ?RetryPolicy, receiptMarker: (callable(Destination, string): ?string)|null, gates: list<DestinationGate>, observers: list<SendObserver>} $v */
+        $v = array_replace([
             'trafficClass' => $this->trafficClass,
             'validateOnly' => $this->validateOnly,
             'effectKey' => $this->effectKey,
-            'applicationEnvironment' => $this->applicationEnvironment,
-            'configuredMode' => $this->configuredMode,
-            'mode' => $this->effectiveMode,
-            'live' => $this->live,
             'retryPolicy' => $this->retryPolicy,
             'receiptMarker' => $this->receiptMarker,
             'gates' => $this->gates,
             'expiresAt' => $this->expiresAt,
             'window' => $this->window,
             'observers' => $this->observers,
-        ], $changes));
+        ], $changes);
+
+        return new self(
+            $v['trafficClass'],
+            $v['validateOnly'],
+            $v['effectKey'],
+            $this->applicationEnvironment,
+            $this->configuredMode,
+            $this->effectiveMode,
+            $this->live,
+            $v['retryPolicy'],
+            $v['receiptMarker'],
+            $v['gates'],
+            $v['expiresAt'],
+            $v['window'],
+            $v['observers'],
+        );
     }
 }
