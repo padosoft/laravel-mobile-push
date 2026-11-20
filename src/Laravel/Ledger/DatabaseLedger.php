@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Padosoft\MobilePush\Laravel\Ledger;
 
-use Illuminate\Database\ConnectionResolverInterface;
 use Illuminate\Database\Connection;
+use Illuminate\Database\ConnectionResolverInterface;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Database\Query\Expression;
 use Padosoft\MobilePush\Core\Exceptions\IdempotencyConflictException;

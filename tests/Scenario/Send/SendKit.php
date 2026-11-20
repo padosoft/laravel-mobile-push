@@ -11,7 +11,6 @@ use Padosoft\MobilePush\Core\Apns\Auth\ApnsTokenProvider;
 use Padosoft\MobilePush\Core\Auth\InMemoryTokenStore;
 use Padosoft\MobilePush\Core\Auth\OpenSslEs256Signer;
 use Padosoft\MobilePush\Core\Auth\PrivateKey;
-use Padosoft\MobilePush\Core\Auth\Signer;
 use Padosoft\MobilePush\Core\Driver\Sender;
 use Padosoft\MobilePush\Core\Driver\SendObserver;
 use Padosoft\MobilePush\Core\Driver\SendOptions;

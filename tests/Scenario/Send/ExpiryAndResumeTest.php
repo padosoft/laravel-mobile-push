@@ -6,6 +6,7 @@ use Padosoft\MobilePush\Core\Driver\SendItem;
 use Padosoft\MobilePush\Core\Message\PushMessage;
 use Padosoft\MobilePush\Core\Outcome\ReasonCode;
 use Padosoft\MobilePush\Core\Outcome\SendStatus;
+use Padosoft\MobilePush\Core\Retry\RetryBudget;
 use Padosoft\MobilePush\Core\Transport\FakeTransport;
 use Padosoft\MobilePush\Core\Transport\Request;
 use Padosoft\MobilePush\Core\Transport\Response;
@@ -80,7 +81,7 @@ it('continues the same retry budget when resuming from a ledger: attempts, deadl
     $kit->clock->set($deferred->nextAttemptAt ?? throw new LogicException('no nextAttemptAt'));
     $kit->clock->advance(1);
 
-    $resumed = new SendItem(SendKit::apnsToken(1), \Padosoft\MobilePush\Core\Retry\RetryBudget::fromArray($stored), 'delivery-7', $deferred->meta['message_id']);
+    $resumed = new SendItem(SendKit::apnsToken(1), RetryBudget::fromArray($stored), 'delivery-7', $deferred->meta['message_id']);
     [$accepted] = SendKit::all($sender->send($driver, $message, [$resumed], $options));
     $final = $observer->results[1]['budget'];
 

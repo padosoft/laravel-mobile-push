@@ -2,7 +2,11 @@
 
 declare(strict_types=1);
 
+use Padosoft\MobilePush\Core\Apns\ApnsCredential;
+use Padosoft\MobilePush\Core\Auth\AccessTokenProvider;
+use Padosoft\MobilePush\Core\Auth\AuthToken;
 use Padosoft\MobilePush\Core\Driver\GuardKind;
+use Padosoft\MobilePush\Core\Exceptions\AuthenticationException;
 use Padosoft\MobilePush\Core\Guard\BreakerTransition;
 use Padosoft\MobilePush\Core\Message\PushMessage;
 use Padosoft\MobilePush\Core\Outcome\ReasonCode;
@@ -108,14 +112,14 @@ it('fails over to the secondary key once: later windows use it on their own pool
 it('reports a destination Failed without any request when no bearer can be obtained, and feeds the breaker', function () {
     $kit = new SendKit;
     $transport = new FakeTransport;
-    $broken = new class implements \Padosoft\MobilePush\Core\Auth\AccessTokenProvider
+    $broken = new class implements AccessTokenProvider
     {
-        public function token(): \Padosoft\MobilePush\Core\Auth\AuthToken
+        public function token(): AuthToken
         {
-            throw new \Padosoft\MobilePush\Core\Exceptions\AuthenticationException('The signing key cannot be loaded.');
+            throw new AuthenticationException('The signing key cannot be loaded.');
         }
 
-        public function refreshAfterRejection(\Padosoft\MobilePush\Core\Auth\AuthToken $rejected): \Padosoft\MobilePush\Core\Auth\AuthToken
+        public function refreshAfterRejection(AuthToken $rejected): AuthToken
         {
             return $this->token();
         }
@@ -125,7 +129,7 @@ it('reports a destination Failed without any request when no bearer can be obtai
             return SendKit::TEAM.':BROKEN1111';
         }
     };
-    $driver = $kit->apnsDriver(\Padosoft\MobilePush\Core\Apns\ApnsCredential::token($broken, SendKit::TEAM, 'BROKEN1111'), window: 2);
+    $driver = $kit->apnsDriver(ApnsCredential::token($broken, SendKit::TEAM, 'BROKEN1111'), window: 2);
 
     $report = $kit->sender($transport, $kit->guards(authThreshold: 2))->send($driver, PushMessage::make('A', 'B'), SendKit::apnsTokens(10), SendKit::live());
     $results = SendKit::all($report);

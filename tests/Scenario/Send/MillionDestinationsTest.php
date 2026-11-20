@@ -55,7 +55,7 @@ it('streams 100,000 destinations with flat memory and exact counters', function 
         ->and($run['counts'][SendStatus::Accepted->value])->toBe(99_000)
         ->and($run['counts'][SendStatus::Rejected->value])->toBe(1_000)
         ->and(array_sum($run['counts']))->toBe(100_000)
-        ->and($run['growth'])->toBeLessThan(24 * 1024 * 1024);
+        ->and($run['growth'])->toBeLessThan(8 * 1024 * 1024);
 });
 
 it('streams 1,000,000 destinations with flat memory and exact counters', function () {
@@ -65,5 +65,5 @@ it('streams 1,000,000 destinations with flat memory and exact counters', functio
         ->and($run['requests'])->toBe(1_000_000)
         ->and($run['counts'][SendStatus::Accepted->value])->toBe(990_000)
         ->and($run['counts'][SendStatus::Rejected->value])->toBe(10_000)
-        ->and($run['growth'])->toBeLessThan(24 * 1024 * 1024);
+        ->and($run['growth'])->toBeLessThan(8 * 1024 * 1024);
 })->group('slow');

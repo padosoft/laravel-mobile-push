@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Padosoft\MobilePush\Laravel\Logging;
 
+use Illuminate\Contracts\Foundation\Application;
 use Padosoft\MobilePush\Core\Identity\BindingRef;
 use Padosoft\MobilePush\Core\Outcome\SendResult;
 
@@ -17,7 +18,7 @@ use Padosoft\MobilePush\Core\Outcome\SendResult;
  */
 final class SinkManager
 {
-    /** @var array<string, \Closure(\Illuminate\Contracts\Foundation\Application): LogSink> */
+    /** @var array<string, \Closure(Application): LogSink> */
     private static array $extensions = [];
 
     /** @var array<int, LogRecord> */
@@ -53,14 +54,14 @@ final class SinkManager
     /**
      * Register a custom sink for `mobile-push.log.sinks`. The closure receives the application.
      *
-     * @param  \Closure(\Illuminate\Contracts\Foundation\Application): LogSink  $factory
+     * @param  \Closure(Application): LogSink  $factory
      */
     public static function extend(string $name, \Closure $factory): void
     {
         self::$extensions[strtolower($name)] = $factory;
     }
 
-    /** @return array<string, \Closure(\Illuminate\Contracts\Foundation\Application): LogSink> */
+    /** @return array<string, \Closure(Application): LogSink> */
     public static function extensions(): array
     {
         return self::$extensions;

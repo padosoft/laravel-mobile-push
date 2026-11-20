@@ -2,15 +2,19 @@
 
 declare(strict_types=1);
 
+use OpenTelemetry\API\Metrics\MeterProviderInterface;
+use OpenTelemetry\API\Trace\TracerProviderInterface;
 use Padosoft\MobilePush\Core\Exceptions\ConfigurationException;
+use Padosoft\MobilePush\Core\Outcome\ReasonCode;
 use Padosoft\MobilePush\Core\Outcome\SendStatus;
+use Padosoft\MobilePush\Laravel\Logging\LoggingModule;
 use Padosoft\MobilePush\Laravel\Logging\LogRecord;
 use Padosoft\MobilePush\Laravel\Logging\LogSink;
 use Padosoft\MobilePush\Laravel\Logging\PushLog;
 use Padosoft\MobilePush\Laravel\Logging\SinkManager;
+use Padosoft\MobilePush\Tests\Scenario\Laravel\Logging\Support\CapturingHandler;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Logging\Support\LoggingFixtures as F;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Logging\Support\RecordingTelemetry;
-use Padosoft\MobilePush\Tests\Scenario\Laravel\Logging\Support\CapturingHandler;
 use Psr\Log\LogLevel;
 
 afterEach(fn () => SinkManager::forgetExtensions());
@@ -19,8 +23,8 @@ afterEach(fn () => SinkManager::forgetExtensions());
 it('enables exactly the sinks named in MOBILE_PUSH_LOG_SINKS and each one receives the record', function (string|array $value, array $expected) {
     F::migrate();
     $telemetry = new RecordingTelemetry;
-    app()->instance(OpenTelemetry\API\Trace\TracerProviderInterface::class, $telemetry);
-    app()->instance(OpenTelemetry\API\Metrics\MeterProviderInterface::class, $telemetry);
+    app()->instance(TracerProviderInterface::class, $telemetry);
+    app()->instance(MeterProviderInterface::class, $telemetry);
     F::configure($value);
 
     $manager = F::manager();
@@ -52,7 +56,7 @@ it('writes a stable message with the status mapped to a configurable level', fun
 
     $manager = F::manager();
     $manager->recordResult(F::binding(), F::result(F::token(1)));
-    $manager->recordResult(F::binding(), F::result(F::token(2), SendStatus::Rejected, 'bad', Padosoft\MobilePush\Core\Outcome\ReasonCode::DestinationRejected));
+    $manager->recordResult(F::binding(), F::result(F::token(2), SendStatus::Rejected, 'bad', ReasonCode::DestinationRejected));
     $manager->recordResult(F::binding(), F::result(F::token(3), SendStatus::OutcomeUnknown));
     $manager->flush();
 
@@ -93,8 +97,8 @@ it('lets the host app add its own sink and rejects unknown names with a remedy',
 
 it('refuses an invalid payload level or database mode at boot', function () {
     config(['mobile-push.log.payload' => 'everything']);
-    expect(fn () => Padosoft\MobilePush\Laravel\Logging\LoggingModule::boot($this->app))->toThrow(ConfigurationException::class);
+    expect(fn () => LoggingModule::boot($this->app))->toThrow(ConfigurationException::class);
 
     config(['mobile-push.log.payload' => 'none', 'mobile-push.log.sinks' => 'database', 'mobile-push.log.database.mode' => 'some']);
-    expect(fn () => Padosoft\MobilePush\Laravel\Logging\LoggingModule::boot($this->app))->toThrow(ConfigurationException::class);
+    expect(fn () => LoggingModule::boot($this->app))->toThrow(ConfigurationException::class);
 });

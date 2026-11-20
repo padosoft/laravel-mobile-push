@@ -38,7 +38,7 @@ final class BrokenLogSink implements SendObserver
         throw new RuntimeException('log disk full');
     }
 
-    public function providerThrottled(BindingRef $binding, string $accountKey, \DateTimeImmutable $until): void
+    public function providerThrottled(BindingRef $binding, string $accountKey, DateTimeImmutable $until): void
     {
         throw new RuntimeException('log disk full');
     }
