@@ -1,0 +1,81 @@
+{
+    "name": "padosoft/laravel-mobile-push",
+    "description": "APNs, FCM & Live Activities for Laravel: direct HTTP/2 push notifications to iOS and Android with explicit outcomes, durable delivery and first-class testing.",
+    "keywords": ["laravel", "push", "push-notifications", "apns", "fcm", "ios", "android", "live-activities", "http2", "firebase"],
+    "homepage": "https://github.com/padosoft/laravel-mobile-push",
+    "license": "MIT",
+    "type": "library",
+    "require": {
+        "php": "^8.3",
+        "ext-curl": "*",
+        "ext-json": "*",
+        "ext-openssl": "*",
+        "illuminate/cache": "^12.0|^13.0",
+        "illuminate/console": "^12.0|^13.0",
+        "illuminate/contracts": "^12.0|^13.0",
+        "illuminate/database": "^12.0|^13.0",
+        "illuminate/events": "^12.0|^13.0",
+        "illuminate/notifications": "^12.0|^13.0",
+        "illuminate/queue": "^12.0|^13.0",
+        "illuminate/support": "^12.0|^13.0",
+        "psr/clock": "^1.0",
+        "psr/log": "^3.0"
+    },
+    "require-dev": {
+        "firebase/php-jwt": "^6.10|^7.0",
+        "larastan/larastan": "^3.0",
+        "laravel/pint": "^1.18",
+        "orchestra/testbench": "^10.0|^11.0",
+        "pestphp/pest": "^4.0|^5.0",
+        "pestphp/pest-plugin-arch": "^4.0|^5.0",
+        "pestphp/pest-plugin-laravel": "^4.0|^5.0"
+    },
+    "suggest": {
+        "ext-intl": "Grapheme-accurate payload truncation (a PCRE fallback is used otherwise).",
+        "google/auth": "Application Default Credentials, metadata server, Workload Identity Federation and impersonation for FCM.",
+        "open-telemetry/api": "Export push spans and metrics to OpenTelemetry.",
+        "laravel/pulse": "Push metrics card.",
+        "laravel/telescope": "Push entries in Telescope.",
+        "spatie/laravel-health": "Ready-made health check."
+    },
+    "autoload": {
+        "psr-4": {
+            "Padosoft\\MobilePush\\": "src/"
+        },
+        "files": [
+            "src/Laravel/helpers.php"
+        ]
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Padosoft\\MobilePush\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "pest",
+        "test:unit": "pest --testsuite=Unit",
+        "test:scenario": "pest --testsuite=Scenario",
+        "analyse": "phpstan analyse --memory-limit=1G",
+        "format": "pint",
+        "format:check": "pint --test",
+        "check": ["@format:check", "@analyse", "@test"]
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Padosoft\\MobilePush\\Laravel\\MobilePushServiceProvider"
+            ],
+            "aliases": {
+                "MobilePush": "Padosoft\\MobilePush\\Laravel\\Facades\\MobilePush"
+            }
+        }
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

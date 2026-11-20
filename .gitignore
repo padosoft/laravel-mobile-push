@@ -1,0 +1,14 @@
+/vendor/
+/node_modules/
+composer.lock
+.phpunit.cache/
+.phpstan.cache/
+/build/
+.env
+*.p8
+*.p12
+*.pem
+!tests/Fixtures/**/*.pem
+.DS_Store
+.idea/
+.vscode/
