@@ -148,14 +148,15 @@ final class CurlTransport implements Transport
                     yield $transfer->request->id => $exchange;
                 }
             }
-        } finally { fwrite(STDERR, "FINALLY inflight=".count($inflight)."\n");
+        } finally {
             // Consumer stopped early (or the input threw): abort what is still running, keep the pool healthy.
             foreach ($inflight as $transfer) {
                 $pool->remove($transfer->handle);
                 curl_close($transfer->handle);
             }
             if ($inflight !== [] && ! $pool->isClosed()) {
-                // libcurl only queues the RST_STREAM(CANCEL) frames; flush them now so the peer stops working on them.
+                // Give libcurl a chance to write the RST_STREAM frames it queued for the cancelled streams.
+                // Measured on 8.5: they may stay queued in nghttp2 until the connection's next egress.
                 $pool->perform(0.0);
             }
             if ($stopReason !== null) {

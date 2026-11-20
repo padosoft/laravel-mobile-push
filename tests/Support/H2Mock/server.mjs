@@ -133,8 +133,9 @@ function handle(req, res) {
     let finished = false;
     const done = () => { if (!finished) { finished = true; ss.active--; } };
     (stream ?? res).on('close', () => {
-        if (process.env.H2DEBUG) console.error('close', stream?.id, stream?.rstCode, res.writableFinished, req.__handled);
-        if (!res.writableFinished && !req.__handled) stats.clientResets++;
+        // A stream the client reset (RST_STREAM) before we answered it, or an HTTP/1.1 socket closed early.
+        const reset = stream ? (stream.rstCode !== 0 && stream.rstCode !== undefined) : !res.writableEnded;
+        if (reset && !req.__handled) stats.clientResets++;
         done();
     });
 

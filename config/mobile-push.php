@@ -51,4 +51,19 @@ return [
         'encryption_key_current' => (int) env('MOBILE_PUSH_ENCRYPTION_KEY_VERSION', 0),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Device registry (optional module)
+    |--------------------------------------------------------------------------
+    | Stores installations so you can write MobilePush::to($user). Tokens are encrypted at rest and looked
+    | up through a keyed HMAC index. The environment of a device is the one the app declares at
+    | registration; the package never guesses it.
+    */
+    'devices' => [
+        'enabled' => (bool) env('MOBILE_PUSH_DEVICES_ENABLED', false),
+        'table' => env('MOBILE_PUSH_DEVICES_TABLE', 'mobile_push_devices'),
+        'connection' => env('MOBILE_PUSH_DEVICES_CONNECTION'),
+        'model' => Padosoft\MobilePush\Laravel\Devices\PushDevice::class,
+    ],
+
 ];
