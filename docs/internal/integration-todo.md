@@ -55,3 +55,20 @@ Health reads `mobile-push.queue.connection` and `mobile-push.queue.timeout` (nam
 - Make `tests/Scenario/Transport/ConnectionPoolTest` ("cleans up when the consumer stops early", `clientResets`) deterministic: it failed once in a full run.
 - Fingerprint of the ledger payload is an unkeyed SHA-256: consider keying it (short messages such as OTPs could be guessed offline).
 - Real-database concurrency tests for the ledger claim (`SKIP LOCKED`) on MySQL and PostgreSQL in CI; Redis for cache locks.
+
+### Receipts (W3-D)
+| Key | Env | Default | Allowed |
+|---|---|---|---|
+| `receipts.enabled` | `MOBILE_PUSH_RECEIPTS_ENABLED` | false | bool |
+| `receipts.marker_ttl` | `MOBILE_PUSH_RECEIPTS_TTL` | 604800 | seconds ≥ 60 |
+| `receipts.max_batch` | – | 20 | ≥ 1 |
+| `receipts.route.prefix` | `MOBILE_PUSH_RECEIPTS_PREFIX` | `mobile-push` | string (`POST {prefix}/receipts`) |
+| `receipts.route.domain` | – | null | string or null |
+| `receipts.route.middleware` | – | `['throttle:mobile-push-receipts']` | list; no auth by default |
+| `receipts.rate_limit.per_ip` | – | 120 per minute | 0 disables |
+| `receipts.rate_limit.per_marker` | – | 10 per minute | 0 disables |
+| `receipts.keys` | – | derived from APP_KEY | map version (1–255) => base64 key ≥ 32 bytes |
+| `receipts.key_current` | – | 0 | 0 = highest version |
+
+Receipts wiring: the relay passes `ReceiptMarkerIssuer::callback($scope)` to `SendOptions::withReceiptMarker()` (told to W3-B). Client contract for the docs: `src/Laravel/Receipts/CLIENT_CONTRACT.md`.
+Decision: the ledger assigns each delivery a random UUIDv4 `message_id` at insert (W3-FIX2), used as `apns-id` and as the receipt reference; the ULID-derived UUID path is only a fallback.

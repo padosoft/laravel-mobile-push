@@ -222,3 +222,13 @@ Modello di voce:
 - **Contesto:** `src/Laravel/Health`.
 - **Fatto:** (1) il TTL delle cache Laravel usa l'orologio reale (Carbon), non il `FakeClock`: un cooldown testabile deve salvare l'istante di fine e confrontarlo con il `ClockInterface` (`add` per l'atomicità, poi `get` se già presente). (2) `Repository::increment` su chiave assente crea la chiave senza TTL su molti store: per i bucket a finestra fare prima `add($k, 0, $ttl)`; l'increment poi conserva il TTL. (3) Un file di test con più classi non è autocaricabile per le classi non omonime: `require_once` del file kit in cima ai test. (4) `Illuminate\Contracts\Cache\Store` richiede anche `touch()`. (5) Dopo `config()->set` nei test, i singleton già risolti dal boot del provider (HealthSettings) vanno `forgetInstance`. (6) PHPStan max: i docblock su closure assegnate a variabile non valgono, usare metodi statici privati.
 - **Regola:** nessun conteggio per destinazione come label; l'indice delle serie è limitato da `metrics.max_series`.
+
+## 2026-11-20 — Il marcatore ricevuta non può puntare a provider_message_id
+- **Contesto:** W3-D, ricevute client.
+- **Fatto:** `SendRun` passa al callback `receiptMarker` solo `(Destination, messageId)`, dove `messageId` è l'id generato dal sender. Il ledger però salva `provider_message_id` = id della risposta (per FCM è il nome assegnato da Google, non il nostro UUID) e lo scrive solo in `record()`: un recapito `OutcomeUnknown` (risposta persa) non lo ha mai. Quindi cercare la riga per `provider_message_id` non funziona né per FCM né per il caso "risposta persa", proprio quello in cui la ricevuta serve di più.
+- **Regola:** il riferimento nel marcatore è il message id del sender; la riga si trova (1) se il relay usa `DeliveryReference::messageIdFor($deliveryId)` come `SendItem::$providerMessageId` (mappatura ULID<->UUID senza tabella segreta, esiste prima dell'invio), (2) altrimenti dalla colonna `message_id` scritta da `record()` dal `meta['message_id']` del risultato.
+
+## 2026-11-20 — Test che chiamano `report()` / base64url senza padding
+- **Contesto:** W3-D, test Pest.
+- **Fatto:** una funzione globale di test chiamata `report()` va in conflitto con l'helper di Laravel (`Cannot redeclare report()`); la lunghezza base64url senza padding è `ceil(n*4/3)` (41 byte -> 55 caratteri), e `base64_decode(strict)` rifiuta input senza padding quando manca `=`.
+- **Regola:** nei file di test prefissare le funzioni globali (`clientReports`, `receiptAt`); per decodificare base64url in strict mode riaggiungere il padding.

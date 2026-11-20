@@ -27,14 +27,15 @@ final readonly class RelayFollowUps
         private QueueSettings $settings,
     ) {}
 
-    /** Returns true when a job was dispatched. */
-    public function schedule(string $scope, string $effectId, \DateTimeImmutable $at, ?string $queue = null): bool
+    /** A null effect id schedules a scope-wide relay (the sweeper's). Returns true when a job was dispatched. */
+    public function schedule(string $scope, ?string $effectId, \DateTimeImmutable $at, ?string $queue = null): bool
     {
         $now = $this->clock->now();
         $delay = FollowUpPlanner::delaySeconds($at, $now);
         $runAt = $now->getTimestamp() + $delay;
         $key = self::key($scope, $effectId);
-        $ttl = $delay + $this->settings->timeout + 600;
+        // A marker outlives its job by little: if the job is lost, the next sweep may dispatch again soon after.
+        $ttl = $delay + $this->settings->timeout + 60;
 
         if (! $this->cache->add($key, $runAt, $ttl)) {
             $pending = $this->cache->get($key);
@@ -50,7 +51,7 @@ final readonly class RelayFollowUps
     }
 
     /** Called by a follow-up job when it starts. */
-    public function started(string $scope, string $effectId, int $runAt): void
+    public function started(string $scope, ?string $effectId, int $runAt): void
     {
         $key = self::key($scope, $effectId);
         $pending = $this->cache->get($key);
@@ -59,8 +60,8 @@ final readonly class RelayFollowUps
         }
     }
 
-    public static function key(string $scope, string $effectId): string
+    public static function key(string $scope, ?string $effectId): string
     {
-        return self::PREFIX.hash('sha256', $scope."\0".$effectId);
+        return self::PREFIX.hash('sha256', $scope."\0".($effectId ?? '*'));
     }
 }
