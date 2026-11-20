@@ -6,7 +6,7 @@
 ## Dove siamo
 
 - **Porta corrente:** Contratto → Alpha (invio diretto)
-- **Milestone corrente:** M0 in chiusura, M1–M3 in avvio
+- **Milestone corrente:** M0 chiuso (commit `2f25206`); ondata 1 in corso su M1–M3
 - **Prossimo passo concreto:** vedi "Ondata in corso"
 - **Piano:** `docs/PLAN.md` (v2 approvata il 2026-11-20)
 - **Repository remoto:** nessuno collegato. Il lavoro vive solo nel container finché non viene agganciato un repository GitHub (es. `padosoft/laravel-mobile-push`).
@@ -15,10 +15,10 @@
 
 | Milestone | Stato | Note |
 |---|---|---|
-| M0 Contratto e scheletro | in corso | Contratti `src/Core` scritti; restano `docs/contracts/*.md`, CI |
-| M1 Trasporto HTTP/2 + mock | da fare | |
-| M2 APNs | da fare | |
-| M3 FCM | da fare | |
+| M0 Contratto e scheletro | fatto (salvo `docs/contracts`, in W1-H) | Scheletro, dipendenze, contratti `src/Core`, AGENTS.md, CI |
+| M1 Trasporto HTTP/2 + mock | in corso (W1-A) | |
+| M2 APNs | in corso (W1-B auth, W1-C messaggi, W1-E classificatore) | Driver e Sender nell'ondata 2 |
+| M3 FCM | in corso (W1-B auth, W1-D messaggi, W1-E classificatore) | Driver nell'ondata 2 |
 | M4 Strato Laravel (profilo leggero) → 0.1 alpha | da fare | |
 | M5 Invio durevole → 0.5 beta | da fare | |
 | M6 Live Activities → RC1 | da fare | |
@@ -28,7 +28,21 @@
 
 ## Ondata in corso
 
-_Nessuna ancora lanciata._
+**Ondata 1** (lanciata 2026-11-20, otto subagenti in parallelo su cartelle disgiunte):
+
+| Id | Modello | Cartelle | Contenuto |
+|---|---|---|---|
+| W1-A | Opus | `src/Core/Transport/Curl`, `tests/Support/H2Mock`, `tests/Scenario/Transport` | Trasporto `curl_multi`, pool, server mock HTTP/2, indagine su REFUSED_STREAM/GOAWAY |
+| W1-B | Sonnet | `src/Core/Auth` (nuovi file), `src/Core/Apns/Auth`, `src/Core/Fcm/Auth` | Signer ES256/RS256, JWT APNs, scambio OAuth Google |
+| W1-C | Sonnet | `src/Core/Apns/Message`, `src/Core/Apns/LiveActivity`, `ApnsCompiler`, `src/Core/Message/Support` | Messaggi e compiler APNs, Live Activity, troncamento |
+| W1-D | Sonnet | `src/Core/Fcm/Message`, `FcmCompiler`, `tests/Fixtures/fcm` | Messaggi e compiler FCM, snapshot Discovery |
+| W1-E | Opus | `src/Core/Apns/Outcome`, `src/Core/Fcm/Outcome`, `src/Core/Retry` | Classificatori degli esiti e pianificatore dei retry |
+| W1-F | Sonnet | `src/Core/Guard` | Rate limiter, throttle gate, tre breaker |
+| W1-G | Sonnet | `src/Core/Policy`, `src/Core/Privacy` | Modalità, endpoint ufficiali, matrice di capacità, redazione, indice HMAC, cifratura |
+| W1-H | Haiku | `docs/contracts`, boilerplate repository | Documenti dei contratti |
+
+**Dopo l'ondata 1 (orchestratore):** integrare, `composer check`, commit locale, aggiornare questa tabella.
+**Ondata 2 prevista:** interfaccia `Driver`, `ApnsDriver`, `FcmDriver`, `Sender` (compila → guardia di modalità → trasporto → classifica → pianifica retry → report), client canali APNs, client iscrizioni topic FCM, scenari end-to-end sul server mock.
 
 ## Come verificare
 
@@ -52,3 +66,7 @@ composer check        # pint --test, phpstan max, pest
 ## Registro (append-only)
 
 - 2026-11-20 [M0] Piano v2 approvato; scheletro, dipendenze e contratti condivisi di `src/Core` creati dall'orchestratore.
+- 2026-11-20 [M0] chiuso: suite verde (7 test), commit locale 2f25206. Aggiunto `SendStatus::Failed` (noto non accettato, tentativi finiti) distinto da `Rejected`. Ondata 1 lanciata.
+- 2026-11-20 22:53 [W1-F] done: src/Core/Guard (RateLimiter, ThrottleGate, AuthBreaker, DestinationQualityBreaker, Guards facade, GuardStore + in-memory); 25 tests green; Laravel-cache GuardStore still to write.
+- 2026-11-20 22:55 [W1-G] done: Core/Policy (ModeResolver, SafeModeGuard, EndpointCatalog+Override, CapabilityMatrix) e Core/Privacy (KeyRing, TokenIndex, TokenCipher, TokenMasker, Redactor) con 60 test verdi, phpstan max pulito, Arch verde.
+- 2026-11-20 22:56 [W1-H] done: docs/contracts (outcomes, identity, ledger, classification, retry, modes, messages, README con le tre domande del gate) e boilerplate (CONTRIBUTING, SECURITY, CHANGELOG, template issue e PR). Discrepanze piano/codice annotate nei documenti e da confermare: Failed assente dal piano §4.1, VoIP assente dal §4.2, NotSent con risposta HTTP, isTerminal su OutcomeUnknown, SendReport a passata singola. Ledger, classificatore e retry restano solo piano (nessun codice in quelle cartelle).
