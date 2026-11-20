@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Padosoft\MobilePush\Tests\Scenario\Laravel\Devices;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Foundation\Testing\TestCase as FoundationTestCase;
+use Orchestra\Testbench\TestCase as FoundationTestCase;
 use Padosoft\MobilePush\Core\Identity\BindingRef;
 use Padosoft\MobilePush\Core\Identity\Destination\ApnsDeviceToken;
 use Padosoft\MobilePush\Core\Identity\Destination\FcmToken;
@@ -14,6 +14,7 @@ use Padosoft\MobilePush\Core\Identity\Provider;
 use Padosoft\MobilePush\Core\Privacy\KeyRing;
 use Padosoft\MobilePush\Core\Privacy\TokenCipher;
 use Padosoft\MobilePush\Core\Privacy\TokenIndex;
+use Padosoft\MobilePush\Laravel\Devices\DeviceRegistrar;
 use Padosoft\MobilePush\Laravel\Devices\DevicesModule;
 use Padosoft\MobilePush\Laravel\Devices\HasPushDevices;
 use Padosoft\MobilePush\Tests\Support\FakeClock;
@@ -42,7 +43,7 @@ final class DeviceWorld
     {
         $world = new self($test);
         $world->clock = new FakeClock('2026-11-20T10:00:00Z');
-        $app = $test->app;
+        $app = app();
         $app->instance(ClockInterface::class, $world->clock);
         $world->useKeys($keyVersions);
 
@@ -60,11 +61,11 @@ final class DeviceWorld
             $keys[$v] = random_bytes(32);
         }
         $ring = new KeyRing($keys);
-        $this->test->app->instance(TokenIndex::class, new TokenIndex($ring));
-        $this->test->app->instance(TokenCipher::class, new TokenCipher($ring));
+        app()->instance(TokenIndex::class, new TokenIndex($ring));
+        app()->instance(TokenCipher::class, new TokenCipher($ring));
         // The singletons capture the old ring: forget them.
-        foreach ([\Padosoft\MobilePush\Laravel\Devices\DeviceRegistrar::class] as $abstract) {
-            $this->test->app->forgetInstance($abstract);
+        foreach ([DeviceRegistrar::class] as $abstract) {
+            app()->forgetInstance($abstract);
         }
         $this->keys = $keys;
 

@@ -19,6 +19,7 @@ use Padosoft\MobilePush\Core\Policy\SafeModeDecision;
 use Padosoft\MobilePush\Core\Transport\ConnectionProfile;
 use Padosoft\MobilePush\Core\Transport\Exchange;
 use Padosoft\MobilePush\Core\Transport\Request;
+use Padosoft\MobilePush\Core\Transport\Response;
 use Padosoft\MobilePush\Core\Transport\Transport;
 use Padosoft\MobilePush\Core\Transport\TransportEvidence;
 use Padosoft\MobilePush\Core\Transport\TransportFailure;
@@ -243,7 +244,7 @@ final class TopicSubscriptionClient
     }
 
     /**
-     * @return array{\Padosoft\MobilePush\Core\Transport\Response}
+     * @return array{Response}
      */
     private function single(string $method, #[\SensitiveParameter] string $url, string $body, #[\SensitiveParameter] FcmToken|FcmFid $installation, bool $allowConflict = false, bool $gate = true): array
     {

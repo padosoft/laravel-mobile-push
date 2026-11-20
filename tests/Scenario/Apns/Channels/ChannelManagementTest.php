@@ -7,6 +7,8 @@ use Padosoft\MobilePush\Core\Apns\Channels\ChannelApiException;
 use Padosoft\MobilePush\Core\Apns\Channels\ChannelClient;
 use Padosoft\MobilePush\Core\Apns\Channels\ChannelOutcomeUnknownException;
 use Padosoft\MobilePush\Core\Apns\Channels\StoragePolicy;
+use Padosoft\MobilePush\Core\Exceptions\ConfigurationException;
+use Padosoft\MobilePush\Core\Exceptions\InvalidDestinationException;
 use Padosoft\MobilePush\Core\Identity\BindingRef;
 use Padosoft\MobilePush\Core\Identity\Environment;
 use Padosoft\MobilePush\Core\Identity\Provider;
@@ -259,7 +261,7 @@ it('refuses a malformed channel id before touching the network', function () {
 
     try {
         channelClient($transport)->delete("abc\r\nx-evil: 1");
-    } catch (Padosoft\MobilePush\Core\Exceptions\InvalidDestinationException) {
+    } catch (InvalidDestinationException) {
         expect($transport->requests())->toBe([]);
 
         return;
@@ -270,4 +272,4 @@ it('refuses a malformed channel id before touching the network', function () {
 
 it('rejects a non-APNs binding', function () {
     new ChannelClient(new FakeTransport, new ConnectionProfile('x'), new EndpointCatalog('production'), new BindingRef('s', 'n', Provider::Fcm, 'proj', Environment::Production));
-})->throws(Padosoft\MobilePush\Core\Exceptions\ConfigurationException::class);
+})->throws(ConfigurationException::class);
