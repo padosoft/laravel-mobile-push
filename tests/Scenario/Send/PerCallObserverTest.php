@@ -3,8 +3,6 @@
 declare(strict_types=1);
 
 use Padosoft\MobilePush\Core\Driver\SendItem;
-use Padosoft\MobilePush\Core\Driver\SendObserver;
-use Padosoft\MobilePush\Core\Driver\SendOptions;
 use Padosoft\MobilePush\Core\Message\PushMessage;
 use Padosoft\MobilePush\Core\Outcome\SendResult;
 use Padosoft\MobilePush\Core\Outcome\SendStatus;

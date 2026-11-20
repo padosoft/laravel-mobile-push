@@ -2,9 +2,14 @@
 
 declare(strict_types=1);
 
+use Padosoft\MobilePush\Core\Driver\DestinationGate;
+use Padosoft\MobilePush\Core\Driver\GateContext;
 use Padosoft\MobilePush\Core\Driver\SendOptions;
 use Padosoft\MobilePush\Core\Exceptions\ConfigurationException;
+use Padosoft\MobilePush\Core\Guard\TrafficClass;
 use Padosoft\MobilePush\Core\Policy\ExecutionMode;
+use Padosoft\MobilePush\Core\Retry\RetryPolicy;
+use Padosoft\MobilePush\Tests\Scenario\Send\RecordingObserver;
 
 it('resolves the execution mode from the configured mode and the application environment', function (string $configured, ?string $environment, ExecutionMode $expected) {
     expect((new SendOptions(applicationEnvironment: $environment, configuredMode: $configured))->effectiveMode)->toBe($expected);
@@ -30,19 +35,19 @@ it('rejects invalid options before the network', function (array $args) {
 ]);
 
 it('copies every other field when a with-helper changes one', function () {
-    $observer = new Padosoft\MobilePush\Tests\Scenario\Send\RecordingObserver;
-    $gate = new class implements Padosoft\MobilePush\Core\Driver\DestinationGate
+    $observer = new RecordingObserver;
+    $gate = new class implements DestinationGate
     {
-        public function check(Padosoft\MobilePush\Core\Driver\GateContext $context, array $items): array
+        public function check(GateContext $context, array $items): array
         {
             return [];
         }
     };
-    $policy = new Padosoft\MobilePush\Core\Retry\RetryPolicy(maxAttempts: 2);
+    $policy = new RetryPolicy(maxAttempts: 2);
     $at = new DateTimeImmutable('2026-11-20T12:00:00Z');
     $marker = fn ($d, $id) => 'm';
     $base = new SendOptions(
-        trafficClass: Padosoft\MobilePush\Core\Guard\TrafficClass::Bulk,
+        trafficClass: TrafficClass::Bulk,
         effectKey: 'k',
         applicationEnvironment: 'production',
         configuredMode: 'live',
@@ -63,7 +68,7 @@ it('copies every other field when a with-helper changes one', function () {
         'gates' => [$base->withGate($gate), 8, [$gate, $gate]],
         'effectKey' => [$base->withEffectKey(null), 2, null],
         'expiresAt' => [$base->withExpiresAt(null), 9, null],
-        'trafficClass' => [$base->withTrafficClass(Padosoft\MobilePush\Core\Guard\TrafficClass::Transactional), 0, Padosoft\MobilePush\Core\Guard\TrafficClass::Transactional],
+        'trafficClass' => [$base->withTrafficClass(TrafficClass::Transactional), 0, TrafficClass::Transactional],
         'validateOnly' => [$base->withValidateOnly(true), 1, true],
         'window' => [$base->withWindow(null), 10, null],
         'retryPolicy' => [$base->withRetryPolicy(null), 6, null],
@@ -81,9 +86,9 @@ it('copies every other field when a with-helper changes one', function () {
 });
 
 it('keeps an explicitly resolved mode through a copy', function () {
-    $o = (new SendOptions(mode: Padosoft\MobilePush\Core\Policy\ExecutionMode::Simulate, configuredMode: 'live', applicationEnvironment: 'production'))->withWindow(3);
+    $o = (new SendOptions(mode: ExecutionMode::Simulate, configuredMode: 'live', applicationEnvironment: 'production'))->withWindow(3);
 
-    expect($o->effectiveMode)->toBe(Padosoft\MobilePush\Core\Policy\ExecutionMode::Simulate);
+    expect($o->effectiveMode)->toBe(ExecutionMode::Simulate);
 });
 
 it('rejects a per-call observer that is not a SendObserver', function () {

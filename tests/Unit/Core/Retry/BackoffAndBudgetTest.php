@@ -122,3 +122,16 @@ it('parses Retry-After in both forms', function (?string $value, ?int $expected)
     ['Fri, 20 Nov 2026 10:01:00 GMT', 60], ['Fri, 20 Nov 2026 09:00:00 GMT', 0],
     ['-5', null], ['1.5', null], ['Fri, 32 Nov 2026 10:01:00 GMT', null], ['tomorrow', null],
 ]);
+
+it('carries the single-attempt flag through serialization and defaults to false for older stored budgets', function () {
+    $now = new DateTimeImmutable('2026-11-20T10:00:00Z');
+    $budget = RetryBudget::start(new RetryPolicy, $now, $now, true);
+    $stored = $budget->toArray();
+
+    expect($budget->isExpired($now))->toBeFalse()                      // its one attempt is still allowed
+        ->and($budget->withAttempt()->isExpired($now))->toBeTrue()     // and nothing after it
+        ->and(RetryBudget::fromArray($stored)->singleAttempt)->toBeTrue();
+
+    unset($stored['single_attempt']);
+    expect(RetryBudget::fromArray($stored)->singleAttempt)->toBeFalse();
+});
