@@ -13,7 +13,7 @@ use Padosoft\MobilePush\Core\Outcome\SendResult;
 use Padosoft\MobilePush\Core\Retry\RetryBudget;
 
 /** Keeps everything the sender reported, for assertions. */
-final class RecordingObserver implements SendObserver
+class RecordingObserver implements SendObserver
 {
     /** @var list<AttemptReport> */
     public array $attempts = [];

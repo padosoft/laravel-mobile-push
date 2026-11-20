@@ -67,8 +67,18 @@ final class FcmCompiler implements MessageCompiler
         if ($message instanceof PushMessage) {
             $useV2 = $message->fcmOverlay?->hasAndroidV2() === true;
             $tree = $this->fromPush($message, $useV2, $warnings);
-            if ($message->fcmOverlay !== null) {
-                $tree = self::merge($tree, $message->fcmOverlay->toArray());
+            $overlay = $message->fcmOverlay?->toArray();
+            if ($message->silent && ! array_key_exists('apns', $overlay ?? [])) {
+                // An FCM token does not reveal its platform. For an iOS app a data-only message needs these APNs
+                // settings to wake it (normal priority is the only one allowed); Android ignores the block. An
+                // explicit apns block in the FCM overlay wins and is left untouched.
+                $tree['apns'] = [
+                    'headers' => ['apns-priority' => '5', 'apns-push-type' => 'background'],
+                    'payload' => ['aps' => ['content-available' => 1]],
+                ];
+            }
+            if ($overlay !== null) {
+                $tree = self::merge($tree, $overlay);
             }
             $truncate = $message->truncate;
             $deepLink = $message->deepLink;

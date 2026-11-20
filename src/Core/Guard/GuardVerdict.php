@@ -22,6 +22,8 @@ final readonly class GuardVerdict
         public bool $authProbe = false,
         /** @var list<BreakerTransition> state changes that happened while checking (e.g. HalfOpened) */
         public array $transitions = [],
+        /** @var list<SourcedTransition> the same changes as $transitions, each labelled with its breaker */
+        public array $sourcedTransitions = [],
     ) {}
 
     public function skipped(): bool

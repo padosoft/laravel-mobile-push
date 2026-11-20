@@ -34,32 +34,35 @@ final class Guards
     public function before(string $bindingIdentity, string $credentialIdentity, string $accountKey, TrafficClass $class, int $n): GuardVerdict
     {
         $transitions = [];
+        $sourced = [];
 
         $check = $this->auth->check($credentialIdentity);
         if ($check->transition !== BreakerTransition::None) {
             $transitions[] = $check->transition;
+            $sourced[] = new SourcedTransition(GuardSource::Auth, $check->transition);
         }
         if (! $check->allowed) {
-            return new GuardVerdict(0, ReasonCode::CircuitOpen, $check->retryAt, $check->generation, false, $transitions);
+            return new GuardVerdict(0, ReasonCode::CircuitOpen, $check->retryAt, $check->generation, false, $transitions, $sourced);
         }
         $wanted = $check->probe ? min($n, 1) : $n;
 
         $until = $this->gate->pausedUntil($accountKey);
         if ($until !== null) {
-            return new GuardVerdict(0, ReasonCode::QuotaExceeded, $until, $check->generation, false, $transitions);
+            return new GuardVerdict(0, ReasonCode::QuotaExceeded, $until, $check->generation, false, $transitions, $sourced);
         }
 
         [$granted, $transition, $retryAt] = $this->quality->allow($bindingIdentity, $wanted, $class);
         if ($transition !== BreakerTransition::None) {
             $transitions[] = $transition;
+            $sourced[] = new SourcedTransition(GuardSource::DestinationQuality, $transition);
         }
         if ($granted === 0) {
-            return new GuardVerdict(0, ReasonCode::CircuitOpen, $retryAt, $check->generation, false, $transitions);
+            return new GuardVerdict(0, ReasonCode::CircuitOpen, $retryAt, $check->generation, false, $transitions, $sourced);
         }
 
         $permits = $this->limiter->acquire($accountKey, $granted, $class);
         if ($permits === 0) {
-            return new GuardVerdict(0, ReasonCode::QuotaExceeded, $this->limiter->availableAt($accountKey, 1, $class), $check->generation, false, $transitions);
+            return new GuardVerdict(0, ReasonCode::QuotaExceeded, $this->limiter->availableAt($accountKey, 1, $class), $check->generation, false, $transitions, $sourced);
         }
 
         $partial = $permits < $n;
@@ -71,6 +74,7 @@ final class Guards
             $check->generation,
             $check->probe,
             $transitions,
+            $sourced,
         );
     }
 

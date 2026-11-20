@@ -203,6 +203,12 @@ final class PushMessage implements Message
         return $this;
     }
 
+    /** True for `ttl(0)`: exactly one delivery attempt, never stored by the provider, never retried. */
+    public function isNowOrNever(): bool
+    {
+        return $this->expiresAt === null && $this->ttlSeconds === 0;
+    }
+
     public function silent(bool $silent = true): static
     {
         $this->silent = $silent;

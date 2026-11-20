@@ -88,6 +88,10 @@ final readonly class RetryPlanner
      */
     public function hasAttemptLeft(RetryBudget $budget, \DateTimeImmutable $now): bool
     {
+        if ($budget->singleAttempt) {
+            return $budget->attempts < 1;
+        }
+
         return $budget->attempts < $this->policy->maxAttempts && $now < $budget->deadline();
     }
 
@@ -130,6 +134,12 @@ final readonly class RetryPlanner
 
     private function retry(Decision $decision, RetryBudget $budget, \DateTimeImmutable $now): RetryPlan
     {
+        // Now or never: the one attempt is spent and the logical expiry has already passed. An unknown outcome stays
+        // OutcomeUnknown (giveUp() keeps that rule); anything retryable ends as Expired.
+        if ($budget->singleAttempt) {
+            return $this->giveUp($decision, $budget, ReasonCode::Expired);
+        }
+
         if ($budget->attempts >= $this->policy->maxAttempts) {
             return $this->giveUp($decision, $budget, ReasonCode::RetryBudgetExhausted);
         }

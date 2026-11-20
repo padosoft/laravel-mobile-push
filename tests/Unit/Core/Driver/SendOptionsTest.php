@@ -28,3 +28,64 @@ it('rejects invalid options before the network', function (array $args) {
     'zero window' => [['window' => 0]],
     'huge window' => [['window' => SendOptions::MAX_WINDOW + 1]],
 ]);
+
+it('copies every other field when a with-helper changes one', function () {
+    $observer = new Padosoft\MobilePush\Tests\Scenario\Send\RecordingObserver;
+    $gate = new class implements Padosoft\MobilePush\Core\Driver\DestinationGate
+    {
+        public function check(Padosoft\MobilePush\Core\Driver\GateContext $context, array $items): array
+        {
+            return [];
+        }
+    };
+    $policy = new Padosoft\MobilePush\Core\Retry\RetryPolicy(maxAttempts: 2);
+    $at = new DateTimeImmutable('2026-11-20T12:00:00Z');
+    $marker = fn ($d, $id) => 'm';
+    $base = new SendOptions(
+        trafficClass: Padosoft\MobilePush\Core\Guard\TrafficClass::Bulk,
+        effectKey: 'k',
+        applicationEnvironment: 'production',
+        configuredMode: 'live',
+        retryPolicy: $policy,
+        receiptMarker: $marker,
+        gates: [$gate],
+        expiresAt: $at,
+        window: 7,
+        observers: [$observer],
+    );
+
+    $snapshot = fn (SendOptions $o) => [
+        $o->trafficClass, $o->validateOnly, $o->effectKey, $o->applicationEnvironment, $o->configuredMode, $o->effectiveMode,
+        $o->retryPolicy, $o->receiptMarker !== null, $o->gates, $o->expiresAt, $o->window, $o->observers, $o->live,
+    ];
+    $changes = [
+        'observers' => [$base->withObserver($observer), 11, [$observer, $observer]],
+        'gates' => [$base->withGate($gate), 8, [$gate, $gate]],
+        'effectKey' => [$base->withEffectKey(null), 2, null],
+        'expiresAt' => [$base->withExpiresAt(null), 9, null],
+        'trafficClass' => [$base->withTrafficClass(Padosoft\MobilePush\Core\Guard\TrafficClass::Transactional), 0, Padosoft\MobilePush\Core\Guard\TrafficClass::Transactional],
+        'validateOnly' => [$base->withValidateOnly(true), 1, true],
+        'window' => [$base->withWindow(null), 10, null],
+        'retryPolicy' => [$base->withRetryPolicy(null), 6, null],
+        'receiptMarker' => [$base->withReceiptMarker(null), 7, false],
+    ];
+
+    $original = $snapshot($base);
+    foreach ($changes as $name => [$copy, $index, $expected]) {
+        $expectedSnapshot = $original;
+        $expectedSnapshot[$index] = $expected;
+        expect($snapshot($copy))->toEqual($expectedSnapshot, $name);
+    }
+    expect($snapshot($base))->toEqual($original)                  // the original is untouched
+        ->and($base->withEffectKey('x')->effectiveMode)->toBe($base->effectiveMode);
+});
+
+it('keeps an explicitly resolved mode through a copy', function () {
+    $o = (new SendOptions(mode: Padosoft\MobilePush\Core\Policy\ExecutionMode::Simulate, configuredMode: 'live', applicationEnvironment: 'production'))->withWindow(3);
+
+    expect($o->effectiveMode)->toBe(Padosoft\MobilePush\Core\Policy\ExecutionMode::Simulate);
+});
+
+it('rejects a per-call observer that is not a SendObserver', function () {
+    expect(fn () => new SendOptions(observers: [new stdClass]))->toThrow(ConfigurationException::class);
+});
