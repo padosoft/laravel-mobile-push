@@ -1,0 +1,15 @@
+{
+  "rule": "bytes = sum over notification, data, android.data, android_v2.data and the title/body/image keys of android.notification and android_v2.remote_notification.notification of strlen(key) + strlen(value) in UTF-8 bytes, for string values only. No JSON punctuation, no target, no REST envelope. Limits: 4096 bytes, 2048 for topic and condition. UNVERIFIED against Google: the Discovery document (rev 20261112) states no size rule.",
+  "limits": {"default": 4096, "topic": 2048, "condition": 2048},
+  "cases": [
+    {"name": "notification title and body", "message": {"notification": {"title": "Hi", "body": "there"}}, "bytes": 16},
+    {"name": "data accented value (2 bytes)", "message": {"data": {"k": "é"}}, "bytes": 3},
+    {"name": "data emoji value (4 bytes)", "message": {"data": {"a": "👍"}}, "bytes": 5},
+    {"name": "composed family emoji (18 bytes)", "message": {"data": {"k": "👨‍👩‍👧"}}, "bytes": 19},
+    {"name": "envelope fields are not counted", "message": {"token": "abcdef", "android": {"priority": "HIGH", "ttl": "60s", "collapse_key": "ck"}, "fcm_options": {"analytics_label": "lbl"}}, "bytes": 0},
+    {"name": "android.data and android notification text", "message": {"android": {"data": {"d": "12345"}, "notification": {"title": "override", "channel_id": "not-counted", "notification_count": 9}}}, "bytes": 19},
+    {"name": "android_v2 data and remote notification text", "message": {"android_v2": {"data": {"d": "1"}, "remote_notification": {"notification": {"body": "xy", "image": "u", "sound": "not-counted"}}}}, "bytes": 14},
+    {"name": "apns payload is not counted", "message": {"apns": {"payload": {"aps": {"alert": "a very long alert that Google counts on its own"}}, "headers": {"apns-priority": "10"}}}, "bytes": 0},
+    {"name": "list values are not counted", "message": {"android": {"notification": {"body_loc_args": ["a", "b"], "title": "t"}}}, "bytes": 6}
+  ]
+}

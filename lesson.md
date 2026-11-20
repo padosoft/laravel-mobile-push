@@ -62,3 +62,13 @@ Modello di voce:
   - `SendStatus::isTerminal()` restituisce true anche per `OutcomeUnknown`, mentre il piano consente il retry degli esiti ignoti sostituibili.
   - `SendReport` è a passata singola: `counts()` consuma il cursore e una seconda iterazione restituisce solo i risultati trattenuti. Verificato con uno script PHP scratch (5 risultati, `retain = 2`: `counts()` poi `results()` restituisce 2 elementi).
 - **Regola:** nei documenti di contratto una discrepanza si scrive esplicitamente, senza scegliere in silenzio una delle due fonti. Chi consuma un `SendReport` usa `each()` o `results()` prima di chiedere i conteggi, oppure chiede solo i conteggi.
+
+## 2026-11-20 — var_export ignora __debugInfo
+- **Contesto:** W1-B, test «nessun segreto in print_r/var_export».
+- **Fatto:** `print_r`/`var_dump` usano `__debugInfo`, `var_export` no: esporta le proprietà (anche private, ricorsivamente). Un `AuthToken` o una PEM tenuti in una proprietà escono. `OpenSSLAsymmetricKey`, `Closure` e `SplObjectStorage` si esportano vuoti (ma `print_r` di SplObjectStorage mostra il contenuto).
+- **Regola:** tenere le chiavi come oggetto `PrivateKey` (mai stringa PEM) e i token in-process in `TokenSlot` (SplObjectStorage); i test double come `FakeTransport` registrano comunque i body.
+
+## 2026-11-20 — PHPStan e openssl_error_string
+- **Contesto:** W1-B.
+- **Fatto:** un `while (openssl_error_string() !== false)` iniziale viene segnalato «always false»; `is_string(...)` nel ciclo dopo la chiamata a openssl funziona.
+- **Regola:** svuotare la coda errori OpenSSL dopo le chiamate, mai esporne il testo nei messaggi.
