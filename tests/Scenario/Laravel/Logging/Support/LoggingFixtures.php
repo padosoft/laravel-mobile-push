@@ -70,13 +70,12 @@ final class LoggingFixtures
      *
      * @param  array<string, mixed>  $config  extra mobile-push.log.* overrides, dotted keys relative to mobile-push.log
      */
-    public static function configure(string|array $sinks, array $config = []): \Monolog\Handler\TestHandler
+    public static function configure(string|array $sinks, array $config = []): void
     {
-        $handler = new \Monolog\Handler\TestHandler;
-        app()->instance(\Monolog\Handler\TestHandler::class, $handler);
+        CapturingHandler::$records = [];
 
         config([
-            'logging.channels.mp_test' => ['driver' => 'monolog', 'handler' => \Monolog\Handler\TestHandler::class, 'level' => 'debug'],
+            'logging.channels.mp_test' => ['driver' => 'monolog', 'handler' => CapturingHandler::class, 'level' => 'debug'],
             'mobile-push.log.sinks' => $sinks,
             'mobile-push.log.channel' => 'mp_test',
             'mobile-push.log.database.mode' => 'all',
@@ -86,8 +85,6 @@ final class LoggingFixtures
         }
         app()->forgetInstance(\Padosoft\MobilePush\Laravel\Logging\SinkManager::class);
         app()->forgetInstance(\Padosoft\MobilePush\Laravel\Logging\LogRecordFactory::class);
-
-        return $handler;
     }
 
     public static function manager(): \Padosoft\MobilePush\Laravel\Logging\SinkManager

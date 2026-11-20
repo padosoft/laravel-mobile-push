@@ -10,6 +10,7 @@ use Padosoft\MobilePush\Laravel\Logging\PushLog;
 use Padosoft\MobilePush\Laravel\Logging\SinkManager;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Logging\Support\LoggingFixtures as F;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Logging\Support\RecordingTelemetry;
+use Padosoft\MobilePush\Tests\Scenario\Laravel\Logging\Support\CapturingHandler;
 use Psr\Log\LogLevel;
 
 afterEach(fn () => SinkManager::forgetExtensions());
@@ -20,14 +21,14 @@ it('enables exactly the sinks named in MOBILE_PUSH_LOG_SINKS and each one receiv
     $telemetry = new RecordingTelemetry;
     app()->instance(OpenTelemetry\API\Trace\TracerProviderInterface::class, $telemetry);
     app()->instance(OpenTelemetry\API\Metrics\MeterProviderInterface::class, $telemetry);
-    $handler = F::configure($value);
+    F::configure($value);
 
     $manager = F::manager();
     $manager->recordResult(F::binding(), F::result(F::token(1)), ['push_type' => 'alert']);
     $manager->flush();
 
     expect($manager->enabled())->toBe($expected)
-        ->and(count($handler->getRecords()))->toBe(in_array('log', $expected, true) ? 1 : 0)
+        ->and(count(CapturingHandler::$records))->toBe(in_array('log', $expected, true) ? 1 : 0)
         ->and(PushLog::query()->count())->toBe(in_array('database', $expected, true) ? 1 : 0)
         ->and(count($telemetry->spans))->toBe(in_array('otel', $expected, true) ? 1 : 0);
 
@@ -47,7 +48,7 @@ it('enables exactly the sinks named in MOBILE_PUSH_LOG_SINKS and each one receiv
 ]);
 
 it('writes a stable message with the status mapped to a configurable level', function () {
-    $handler = F::configure('log', ['levels' => ['rejected' => 'error']]);
+    F::configure('log', ['levels' => ['rejected' => 'error']]);
 
     $manager = F::manager();
     $manager->recordResult(F::binding(), F::result(F::token(1)));
@@ -55,7 +56,7 @@ it('writes a stable message with the status mapped to a configurable level', fun
     $manager->recordResult(F::binding(), F::result(F::token(3), SendStatus::OutcomeUnknown));
     $manager->flush();
 
-    $records = $handler->getRecords();
+    $records = CapturingHandler::$records;
     expect(array_map(fn ($r) => [$r->message, strtolower($r->level->getName())], $records))->toBe([
         ['mobile-push.send', LogLevel::DEBUG],
         ['mobile-push.send', LogLevel::ERROR],
