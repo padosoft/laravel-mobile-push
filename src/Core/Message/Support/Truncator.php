@@ -76,14 +76,35 @@ final class Truncator
         };
     }
 
-    /** @return list<string> */
+    /**
+     * PCRE2 10.42's `\X` glues consecutive emoji ("👍👍" and "👍🏽👍🏿" come back as one cluster), which would make
+     * truncation drop whole runs of emoji at once. A cluster is therefore re-split before every pictographic
+     * character that does not follow a zero-width joiner (UAX #29 rule GB11), which matches ICU.
+     *
+     * @return list<string>
+     */
     private static function pcreGraphemes(string $text): array
     {
         if (preg_match_all('/\X/u', $text, $matches) === false) {
             return [];
         }
 
-        return $matches[0];
+        $result = [];
+        foreach ($matches[0] as $cluster) {
+            $parts = strlen($cluster) > 4
+                ? preg_split('/(?<!\x{200D})(?=\p{Extended_Pictographic})/u', $cluster, -1, PREG_SPLIT_NO_EMPTY)
+                : false;
+            if ($parts === false) {
+                $result[] = $cluster;
+
+                continue;
+            }
+            foreach ($parts as $part) {
+                $result[] = $part;
+            }
+        }
+
+        return $result;
     }
 
     /** @return list<string> */
