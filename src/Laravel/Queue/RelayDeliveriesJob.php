@@ -51,12 +51,12 @@ final class RelayDeliveriesJob implements ShouldQueue
     /** @return list<string> */
     public function tags(): array
     {
-        return array_values(array_filter([
-            'mobile-push',
-            'relay',
-            'scope:'.$this->scope,
-            $this->effectId === null ? null : 'effect:'.$this->effectId,
-        ]));
+        $tags = ['mobile-push', 'relay', 'scope:'.$this->scope];
+        if ($this->effectId !== null) {
+            $tags[] = 'effect:'.$this->effectId;
+        }
+
+        return $tags;
     }
 
     public function displayName(): string

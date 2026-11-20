@@ -8,7 +8,6 @@ use Illuminate\Database\Eloquent\Model;
 use Padosoft\MobilePush\Core\Apns\Channels\StoragePolicy;
 use Padosoft\MobilePush\Core\Apns\LiveActivity\LiveActivityMessage;
 use Padosoft\MobilePush\Core\Apns\LiveActivity\LiveActivityType;
-use Padosoft\MobilePush\Core\Apns\Priority;
 use Padosoft\MobilePush\Core\Exceptions\ConfigurationException;
 use Padosoft\MobilePush\Core\Identity\BindingRef;
 use Padosoft\MobilePush\Core\Identity\Destination;
@@ -122,7 +121,7 @@ final class ActivityManager
     {
         $broadcast = $row instanceof BroadcastChannel;
         $store = $broadcast ? $this->channels : $this->activities;
-        $fresh = $store->find((string) $row->getKey());
+        $fresh = $store->find($row->id);
 
         if ($fresh === null || $fresh->pending_seq === null || $fresh->pending_payload === null) {
             return $this->local(TransitionOutcome::Skipped, SendStatus::Skipped, ReasonCode::None, 'Nothing is pending.', $fresh, $broadcast);
@@ -141,8 +140,8 @@ final class ActivityManager
         $command = new TransitionCommand($payload->event, $fresh->pending_seq, $payload->priority, fromPending: true);
 
         return $broadcast
-            ? $this->execute($this->channels, (string) $fresh->getKey(), $command, $payload, true)
-            : $this->execute($this->activities, (string) $fresh->getKey(), $command, $payload, false);
+            ? $this->execute($this->channels, $fresh->id, $command, $payload, true)
+            : $this->execute($this->activities, $fresh->id, $command, $payload, false);
     }
 
     /**
@@ -155,13 +154,11 @@ final class ActivityManager
         $now = $this->rows->second();
         $out = [];
 
-        foreach ([PushActivity::blank(), BroadcastChannel::blank()] as $model) {
-            $due = $model->newQuery()->whereNotNull('pending_seq')->where('pending_due_at', '<=', $now)->orderBy('pending_due_at')->limit($limit)->get();
-            foreach ($due as $row) {
-                if ($row instanceof PushActivity || $row instanceof BroadcastChannel) {
-                    $out[] = $this->flush($row);
-                }
-            }
+        foreach (PushActivity::blank()->newQuery()->whereNotNull('pending_seq')->where('pending_due_at', '<=', $now)->orderBy('pending_due_at')->limit($limit)->get() as $row) {
+            $out[] = $this->flush($row);
+        }
+        foreach (BroadcastChannel::blank()->newQuery()->whereNotNull('pending_seq')->where('pending_due_at', '<=', $now)->orderBy('pending_due_at')->limit($limit)->get() as $row) {
+            $out[] = $this->flush($row);
         }
 
         return $out;
@@ -179,12 +176,12 @@ final class ActivityManager
         if ($row instanceof BroadcastChannel) {
             [$seq, $fresh] = $this->channels->nextSeq($row);
 
-            return new ActivityTicket(ActivityTicket::TARGET_CHANNEL, (string) $fresh->getKey(), $seq, $fresh->version, $payload);
+            return new ActivityTicket(ActivityTicket::TARGET_CHANNEL, $fresh->id, $seq, $fresh->version, $payload);
         }
 
         [$seq, $fresh] = $this->activities->nextSeq($row);
 
-        return new ActivityTicket(ActivityTicket::TARGET_ACTIVITY, (string) $fresh->getKey(), $seq, $fresh->version, $payload);
+        return new ActivityTicket(ActivityTicket::TARGET_ACTIVITY, $fresh->id, $seq, $fresh->version, $payload);
     }
 
     /** @internal used by PendingStart */
@@ -381,11 +378,5 @@ final class ActivityManager
             UnknownOutcomeRetry::Never,
             $policy->inlineThresholdMs,
         );
-    }
-
-    /** @internal */
-    public static function priorityOf(bool $high): Priority
-    {
-        return $high ? Priority::High : Priority::Normal;
     }
 }

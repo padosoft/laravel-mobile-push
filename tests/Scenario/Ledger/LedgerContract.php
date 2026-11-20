@@ -9,6 +9,7 @@ use Padosoft\MobilePush\Core\Ledger\ClientReceiptStore;
 use Padosoft\MobilePush\Core\Ledger\DeliveryState;
 use Padosoft\MobilePush\Core\Ledger\EffectIntent;
 use Padosoft\MobilePush\Core\Ledger\EffectOrigin;
+use Padosoft\MobilePush\Core\Ledger\MessageId;
 use Padosoft\MobilePush\Core\Ledger\RecordedDestination;
 use Padosoft\MobilePush\Core\Ledger\Recording;
 use Padosoft\MobilePush\Core\Outcome\Reason;
@@ -406,14 +407,13 @@ function ledgerContract(Closure $make): void
 function clientReceiptLedgerContract(Closure $make): void
 {
     $store = static fn (H $h): ClientReceiptStore => $h->ledger instanceof ClientReceiptStore ? $h->ledger : throw new LogicException('not a ClientReceiptStore');
-    $messageId = static fn (int $n): string => sprintf('00000000-0000-4000-8000-%012d', $n);
     // Accept every pending delivery of the scope, tagging each with a sender message id (and the marker flag).
-    $acceptWithIds = static function (H $h, string $scope, bool $marker = true) use ($messageId): array {
+    $acceptWithIds = static function (H $h, string $scope, bool $marker = true): array {
         $ids = [];
         foreach ($h->ledger->claimDue($scope, 'w', 100) as $i => $claimed) {
             $h->ledger->markAttemptStarted($claimed->lease);
             $accepted = $h->accepted($claimed);
-            $id = $messageId($i + 1);
+            $id = (string) $claimed->providerMessageId();   // assigned at insert time
             $result = new SendResult($accepted->destination, SendStatus::Accepted, $accepted->reason, 1, 'prov-'.$i, 200, deliveryId: $claimed->id(),
                 meta: ['message_id' => $id] + ($marker ? ['receipt_marker' => '1'] : []));
             $h->ledger->record($claimed->lease, $result, $h->budgetAfterOneAttempt());
@@ -433,6 +433,105 @@ function clientReceiptLedgerContract(Closure $make): void
         expect($store($h)->deliveryByMessageId('tenant-a', $messageId)?->id)->toBe($deliveryId)
             ->and($store($h)->deliveryByMessageId('tenant-b', $messageId))->toBeNull()
             ->and($store($h)->deliveryByMessageId('tenant-a', '99999999-9999-4999-8999-999999999999'))->toBeNull();
+    });
+
+    it('receipts: every delivery gets a distinct random UUIDv4 message id the moment its row is inserted', function () use ($make, $store): void {
+        /** @var H $h */
+        $h = $make();
+        $effect = $h->ledger->recordIntent(H::intent(H::alert()), [H::token(1), H::token(2), H::token(3)])->effect;
+
+        $ids = array_map(static fn (array $row): ?string => is_string($row['message_id'] ?? null) ? $row['message_id'] : null, $h->rows()['deliveries']);
+
+        expect($ids)->toHaveCount(3)
+            ->and(count(array_unique($ids)))->toBe(3);
+        foreach ($ids as $id) {
+            expect(MessageId::isValid((string) $id))->toBeTrue()
+                ->and($id)->toBe(strtolower((string) $id));
+        }
+        foreach ($h->rows()['deliveries'] as $row) {
+            expect($store($h)->deliveryByMessageId('default', (string) $row['message_id'])?->id)->toBe($row['id'])
+                ->and($store($h)->deliveryByMessageId('default', (string) $row['message_id'])?->messageId)->toBe($row['message_id']);
+        }
+        expect($effect->id)->not->toBe('');
+    });
+
+    it('receipts: the message id is stable across claim, reclaim, defer and record, and a re-submitted intent keeps it', function () use ($make): void {
+        /** @var H $h */
+        $h = $make();
+        $h->ledger->recordIntent(H::intent(H::alert()), [H::token(1)]);
+        $assigned = (string) $h->rows()['deliveries'][0]['message_id'];
+
+        $first = $h->ledger->claimDue('default', 'a', 10)[0];
+        expect($first->providerMessageId())->toBe($assigned);
+
+        $h->expireLeases();   // lost before sending
+        $second = $h->ledger->claimDue('default', 'b', 10)[0];
+        expect($second->providerMessageId())->toBe($assigned);
+
+        $h->ledger->markAttemptStarted($second->lease);
+        $h->ledger->record($second->lease, $h->deferred($second, 30), $h->budgetAfterOneAttempt());
+        expect($h->ledger->delivery('default', $second->id())?->messageId)->toBe($assigned);
+
+        $h->clock->advance(31);
+        $third = $h->ledger->claimDue('default', 'c', 10)[0];
+        expect($third->providerMessageId())->toBe($assigned);
+
+        // The re-submission (same key, same payload, one more destination) adds a row and touches no existing id.
+        $h->ledger->recordIntent(H::intent(H::alert()), [H::token(1), H::token(2)]);
+        $h->ledger->markAttemptStarted($third->lease);
+        $h->ledger->record($third->lease, $h->accepted($third, 'provider-own-id'), $h->budgetAfterOneAttempt());
+        $row = $h->ledger->delivery('default', $third->id());
+
+        expect($row?->messageId)->toBe($assigned)
+            ->and($row?->providerMessageId)->toBe('provider-own-id')
+            ->and($h->rows()['deliveries'])->toHaveCount(2)
+            ->and(array_column($h->rows()['deliveries'], 'message_id'))->toContain($assigned);
+    });
+
+    it('receipts: a result carrying another sender id never replaces the assigned message id', function () use ($make, $store): void {
+        /** @var H $h */
+        $h = $make();
+        $h->ledger->recordIntent(H::intent(H::alert()), [H::token(1)]);
+        $assigned = (string) $h->rows()['deliveries'][0]['message_id'];
+        $claimed = $h->ledger->claimDue('default', 'w', 1)[0];
+        $h->ledger->markAttemptStarted($claimed->lease);
+        $accepted = $h->accepted($claimed);
+        $other = '11111111-1111-4111-8111-111111111111';
+        $h->ledger->record($claimed->lease, new SendResult($accepted->destination, SendStatus::Accepted, $accepted->reason, 1, 'p', 200, deliveryId: $claimed->id(), meta: ['message_id' => $other]), $h->budgetAfterOneAttempt());
+
+        expect($h->ledger->delivery('default', $claimed->id())?->messageId)->toBe($assigned)
+            ->and($store($h)->deliveryByMessageId('default', $assigned)?->id)->toBe($claimed->id())
+            ->and($store($h)->deliveryByMessageId('default', $other))->toBeNull();
+    });
+
+    it('receipts: a never-attempted delivery and one that ended unknown by lease expiry are found by their message id, scoped', function () use ($make, $store): void {
+        /** @var H $h */
+        $h = $make();
+        $h->ledger->recordIntent(H::intent(H::alert(), 'pending', 'tenant-a'), [H::token(1)]);
+        $h->ledger->recordIntent(H::intent(H::alert('second'), 'lost', 'tenant-a'), [H::token(2)]);
+        $byKey = [];
+        foreach ($h->rows()['deliveries'] as $row) {
+            $byKey[(string) $row['logical_key']] = (string) $row['message_id'];
+        }
+        expect($byKey)->toHaveCount(2);
+
+        // Claim only the second effect's delivery, start it, never record it: the lease expires.
+        $effects = $h->rows()['effects'];
+        $lostEffect = (string) array_values(array_filter($effects, static fn (array $e): bool => $e['effect_key'] === 'lost'))[0]['id'];
+        $claimed = $h->ledger->claimDue('tenant-a', 'w', 10, $lostEffect)[0];
+        $h->ledger->markAttemptStarted($claimed->lease);
+        $h->expireLeases();
+        $h->ledger->reclaimExpiredLeases('tenant-a');
+
+        $unknown = $h->ledger->delivery('tenant-a', $claimed->id());
+        expect($unknown?->state)->toBe(DeliveryState::OutcomeUnknown)
+            ->and($unknown?->providerMessageId)->toBeNull();
+
+        foreach ($h->rows()['deliveries'] as $row) {
+            $found = $store($h)->deliveryByMessageId('tenant-a', (string) $row['message_id']);
+            expect($found?->id)->toBe($row['id'])
+                ->and($store($h)->deliveryByMessageId('tenant-b', (string) $row['message_id']))->toBeNull();
+        }
     });
 
     it('receipts: first write wins per event, out of order is fine, the timeline of the row is untouched', function () use ($make, $store, $acceptWithIds): void {

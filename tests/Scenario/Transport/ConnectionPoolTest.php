@@ -123,7 +123,11 @@ it('cleans up when the consumer stops after the first exchange, and the pool kee
     $profile = Batch::profile($server, 'early-exit', ['window' => 20]);
     // warm the pool: HTTP/2 is known to be negotiated, so the full window is used from the first request
     Batch::collect($transport->send(Batch::requests($server->baseUrl().'/warmup', 1), $profile));
-    $server->rules(['path' => '^/r/(?!0$)', 'action' => 'respond', 'delayMs' => 200]);
+    // The streams that will be cancelled must still be unanswered when the RST_STREAM finally reaches the server.
+    // libcurl queues that frame and writes it with the connection's next egress (docs/transport.md, "Cancelled
+    // streams"), i.e. with the second send() below. The server does not count a reset of a stream it already answered, so
+    // the delay must outlast any scheduling hiccup on a loaded machine; the stream is reset long before it is answered.
+    $server->rules(['path' => '^/r/(?!0$)', 'action' => 'respond', 'delayMs' => 30_000]);
 
     foreach ($transport->send(Batch::requests($server->baseUrl(), 1_000), $profile) as $id => $exchange) {
         expect($exchange->response?->status)->toBe(200);
@@ -134,7 +138,8 @@ it('cleans up when the consumer stops after the first exchange, and the pool kee
 
     // the in-flight streams were cancelled; the connection survives and a new send() reuses it
     $byId = Batch::collect($transport->send(Batch::requests($server->baseUrl(), 30), $profile));
-    $stats = $server->stats();
+    // The server counts a reset when it processes the frame, a moment after the second batch was answered.
+    $stats = $server->waitFor(fn (array $s): bool => $s['clientResets'] >= 1);
 
     expect($byId)->toHaveCount(30)
         ->and(array_filter($byId, fn (array $e): bool => $e[0]->response?->status === 200))->toHaveCount(30)

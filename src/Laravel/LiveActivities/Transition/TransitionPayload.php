@@ -36,13 +36,21 @@ final readonly class TransitionPayload
         return new self($this->event, $this->state, $priority, $this->staleAt, $this->dismissAt, $this->relevanceScore, $this->alert, $this->sound);
     }
 
+    /** @return array<string, mixed>|null */
     public static function alertArray(?Alert $alert): ?array
     {
         if ($alert === null || $alert->isEmpty()) {
             return null;
         }
 
-        return array_filter(get_object_vars($alert), static fn (mixed $value): bool => $value !== null);
+        $fields = [
+            'title' => $alert->title, 'subtitle' => $alert->subtitle, 'body' => $alert->body, 'launchImage' => $alert->launchImage,
+            'titleLocKey' => $alert->titleLocKey, 'titleLocArgs' => $alert->titleLocArgs,
+            'subtitleLocKey' => $alert->subtitleLocKey, 'subtitleLocArgs' => $alert->subtitleLocArgs,
+            'locKey' => $alert->locKey, 'locArgs' => $alert->locArgs,
+        ];
+
+        return array_filter($fields, static fn (mixed $value): bool => $value !== null);
     }
 
     /** The message for this transition; `$noStorageChannel` forces apns-expiration 0 on a broadcast. */
@@ -61,9 +69,7 @@ final readonly class TransitionPayload
             $message->dismissAt((new \DateTimeImmutable)->setTimestamp($this->dismissAt));
         }
         if ($this->alert !== null) {
-            /** @var array<string, mixed> $arguments */
-            $arguments = $this->alert;
-            $message->alert(new Alert(...$arguments));
+            $message->alert(self::alertFrom($this->alert));
 
             if ($this->sound !== null) {
                 $message->sound($this->sound);
@@ -113,6 +119,26 @@ final readonly class TransitionPayload
             is_int($relevance) || is_float($relevance) ? (float) $relevance : null,
             $alert,
             is_string($data['sound'] ?? null) ? $data['sound'] : null,
+        );
+    }
+
+    /** @param  array<string, mixed>  $fields */
+    private static function alertFrom(array $fields): Alert
+    {
+        $string = static fn (string $name): ?string => is_string($fields[$name] ?? null) ? $fields[$name] : null;
+        $list = static function (string $name) use ($fields): ?array {
+            $value = $fields[$name] ?? null;
+            if (! is_array($value)) {
+                return null;
+            }
+
+            return array_values(array_map(static fn (mixed $v): string => is_scalar($v) ? (string) $v : '', $value));
+        };
+
+        return new Alert(
+            $string('title'), $string('subtitle'), $string('body'), $string('launchImage'),
+            $string('titleLocKey'), $list('titleLocArgs'), $string('subtitleLocKey'), $list('subtitleLocArgs'),
+            $string('locKey'), $list('locArgs'),
         );
     }
 

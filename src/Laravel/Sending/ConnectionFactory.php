@@ -385,7 +385,13 @@ final readonly class ConnectionFactory
         if ($source !== null && ! is_array($source)) {
             throw $c->error($key, "must be a secret source: ['path' => ..., 'inline' => ..., 'base64' => ... or 'resolver' => class, 'reference' => ...]");
         }
-        $source = array_filter($source ?? [], static fn (mixed $v): bool => $v !== null && $v !== '');
+        $given = [];
+        foreach ($source ?? [] as $name => $value) {
+            if ($value !== null && $value !== '') {
+                $given[(string) $name] = $value;
+            }
+        }
+        $source = $given;
 
         if ($source === []) {
             if ($required) {
@@ -411,6 +417,7 @@ final readonly class ConnectionFactory
         if (is_string($raw)) {
             return $raw;
         }
+
         return $this->optionalSecret($c, $key);
     }
 

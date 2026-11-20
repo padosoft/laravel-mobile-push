@@ -6,13 +6,16 @@ namespace Padosoft\MobilePush\Core\Receipts;
 
 /**
  * The reversible mapping between a ledger delivery id (26-char Crockford ULID) and a canonical UUID, so the sender
- * can use the delivery id as its message id (`SendItem::$providerMessageId`) and the marker then names the delivery
+ * could use the delivery id as its message id (`SendItem::$providerMessageId`) and the marker then names the delivery
  * itself.
  *
  * Why it matters: a delivery whose outcome is unknown never gets its result recorded (that is what "unknown" means),
  * so nothing would link its marker to the row if the link were written at record time. With this mapping the link
  * exists before the request leaves and needs no secret lookup table. The UUID carries no version nibble (all 128 bits
  * are the id); it is a plain 8-4-4-4-12 lowercase hex string.
+ *
+ * Legacy: the ledger now assigns each delivery a random UUIDv4 `message_id` at insert time (Ledger\MessageId) and the
+ * receipts lookup goes through it first. This mapping stays only as a fallback for markers issued before that.
  */
 final class DeliveryReference
 {

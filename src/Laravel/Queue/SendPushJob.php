@@ -181,5 +181,4 @@ final class SendPushJob implements ShouldBeEncrypted, ShouldQueue
             'continuation' => $this->continuation,
         ];
     }
-
 }

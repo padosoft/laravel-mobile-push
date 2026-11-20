@@ -6,6 +6,7 @@ use Padosoft\MobilePush\Core\Ledger\ClientEvent;
 use Padosoft\MobilePush\Core\Ledger\ClientEventRecording;
 use Padosoft\MobilePush\Core\Ledger\ClientReceiptStore;
 use Padosoft\MobilePush\Core\Ledger\DeliveryState;
+use Padosoft\MobilePush\Core\Ledger\MessageId;
 use Padosoft\MobilePush\Core\Outcome\SendResult;
 use Padosoft\MobilePush\Core\Outcome\SendStatus;
 use Padosoft\MobilePush\Core\Privacy\KeyRing;
@@ -24,12 +25,11 @@ use Padosoft\MobilePush\Tests\Scenario\Ledger\LedgerHarness as H;
 function clientReports(H $h, ReceiptMarker $marker, string $token, ClientEvent $event, ?DateTimeImmutable $at = null): ?ClientEventRecording
 {
     $verified = $marker->verify($token, $h->clock->now());
-    $deliveryId = $verified === null ? null : DeliveryReference::deliveryIdFor($verified->deliveryReference);
-    $delivery = $deliveryId === null ? null : $h->ledger->delivery($verified->scope, $deliveryId);
+    assert($h->ledger instanceof ClientReceiptStore);
+    $delivery = $verified === null ? null : $h->ledger->deliveryByMessageId($verified->scope, $verified->deliveryReference);
     if ($delivery === null) {
         return null;
     }
-    assert($h->ledger instanceof ClientReceiptStore);
 
     return $h->ledger->recordClientEvent($delivery->scope, $delivery->id, $event, ClientTimestamp::clamp($at, $h->clock->now(), $delivery->createdAt));
 }
@@ -69,7 +69,7 @@ it('a story: accepted, reported, funnel with denominator; an unknown outcome con
     $markers = [];
 
     foreach ($claims as $i => $claimed) {
-        $markerId = DeliveryReference::messageIdFor($claimed->id()) ?? '';
+        $markerId = (string) $claimed->providerMessageId();
         $markers[$i] = $marker->issue('default', $markerId, $h->clock->now()->modify('+7 days'));
         $h->ledger->markAttemptStarted($claimed->lease);
         if ($i < 2) {
@@ -109,8 +109,35 @@ it('a tenant A marker can never touch tenant B: the scope inside the marker is t
     $h->ledger->markAttemptStarted($theirs->lease);
     $h->ledger->record($theirs->lease, $h->accepted($theirs), $h->budgetAfterOneAttempt());
 
-    $forged = $marker->issue('tenant-a', DeliveryReference::messageIdFor($theirs->id()) ?? '', $h->clock->now()->modify('+1 day'));
+    $forged = $marker->issue('tenant-a', (string) $theirs->providerMessageId(), $h->clock->now()->modify('+1 day'));
 
     expect(clientReports($h, $marker, $forged, ClientEvent::Received))->toBeNull()
         ->and($h->ledger->delivery('tenant-b', $theirs->id())?->clientReceivedAt)->toBeNull();
+});
+
+it('the worker died right after APNs accepted: never recorded, unknown by lease expiry, and the phone still reaches the row through the marker', function (): void {
+    $h = H::inMemory();
+    $marker = new ReceiptMarker(new KeyRing([1 => random_bytes(32)]));
+    $h->ledger->recordIntent(H::intent(H::alert()), [H::token(1)]);
+    $claimed = $h->ledger->claimDue('default', 'w', 1)[0];
+
+    // The relay sends the ledger-assigned id as apns-id and embeds a marker naming it; the process dies after the 200.
+    $messageId = (string) $claimed->providerMessageId();
+    $token = $marker->issue('default', $messageId, $h->clock->now()->modify('+7 days'));
+    $h->ledger->markAttemptStarted($claimed->lease);
+    $h->expireLeases();
+    $h->ledger->reclaimExpiredLeases('default');
+    $h->clock->advance(5);
+
+    $unknown = $h->ledger->delivery('default', $claimed->id());
+    expect($unknown->state)->toBe(DeliveryState::OutcomeUnknown)
+        ->and($unknown->providerMessageId)->toBeNull()
+        ->and(MessageId::isValid($messageId))->toBeTrue()
+        ->and(ClientEvidence::acceptedOrClientConfirmed($unknown))->toBeFalse()
+        ->and(clientReports($h, $marker, $token, ClientEvent::Received))->toBe(ClientEventRecording::Recorded);
+
+    $after = $h->ledger->delivery('default', $claimed->id());
+    expect($after->state)->toBe(DeliveryState::OutcomeUnknown)
+        ->and($after->clientReceivedAt)->not->toBeNull()
+        ->and(ClientEvidence::acceptedOrClientConfirmed($after))->toBeTrue();
 });

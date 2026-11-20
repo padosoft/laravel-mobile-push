@@ -347,7 +347,7 @@ final class PendingSend
      * Destinations grouped by connection, in order of first appearance.
      *
      * @return list<array{name: string, binding: BindingRef|null, current: BindingRef|null, items: iterable<Destination|SendItem>}>
-     *                                                                                                                             binding null = the group is a binding mismatch (registry rows of a binding that changed)
+     *                                                                                                                              binding null = the group is a binding mismatch (registry rows of a binding that changed)
      */
     private function plan(string $scope): array
     {
@@ -390,6 +390,15 @@ final class PendingSend
             }
         }
 
+        if ($this->streams !== [] && $named === null) {
+            // Routing needs to see each destination: materialize the streams.
+            foreach ($this->streams as $generator) {
+                foreach ($generator as $item) {
+                    $groups[$route($item)][] = $item;
+                }
+            }
+        }
+
         $plan = [];
         $streamed = false;
         foreach ($groups as $name => $items) {
@@ -401,18 +410,8 @@ final class PendingSend
             }
             $plan[] = ['name' => $name, 'binding' => $this->manager->binding($name, $scope), 'current' => null, 'items' => $stream];
         }
-
-        if ($this->streams !== [] && ! $streamed) {
-            if ($named === null) {
-                // Routing needs to see each destination: materialize the streams.
-                foreach ($this->streams as $generator) {
-                    foreach ($generator as $item) {
-                        $plan = $this->append($plan, $route($item), $item, $scope);
-                    }
-                }
-            } else {
-                $plan[] = ['name' => $named, 'binding' => $this->manager->binding($named, $scope), 'current' => null, 'items' => $this->chain([], $this->streams)];
-            }
+        if ($named !== null && $this->streams !== [] && ! $streamed) {
+            $plan[] = ['name' => $named, 'binding' => $this->manager->binding($named, $scope), 'current' => null, 'items' => $this->chain([], $this->streams)];
         }
 
         foreach ($mismatched as $name => $items) {
@@ -425,24 +424,6 @@ final class PendingSend
             }
             $plan[] = ['name' => $name, 'binding' => null, 'current' => $current, 'items' => $items];
         }
-
-        return $plan;
-    }
-
-    /**
-     * @param  list<array{name: string, binding: BindingRef|null, current: BindingRef|null, items: iterable<Destination|SendItem>}>  $plan
-     * @return list<array{name: string, binding: BindingRef|null, current: BindingRef|null, items: iterable<Destination|SendItem>}>
-     */
-    private function append(array $plan, string $name, Destination|SendItem $item, string $scope): array
-    {
-        foreach ($plan as $i => $group) {
-            if ($group['name'] === $name && $group['binding'] !== null && is_array($group['items'])) {
-                $plan[$i]['items'][] = $item;
-
-                return $plan;
-            }
-        }
-        $plan[] = ['name' => $name, 'binding' => $this->manager->binding($name, $scope), 'current' => null, 'items' => [$item]];
 
         return $plan;
     }

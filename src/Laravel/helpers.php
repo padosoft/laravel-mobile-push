@@ -30,11 +30,11 @@ if (! function_exists('mobile_push_to_token')) {
      *
      *     mobile_push_to_token(Platform::Ios, $token, 'Title', 'Body', ['order' => '42']);
      *
-     * @param  array<string, mixed>  $data  custom data (ignored when a Message is given)
+     * @param  array<string, bool|float|int|string|null>  $data  custom data (ignored when a Message is given)
      */
     function mobile_push_to_token(
         Platform $platform,
-        #[\SensitiveParameter] string $token,
+        #[SensitiveParameter] string $token,
         string|Message $titleOrMessage,
         ?string $body = null,
         array $data = [],

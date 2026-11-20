@@ -27,10 +27,11 @@ final readonly class ConsentGate implements DestinationGate
 {
     public const HINT = 'The application\'s eligibility check (MobilePush::eligibleUsing) refused this destination, for example because the user opted out.';
 
+    /** @var \Closure(mixed, mixed): mixed */
     private \Closure $callback;
 
     /**
-     * @param  (callable(Destination, GateContext): (bool|GateDenial))|(callable(GateContext, list<SendItem>): array<int, bool|GateDenial|null>)  $callback
+     * @param  callable(mixed, mixed): mixed  $callback  see the class docblock for the two accepted forms
      */
     public function __construct(callable $callback, private bool $batch = false)
     {

@@ -182,9 +182,9 @@ it('the response was lost but the phone got it: the unknown outcome gains the cl
         ->and($funnel->acceptedOrClientConfirmed())->toBe(1);
 });
 
-it('the id the worker recorded also finds the delivery when the relay did not use the delivery id as message id', function (): void {
+it('a marker issued before ledger-assigned ids (message id derived from the delivery ULID) still finds its delivery', function (): void {
     $w = World::boot();
-    $sent = $w->send(H::token(1), deliveryIdAsMessageId: false);
+    $sent = $w->send(H::token(1), legacyDerivedId: true);
 
     $this->postJson(RECEIPTS_URL, ['marker' => $sent['marker'], 'event' => 'received'])->assertNoContent();
 

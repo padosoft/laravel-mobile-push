@@ -29,7 +29,7 @@ final class RegistryResolver
     /**
      * @param  list<ClaimedDelivery>  $claimed
      * @return array{0: list<array{0: ClaimedDelivery, 1: Destination}>, 1: list<array{0: ClaimedDelivery, 1: Reason}>}
-     *                                                                                                                   [to send, to skip]
+     *                                                                                                                  [to send, to skip]
      */
     public function resolve(BindingRef $binding, array $claimed): array
     {

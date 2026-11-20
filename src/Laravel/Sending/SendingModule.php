@@ -52,7 +52,12 @@ final class SendingModule implements Module
 
         $app->singleton(SafeModeGuard::class, static fn (Application $app): SafeModeGuard => new SafeModeGuard($app->make(TokenIndex::class)));
 
-        $app->singleton(RetryPolicy::class, static fn (Application $app): RetryPolicy => $app->make(SendingSettings::class)->retry);
+        // Not a singleton: other modules (ledger, jobs) read the CURRENT retry config each time they build a policy.
+        $app->bind(RetryPolicy::class, static function (Application $app): RetryPolicy {
+            $config = self::config($app)->get('mobile-push', []);
+
+            return SendingSettings::fromArray(is_array($config) ? $config : [])->retry;
+        });
 
         $app->singleton(Senders::class, static fn (Application $app): Senders => new Senders(
             $app->make(Transport::class),
@@ -118,8 +123,7 @@ final class SendingModule implements Module
         if (! $app->bound(LoggerInterface::class) && ! $app->bound('log')) {
             return null;
         }
-        $logger = $app->make(LoggerInterface::class);
 
-        return $logger instanceof LoggerInterface ? $logger : null;
+        return $app->make(LoggerInterface::class);
     }
 }

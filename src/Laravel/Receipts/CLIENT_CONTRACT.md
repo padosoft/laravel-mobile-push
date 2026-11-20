@@ -138,6 +138,7 @@ Plug the issuer into the send options so each individual destination gets a mark
 $options = $options->withReceiptMarker(app(ReceiptMarkerIssuer::class)->callback($scope));
 ```
 
-and give each delivery a message id that names it: pass `DeliveryReference::messageIdFor($claimed->id())` as the
-`SendItem` `providerMessageId`, so a delivery whose outcome stays unknown can still be matched by its marker.
+and send each delivery under the message id the ledger assigned to it at insert time: pass
+`ClaimedDelivery::providerMessageId()` as the `SendItem` `providerMessageId`, so a delivery whose outcome stays
+unknown can still be matched by its marker.
 Requires `mobile-push.delivery.profile = durable` and `mobile-push.receipts.enabled = true`.

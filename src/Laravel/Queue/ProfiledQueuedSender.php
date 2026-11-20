@@ -34,11 +34,6 @@ final readonly class ProfiledQueuedSender implements QueuedSender
 
     private function delegate(): QueuedSender
     {
-        $sender = $this->container->make($this->settings->durable() ? DurableQueuedSender::class : LightQueuedSender::class);
-        if (! $sender instanceof QueuedSender) {
-            throw new \LogicException('The queued sender binding is not a QueuedSender.');
-        }
-
-        return $sender;
+        return $this->container->make($this->settings->durable() ? DurableQueuedSender::class : LightQueuedSender::class);
     }
 }
