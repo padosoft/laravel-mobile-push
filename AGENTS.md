@@ -40,6 +40,10 @@ The status table at the top of `progress.md` is maintained by the orchestrator o
 - Do not use `sleep()` longer than a few milliseconds in library code; long waits become `Deferred` outcomes.
 - Do not weaken a test to make it pass. If a contract looks wrong, stop and report it.
 
+## Laravel layer: modules
+
+`src/Laravel/MobilePushServiceProvider.php` is owned by the orchestrator. Each slice of the Laravel layer is a **module**: a class implementing `Padosoft\MobilePush\Laravel\Module` (`static register(Application)`, `static boot(Application)`) at the path listed in `MobilePushServiceProvider::MODULES`. Put your container bindings, migrations, commands and listeners in your module; never edit the provider. Read config with explicit defaults (`config('mobile-push.devices.table', 'mobile_push_devices')`) and list in your final message every config key you introduced (name, env var, default, allowed values): the orchestrator adds them to `config/mobile-push.php`. Use `Psr\Clock\ClockInterface` from the container for time. Migrations are publishable stubs in `database/migrations/` and are also loaded by the module only when that module is enabled.
+
 ## Testing style (what the project owner asked for)
 
 - **Prefer high-level scenario tests** that cross layers: message → compilation → send on a transport → classification → report. They live in `tests/Scenario/**` and read like a story of one real situation ("APNs accepts the push but the connection drops before the response").

@@ -22,6 +22,7 @@ final class SendReport implements \Countable, \IteratorAggregate
     /** @var list<SendResult> */
     private array $retained = [];
 
+    /** @var int<0, max> */
     private int $total = 0;
 
     /** @var \Iterator<mixed, SendResult>|null */

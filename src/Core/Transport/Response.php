@@ -35,6 +35,11 @@ final readonly class Response
 
         $decoded = json_decode($this->body, true);
 
-        return is_array($decoded) ? $decoded : null;
+        if (! is_array($decoded)) {
+            return null;
+        }
+
+        /** @var array<string, mixed> $decoded provider error bodies are JSON objects */
+        return $decoded;
     }
 }
