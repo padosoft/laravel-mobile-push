@@ -33,8 +33,8 @@ use Padosoft\MobilePush\Laravel\LiveActivities\ChannelRegistry;
 use Padosoft\MobilePush\Laravel\LiveActivities\HasLiveActivities;
 use Padosoft\MobilePush\Laravel\LiveActivities\LiveActivitiesConfig;
 use Padosoft\MobilePush\Laravel\LiveActivities\LiveActivitiesModule;
-use Padosoft\MobilePush\Laravel\LiveActivities\TypeRegistry;
 use Padosoft\MobilePush\Laravel\LiveActivities\Transition\Rows;
+use Padosoft\MobilePush\Laravel\LiveActivities\TypeRegistry;
 use Padosoft\MobilePush\Tests\Scenario\Send\SendKit;
 use Psr\Clock\ClockInterface;
 

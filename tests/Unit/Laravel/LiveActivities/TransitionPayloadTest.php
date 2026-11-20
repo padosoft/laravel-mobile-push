@@ -16,7 +16,7 @@ it('survives the trip through a queued ticket (JSON) without losing a field, num
     $back = ActivityTicket::fromArray(json_decode(json_encode($ticket->toArray(), JSON_PRESERVE_ZERO_FRACTION), true));
 
     expect($back)->toEqual($ticket);
-    $message = $back->payload->toMessage(channelStoresNoMessages: true);
+    $message = $back->payload->toMessage(noStorageChannel: true);
     expect($message->event)->toBe(LiveActivityEvent::End)
         ->and($message->contentState)->toBe(['7' => 'x', 'eta' => 0, 'pi' => 1.0])
         ->and($message->priority)->toBe(Priority::Normal)
