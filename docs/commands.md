@@ -313,7 +313,9 @@ simulator; it does **not** exercise APNs, your credentials, the token or the env
 bundle of the only APNs connection and refuses to guess when there are several.
 
 Exit: 0 done; 2 invalid input, nothing written or pushed (also: no `--export` and no `xcrun`); 5 `xcrun simctl push`
-failed. The `xcrun` step was not verified on a real Mac.
+failed. The `xcrun` step was run once on a Mac (the manual `simulator` workflow, macOS 26 with Xcode 26.6, a booted
+iPhone simulator, payload addressed to Safari): `simctl` accepted the file by `booted` and by device id, and an unknown
+device id ended with exit code 5. How the notification looks on screen was not looked at.
 
 ## `mobile-push:connections`
 
@@ -708,5 +710,4 @@ Run against a Testbench application with simulated and local data: `doctor`, `co
 and blocked), `preview`, `explain`, `simulator --export`, `health`, `credentials:check`, `relay`, `sweep`, the three
 `prune` commands, `forget` and `export` (on empty tables) and the refusals of `devices:probe-environment`. **Not**
 verified against real systems: any command that sends (`send --live`, `doctor --live`, `devices:probe-environment`,
-`fcm:topic-subscription`, the Live Activity and channel commands) against real APNs and FCM; `simulator` with a real
-`xcrun`; `relay` and `sweep` on MySQL or PostgreSQL with many worker processes under load (their scenarios pass on both engines in CI); `send --user` with a real user model.
+`fcm:topic-subscription`, the Live Activity and channel commands) against real APNs and FCM; `relay` and `sweep` on MySQL or PostgreSQL with many worker processes under load (their scenarios pass on both engines in CI); `send --user` with a real user model.
