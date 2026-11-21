@@ -292,8 +292,11 @@ Be precise about these; they are the reason the word "exactly once" does not app
   only; it is skipped when the claim is called inside a transaction you opened). What was **not** run: many worker
   processes at production volume, MariaDB, and MySQL with `binlog_format=STATEMENT` (which does not allow READ
   COMMITTED writes on InnoDB).
-- The query plans of the claim, start, record and audience queries (`ScalingQueryPlansTest`) are asserted on SQLite only;
-  the indexes exist on MySQL and PostgreSQL but their plans there were not checked.
+- Query plans: every hot query (claim, start, record, sweeps, audience, device lookup) is asserted on SQLite
+  (`ScalingQueryPlansTest`). On PostgreSQL 17 and MySQL 8.4 only the **claim** is asserted, in CI
+  (`ServerQueryPlansTest`, with a few thousand due rows and fresh statistics): it is served by a claim index, in index
+  order, without reading the whole table, and the lease update never walks a state index. The other queries were not
+  explained on those engines.
 - Behaviour with a database that has a very high write latency, or read replicas for the ledger connection.
 - The fingerprint hashing cost on very large messages.
 

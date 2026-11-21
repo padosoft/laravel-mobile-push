@@ -45,7 +45,7 @@
 
 ## Indexes and query shape (W5-P)
 
-Every hot query reads only the rows it returns, however many final rows the table holds (asserted on SQLite query plans by `tests/Scenario/Laravel/Ledger/ScalingQueryPlansTest.php`):
+Every hot query reads only the rows it returns, however many final rows the table holds (asserted on SQLite query plans by `tests/Scenario/Laravel/Ledger/ScalingQueryPlansTest.php`; the claim's plan is also asserted on PostgreSQL and MySQL by `ServerQueryPlansTest.php`, in CI):
 
 | Query | Index |
 |---|---|

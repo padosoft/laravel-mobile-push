@@ -17,8 +17,8 @@ Related pages: [delivery profiles](delivery-profiles.md), [queues and Horizon](q
 **State of the module.** The campaigns module is present and its tests pass (110 scenario and unit tests: lifecycle,
 audiences, controls, sending rules, tenants, workers killed at exact points, query plans and scaling runs). The larger
 runs are in the `slow` test group. Everything was developed on SQLite with a fake transport; the same scenarios also run
-on **MySQL 8.4 and PostgreSQL 17 in CI** (the query plans are asserted on SQLite only, and the scaling runs were made on
-SQLite only). Nothing was sent to a real provider, and the queue was not
+on **MySQL 8.4 and PostgreSQL 17 in CI** (the query plans of every hot query are asserted on SQLite; on the server engines only the claim's
+plan is; the scaling runs were made on SQLite, plus one on PostgreSQL 16). Nothing was sent to a real provider, and the queue was not
 run on Redis, SQS or Horizon.
 
 The entry point is `MobilePush::campaign($message)`: the manager forwards to the campaigns module and returns the
@@ -274,7 +274,7 @@ What to know:
 - Measured here, **locally**: on SQLite with the fake transport, in the development container used to build the package,
   500,000 destinations went from `dispatch()` to `completed` in 457 seconds, and the time per 1,000 destinations grew
   about 1.3 times from 25,000 to 200,000 destinations (the audience grew 8 times, the run took 10.3 times as long). The
-  claim, audience and lookup queries read by index and their plans were checked on **SQLite only**. On a local
+  claim, audience and lookup queries read by index and their plans were checked on SQLite (the claim's plan also on PostgreSQL and MySQL in CI). On a local
   **PostgreSQL 16** the same guard run took 29.7 seconds for 25,000 destinations and 273.6 seconds for 200,000 (9.2
   times for 8 times the audience: 1.19 and 1.37 seconds per 1,000 destinations). MySQL passes the scenarios in CI but
   was not timed. These numbers describe this implementation on that setup, not a provider and not your database, and are not a
