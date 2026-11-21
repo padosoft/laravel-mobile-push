@@ -514,6 +514,8 @@ return [
     | bypassFrequencyCap() never bypasses consent. Off by default: enable it and adapt the table below.
     |   limits: bucket => ['per_hour' => n, 'per_day' => n] (either or both), or 'unlimited'
     |   on_store_failure: allow (send when the counters cannot be read) | deny
+    | The table and on_store_failure are validated only while the cap is enabled (a ConfigurationException at
+    | the first send then names the wrong key).
     |
     | The badge counter acts only for messages that ask for ->incrementBadge(): every device of the owner gets the
     | same number once per effect. Reset it when the app opens: MobilePush::resetBadge($user).

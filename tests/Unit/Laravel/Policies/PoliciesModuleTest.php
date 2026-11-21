@@ -45,13 +45,21 @@ it('reads limits, no-policy bucket and badge settings from config', function () 
     expect($resolver->subjectKey('o:u', $binding))->toBe('o:u#ios');
 });
 
-it('rejects an invalid failure policy and an invalid limit table', function (string $key, mixed $value) {
-    config(['mobile-push.'.$key => $value]);
-    $this->app->make(PolicyGates::class);
-})->with([
+dataset('invalid frequency settings', [
     'failure policy' => ['frequency.on_store_failure', 'maybe'],
     'limits' => ['frequency.limits', ['default' => ['per_day' => 0]]],
-])->throws(ConfigurationException::class);
+]);
+
+it('rejects an invalid failure policy and an invalid limit table once the cap is enabled', function (string $key, mixed $value) {
+    config(['mobile-push.frequency.enabled' => true, 'mobile-push.'.$key => $value]);
+    $this->app->make(PolicyGates::class);
+})->with('invalid frequency settings')->throws(ConfigurationException::class);
+
+it('does not validate the frequency settings while the cap is disabled (they are not used)', function (string $key, mixed $value) {
+    config(['mobile-push.frequency.enabled' => false, 'mobile-push.'.$key => $value]);
+
+    expect($this->app->make(PolicyGates::class)->gates())->toBe([]);
+})->with('invalid frequency settings');
 
 it('can switch the badge counter off', function () {
     config(['mobile-push.badge.enabled' => false]);
