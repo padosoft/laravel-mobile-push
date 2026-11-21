@@ -61,6 +61,12 @@ jobs:
           - name: privacy
             classes: 'Padosoft\MobilePush\Core\Privacy'
             tests: tests/Unit/Core/Privacy tests/Scenario/Privacy
+          - name: token-providers
+            classes: 'Padosoft\MobilePush\Core\Apns\Auth,Padosoft\MobilePush\Core\Fcm\Auth,Padosoft\MobilePush\Core\Auth\TokenSlot,Padosoft\MobilePush\Core\Auth\InMemoryTokenStore,Padosoft\MobilePush\Core\Auth\PrivateKey,Padosoft\MobilePush\Core\Auth\TokenCacheKey'
+            tests: tests/Unit/Core/Auth tests/Scenario/Auth
+          - name: send-pipeline
+            classes: 'Padosoft\MobilePush\Core\Driver'
+            tests: tests/Unit/Core/Driver tests/Scenario/Send
     name: Mutation · ${{ matrix.name }}
     steps:
       - uses: actions/checkout@v4
