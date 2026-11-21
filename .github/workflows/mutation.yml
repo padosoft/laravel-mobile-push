@@ -47,8 +47,8 @@ jobs:
             classes: 'Padosoft\MobilePush\Core\Fcm\FcmCompiler,Padosoft\MobilePush\Core\Fcm\FcmPayloadLimits'
             tests: tests/Unit/Core/Fcm/Message tests/Scenario/Fcm/Compile
           - name: transport-parsers
-            classes: 'Padosoft\MobilePush\Core\Transport\Curl\HeaderParser,Padosoft\MobilePush\Core\Transport\Curl\CurlErrorClassifier'
-            tests: tests/Unit/Core/Transport
+            classes: 'Padosoft\MobilePush\Core\Transport\Curl\ResponseHeaderParser,Padosoft\MobilePush\Core\Transport\Curl\CurlErrorClassifier'
+            tests: tests/Unit/Core/Transport tests/Scenario/Transport
           - name: ledger-core
             classes: 'Padosoft\MobilePush\Core\Ledger\LedgerRules,Padosoft\MobilePush\Core\Ledger\InMemoryLedger'
             tests: tests/Unit/Core/Ledger tests/Scenario/Ledger
