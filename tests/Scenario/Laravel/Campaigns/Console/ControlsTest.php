@@ -88,12 +88,10 @@ it('cancel confirmed: cancelled, and the output names what cannot be undone', fu
         ->and($c->world->queue->transport->sentCount())->toBe(0);
 });
 
-it('cancel mid-flight with --force: what was already accepted is reported as not undone; --json is explicit', function (): void {
+it('cancel --force: a completed campaign is refused with the reason; a running one is cancelled and --json says what is not undone', function (): void {
     $c = $this->c;
     $campaign = $c->world->dispatch(DeviceAudience::all());
-    $c->world->drain(1);
-    $c->world->drain(1);   // second slice
-    $c->world->drain();    // everything sent
+    $c->world->drain();    // everything planned and sent
 
     // Completed by now: cancelling it is refused with the reason.
     $c->world->campaigns()->progress('default', $campaign->id);

@@ -1,0 +1,1038 @@
+{
+    "env": {
+        "date_utc": "2026-11-21T00:57:36+00:00",
+        "php": "8.3.6 (cli, NTS)",
+        "libcurl": "8.5.0",
+        "libcurl_ssl": "OpenSSL/3.0.13",
+        "libcurl_protocols_h2": true,
+        "node": "v22.23.5",
+        "cpu_model": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+        "cpu_cores": 4,
+        "mem_total": "16473744 kB",
+        "kernel": "6.18.44-fc-v726",
+        "loadavg_at_start": [
+            23.1767578125,
+            20.45654296875,
+            19.30322265625
+        ],
+        "package_commit": "72b6f37",
+        "pushok": {
+            "version": "0.19.1",
+            "reference": "34e97101ab4ead13ef3154cb389bca4d46dc0cba"
+        },
+        "php_memory_limit": "-1"
+    },
+    "command": "php benchmarks/run.php --scenario=many-tenants --tenants=200 --per-tenant=5 --repeat=3 --json --out=benchmarks/results/many-tenants.json",
+    "scenarios": [
+        {
+            "scenario": "many-tenants",
+            "description": "One process, one transport, N different pool keys used one after the other (each key = its own connection). Registry limit 32 is the default; 1000 shows what happens without effective eviction.",
+            "cases": [
+                {
+                    "label": "200 pool keys in sequence, 5 requests each, registry limit 32",
+                    "params": {
+                        "tenants": 200,
+                        "per_tenant": 5,
+                        "registry_limit": 32
+                    },
+                    "runs": [
+                        {
+                            "requests": 1000,
+                            "wall_s": 1.844,
+                            "rps": 542.3,
+                            "latency_ms": {
+                                "p50": 2.075,
+                                "p95": 8.647,
+                                "p99": 13.3,
+                                "max": 19.994,
+                                "samples": 1000
+                            },
+                            "peak_over_start_mib": 4.152,
+                            "mem_start_bytes": 3697072,
+                            "mem_end_bytes": 7777752,
+                            "mem_growth_bytes": 4080680,
+                            "mem_growth_after_gc_bytes": 962136,
+                            "recorder_bytes_estimate": 16000,
+                            "cpu_s": 0.545,
+                            "transport_errors": 0,
+                            "http_status": {
+                                "200": 1000
+                            },
+                            "outcomes": [],
+                            "fds": {
+                                "before": 6,
+                                "after": 102
+                            },
+                            "server": {
+                                "connections_opened": 200,
+                                "connections_total_since_reset": 200,
+                                "tcp_connections": 200,
+                                "requests_received": 1000,
+                                "requests_processed": 1000,
+                                "max_concurrent_streams_cumulative": 4,
+                                "open_connections_after": 32
+                            },
+                            "extra": {
+                                "series": [
+                                    {
+                                        "tenants_done": 20,
+                                        "pools": 20,
+                                        "evictions": 0,
+                                        "fds": 66,
+                                        "memory_bytes": 4197896,
+                                        "server_open_connections": 20,
+                                        "server_connections_total": 20
+                                    },
+                                    {
+                                        "tenants_done": 40,
+                                        "pools": 32,
+                                        "evictions": 8,
+                                        "fds": 102,
+                                        "memory_bytes": 4634200,
+                                        "server_open_connections": 32,
+                                        "server_connections_total": 40
+                                    },
+                                    {
+                                        "tenants_done": 60,
+                                        "pools": 32,
+                                        "evictions": 28,
+                                        "fds": 102,
+                                        "memory_bytes": 5038992,
+                                        "server_open_connections": 32,
+                                        "server_connections_total": 60
+                                    },
+                                    {
+                                        "tenants_done": 80,
+                                        "pools": 32,
+                                        "evictions": 48,
+                                        "fds": 102,
+                                        "memory_bytes": 5461704,
+                                        "server_open_connections": 32,
+                                        "server_connections_total": 80
+                                    },
+                                    {
+                                        "tenants_done": 100,
+                                        "pools": 32,
+                                        "evictions": 68,
+                                        "fds": 102,
+                                        "memory_bytes": 5862400,
+                                        "server_open_connections": 32,
+                                        "server_connections_total": 100
+                                    },
+                                    {
+                                        "tenants_done": 120,
+                                        "pools": 32,
+                                        "evictions": 88,
+                                        "fds": 102,
+                                        "memory_bytes": 6271608,
+                                        "server_open_connections": 32,
+                                        "server_connections_total": 120
+                                    },
+                                    {
+                                        "tenants_done": 140,
+                                        "pools": 32,
+                                        "evictions": 108,
+                                        "fds": 102,
+                                        "memory_bytes": 6676592,
+                                        "server_open_connections": 32,
+                                        "server_connections_total": 140
+                                    },
+                                    {
+                                        "tenants_done": 160,
+                                        "pools": 32,
+                                        "evictions": 128,
+                                        "fds": 102,
+                                        "memory_bytes": 7110056,
+                                        "server_open_connections": 32,
+                                        "server_connections_total": 160
+                                    },
+                                    {
+                                        "tenants_done": 180,
+                                        "pools": 32,
+                                        "evictions": 148,
+                                        "fds": 102,
+                                        "memory_bytes": 7510752,
+                                        "server_open_connections": 32,
+                                        "server_connections_total": 180
+                                    },
+                                    {
+                                        "tenants_done": 200,
+                                        "pools": 32,
+                                        "evictions": 168,
+                                        "fds": 102,
+                                        "memory_bytes": 7911608,
+                                        "server_open_connections": 32,
+                                        "server_connections_total": 200
+                                    }
+                                ],
+                                "after_close": {
+                                    "memory_after_gc_bytes": 3979192,
+                                    "pools": 0,
+                                    "fds": 6,
+                                    "server_open_connections": 0
+                                }
+                            }
+                        },
+                        {
+                            "requests": 1000,
+                            "wall_s": 1.8939,
+                            "rps": 528,
+                            "latency_ms": {
+                                "p50": 1.082,
+                                "p95": 8.492,
+                                "p99": 12.603,
+                                "max": 19.767,
+                                "samples": 1000
+                            },
+                            "peak_over_start_mib": 4.037,
+                            "mem_start_bytes": 3959136,
+                            "mem_end_bytes": 7919392,
+                            "mem_growth_bytes": 3960256,
+                            "mem_growth_after_gc_bytes": 841712,
+                            "recorder_bytes_estimate": 16000,
+                            "cpu_s": 0.464,
+                            "transport_errors": 0,
+                            "http_status": {
+                                "200": 1000
+                            },
+                            "outcomes": [],
+                            "fds": {
+                                "before": 6,
+                                "after": 102
+                            },
+                            "server": {
+                                "connections_opened": 200,
+                                "connections_total_since_reset": 200,
+                                "tcp_connections": 200,
+                                "requests_received": 1000,
+                                "requests_processed": 1000,
+                                "max_concurrent_streams_cumulative": 4,
+                                "open_connections_after": 32
+                            },
+                            "extra": {
+                                "series": [
+                                    {
+                                        "tenants_done": 20,
+                                        "pools": 20,
+                                        "evictions": 0,
+                                        "fds": 66,
+                                        "memory_bytes": 4398000,
+                                        "server_open_connections": 20,
+                                        "server_connections_total": 20
+                                    },
+                                    {
+                                        "tenants_done": 40,
+                                        "pools": 32,
+                                        "evictions": 8,
+                                        "fds": 102,
+                                        "memory_bytes": 4824992,
+                                        "server_open_connections": 32,
+                                        "server_connections_total": 40
+                                    },
+                                    {
+                                        "tenants_done": 60,
+                                        "pools": 32,
+                                        "evictions": 28,
+                                        "fds": 102,
+                                        "memory_bytes": 5229784,
+                                        "server_open_connections": 32,
+                                        "server_connections_total": 60
+                                    },
+                                    {
+                                        "tenants_done": 80,
+                                        "pools": 32,
+                                        "evictions": 48,
+                                        "fds": 102,
+                                        "memory_bytes": 5636112,
+                                        "server_open_connections": 32,
+                                        "server_connections_total": 80
+                                    },
+                                    {
+                                        "tenants_done": 100,
+                                        "pools": 32,
+                                        "evictions": 68,
+                                        "fds": 102,
+                                        "memory_bytes": 6036808,
+                                        "server_open_connections": 32,
+                                        "server_connections_total": 100
+                                    },
+                                    {
+                                        "tenants_done": 120,
+                                        "pools": 32,
+                                        "evictions": 88,
+                                        "fds": 102,
+                                        "memory_bytes": 6446016,
+                                        "server_open_connections": 32,
+                                        "server_connections_total": 120
+                                    },
+                                    {
+                                        "tenants_done": 140,
+                                        "pools": 32,
+                                        "evictions": 108,
+                                        "fds": 102,
+                                        "memory_bytes": 6851000,
+                                        "server_open_connections": 32,
+                                        "server_connections_total": 140
+                                    },
+                                    {
+                                        "tenants_done": 160,
+                                        "pools": 32,
+                                        "evictions": 128,
+                                        "fds": 102,
+                                        "memory_bytes": 7251696,
+                                        "server_open_connections": 32,
+                                        "server_connections_total": 160
+                                    },
+                                    {
+                                        "tenants_done": 180,
+                                        "pools": 32,
+                                        "evictions": 148,
+                                        "fds": 102,
+                                        "memory_bytes": 7652392,
+                                        "server_open_connections": 32,
+                                        "server_connections_total": 180
+                                    },
+                                    {
+                                        "tenants_done": 200,
+                                        "pools": 32,
+                                        "evictions": 168,
+                                        "fds": 102,
+                                        "memory_bytes": 8053248,
+                                        "server_open_connections": 32,
+                                        "server_connections_total": 200
+                                    }
+                                ],
+                                "after_close": {
+                                    "memory_after_gc_bytes": 3986920,
+                                    "pools": 0,
+                                    "fds": 6,
+                                    "server_open_connections": 0
+                                }
+                            }
+                        },
+                        {
+                            "requests": 1000,
+                            "wall_s": 1.8877,
+                            "rps": 529.7,
+                            "latency_ms": {
+                                "p50": 1.093,
+                                "p95": 8.275,
+                                "p99": 12.973,
+                                "max": 25.459,
+                                "samples": 1000
+                            },
+                            "peak_over_start_mib": 4.037,
+                            "mem_start_bytes": 3966864,
+                            "mem_end_bytes": 7927120,
+                            "mem_growth_bytes": 3960256,
+                            "mem_growth_after_gc_bytes": 841712,
+                            "recorder_bytes_estimate": 16000,
+                            "cpu_s": 0.494,
+                            "transport_errors": 0,
+                            "http_status": {
+                                "200": 1000
+                            },
+                            "outcomes": [],
+                            "fds": {
+                                "before": 6,
+                                "after": 102
+                            },
+                            "server": {
+                                "connections_opened": 200,
+                                "connections_total_since_reset": 200,
+                                "tcp_connections": 200,
+                                "requests_received": 1000,
+                                "requests_processed": 1000,
+                                "max_concurrent_streams_cumulative": 4,
+                                "open_connections_after": 32
+                            },
+                            "extra": {
+                                "series": [
+                                    {
+                                        "tenants_done": 20,
+                                        "pools": 20,
+                                        "evictions": 0,
+                                        "fds": 66,
+                                        "memory_bytes": 4405728,
+                                        "server_open_connections": 20,
+                                        "server_connections_total": 20
+                                    },
+                                    {
+                                        "tenants_done": 40,
+                                        "pools": 32,
+                                        "evictions": 8,
+                                        "fds": 102,
+                                        "memory_bytes": 4832720,
+                                        "server_open_connections": 32,
+                                        "server_connections_total": 40
+                                    },
+                                    {
+                                        "tenants_done": 60,
+                                        "pools": 32,
+                                        "evictions": 28,
+                                        "fds": 102,
+                                        "memory_bytes": 5237512,
+                                        "server_open_connections": 32,
+                                        "server_connections_total": 60
+                                    },
+                                    {
+                                        "tenants_done": 80,
+                                        "pools": 32,
+                                        "evictions": 48,
+                                        "fds": 102,
+                                        "memory_bytes": 5643840,
+                                        "server_open_connections": 32,
+                                        "server_connections_total": 80
+                                    },
+                                    {
+                                        "tenants_done": 100,
+                                        "pools": 32,
+                                        "evictions": 68,
+                                        "fds": 102,
+                                        "memory_bytes": 6044536,
+                                        "server_open_connections": 32,
+                                        "server_connections_total": 100
+                                    },
+                                    {
+                                        "tenants_done": 120,
+                                        "pools": 32,
+                                        "evictions": 88,
+                                        "fds": 102,
+                                        "memory_bytes": 6453744,
+                                        "server_open_connections": 32,
+                                        "server_connections_total": 120
+                                    },
+                                    {
+                                        "tenants_done": 140,
+                                        "pools": 32,
+                                        "evictions": 108,
+                                        "fds": 102,
+                                        "memory_bytes": 6858728,
+                                        "server_open_connections": 32,
+                                        "server_connections_total": 140
+                                    },
+                                    {
+                                        "tenants_done": 160,
+                                        "pools": 32,
+                                        "evictions": 128,
+                                        "fds": 102,
+                                        "memory_bytes": 7259424,
+                                        "server_open_connections": 32,
+                                        "server_connections_total": 160
+                                    },
+                                    {
+                                        "tenants_done": 180,
+                                        "pools": 32,
+                                        "evictions": 148,
+                                        "fds": 102,
+                                        "memory_bytes": 7660120,
+                                        "server_open_connections": 32,
+                                        "server_connections_total": 180
+                                    },
+                                    {
+                                        "tenants_done": 200,
+                                        "pools": 32,
+                                        "evictions": 168,
+                                        "fds": 102,
+                                        "memory_bytes": 8060976,
+                                        "server_open_connections": 32,
+                                        "server_connections_total": 200
+                                    }
+                                ],
+                                "after_close": {
+                                    "memory_after_gc_bytes": 3994648,
+                                    "pools": 0,
+                                    "fds": 6,
+                                    "server_open_connections": 0
+                                }
+                            }
+                        }
+                    ],
+                    "summary": {
+                        "runs": 3,
+                        "rps": {
+                            "median": 529.7,
+                            "min": 528,
+                            "max": 542.3,
+                            "spread_pct": 2.7
+                        },
+                        "wall_s": {
+                            "median": 1.888,
+                            "min": 1.844,
+                            "max": 1.894,
+                            "spread_pct": 2.6
+                        },
+                        "p50_ms": {
+                            "median": 1.093,
+                            "min": 1.082,
+                            "max": 2.075,
+                            "spread_pct": 90.9
+                        },
+                        "p95_ms": {
+                            "median": 8.492,
+                            "min": 8.275,
+                            "max": 8.647,
+                            "spread_pct": 4.4
+                        },
+                        "p99_ms": {
+                            "median": 12.973,
+                            "min": 12.603,
+                            "max": 13.3,
+                            "spread_pct": 5.4
+                        },
+                        "max_ms": {
+                            "median": 19.994,
+                            "min": 19.767,
+                            "max": 25.459,
+                            "spread_pct": 28.5
+                        },
+                        "peak_over_start_mib": {
+                            "median": 4.037,
+                            "min": 4.037,
+                            "max": 4.152,
+                            "spread_pct": 2.8
+                        },
+                        "mem_growth_bytes": {
+                            "median": 3960256,
+                            "min": 3960256,
+                            "max": 4080680,
+                            "spread_pct": 3
+                        },
+                        "mem_growth_after_gc_bytes": {
+                            "median": 841712,
+                            "min": 841712,
+                            "max": 962136,
+                            "spread_pct": 14.3
+                        },
+                        "cpu_s": {
+                            "median": 0.494,
+                            "min": 0.464,
+                            "max": 0.545,
+                            "spread_pct": 16.4
+                        },
+                        "transport_errors": {
+                            "median": 0,
+                            "min": 0,
+                            "max": 0,
+                            "spread_pct": 0
+                        },
+                        "connections_opened": {
+                            "median": 200,
+                            "min": 200,
+                            "max": 200,
+                            "spread_pct": 0
+                        },
+                        "max_concurrent_streams": {
+                            "median": 4,
+                            "min": 4,
+                            "max": 4,
+                            "spread_pct": 0
+                        }
+                    }
+                },
+                {
+                    "label": "200 pool keys in sequence, 5 requests each, registry limit 1000",
+                    "params": {
+                        "tenants": 200,
+                        "per_tenant": 5,
+                        "registry_limit": 1000
+                    },
+                    "runs": [
+                        {
+                            "requests": 1000,
+                            "wall_s": 1.9882,
+                            "rps": 503,
+                            "latency_ms": {
+                                "p50": 1.067,
+                                "p95": 8.991,
+                                "p99": 22.379,
+                                "max": 47.541,
+                                "samples": 1000
+                            },
+                            "peak_over_start_mib": 4.278,
+                            "mem_start_bytes": 3981240,
+                            "mem_end_bytes": 8194552,
+                            "mem_growth_bytes": 4213312,
+                            "mem_growth_after_gc_bytes": 4405040,
+                            "recorder_bytes_estimate": 16000,
+                            "cpu_s": 0.486,
+                            "transport_errors": 0,
+                            "http_status": {
+                                "200": 1000
+                            },
+                            "outcomes": [],
+                            "fds": {
+                                "before": 6,
+                                "after": 606
+                            },
+                            "server": {
+                                "connections_opened": 200,
+                                "connections_total_since_reset": 200,
+                                "tcp_connections": 200,
+                                "requests_received": 1000,
+                                "requests_processed": 1000,
+                                "max_concurrent_streams_cumulative": 4,
+                                "open_connections_after": 200
+                            },
+                            "extra": {
+                                "series": [
+                                    {
+                                        "tenants_done": 20,
+                                        "pools": 20,
+                                        "evictions": 0,
+                                        "fds": 66,
+                                        "memory_bytes": 4420104,
+                                        "server_open_connections": 20,
+                                        "server_connections_total": 20
+                                    },
+                                    {
+                                        "tenants_done": 40,
+                                        "pools": 40,
+                                        "evictions": 0,
+                                        "fds": 126,
+                                        "memory_bytes": 4858168,
+                                        "server_open_connections": 40,
+                                        "server_connections_total": 40
+                                    },
+                                    {
+                                        "tenants_done": 60,
+                                        "pools": 60,
+                                        "evictions": 0,
+                                        "fds": 186,
+                                        "memory_bytes": 5290640,
+                                        "server_open_connections": 60,
+                                        "server_connections_total": 60
+                                    },
+                                    {
+                                        "tenants_done": 80,
+                                        "pools": 80,
+                                        "evictions": 0,
+                                        "fds": 246,
+                                        "memory_bytes": 5735912,
+                                        "server_open_connections": 80,
+                                        "server_connections_total": 80
+                                    },
+                                    {
+                                        "tenants_done": 100,
+                                        "pools": 100,
+                                        "evictions": 0,
+                                        "fds": 306,
+                                        "memory_bytes": 6164288,
+                                        "server_open_connections": 100,
+                                        "server_connections_total": 100
+                                    },
+                                    {
+                                        "tenants_done": 120,
+                                        "pools": 120,
+                                        "evictions": 0,
+                                        "fds": 366,
+                                        "memory_bytes": 6601176,
+                                        "server_open_connections": 120,
+                                        "server_connections_total": 120
+                                    },
+                                    {
+                                        "tenants_done": 140,
+                                        "pools": 140,
+                                        "evictions": 0,
+                                        "fds": 426,
+                                        "memory_bytes": 7042160,
+                                        "server_open_connections": 140,
+                                        "server_connections_total": 140
+                                    },
+                                    {
+                                        "tenants_done": 160,
+                                        "pools": 160,
+                                        "evictions": 0,
+                                        "fds": 486,
+                                        "memory_bytes": 7470856,
+                                        "server_open_connections": 160,
+                                        "server_connections_total": 160
+                                    },
+                                    {
+                                        "tenants_done": 180,
+                                        "pools": 180,
+                                        "evictions": 0,
+                                        "fds": 546,
+                                        "memory_bytes": 7899552,
+                                        "server_open_connections": 180,
+                                        "server_connections_total": 180
+                                    },
+                                    {
+                                        "tenants_done": 200,
+                                        "pools": 200,
+                                        "evictions": 0,
+                                        "fds": 606,
+                                        "memory_bytes": 8328408,
+                                        "server_open_connections": 200,
+                                        "server_connections_total": 200
+                                    }
+                                ],
+                                "after_close": {
+                                    "memory_after_gc_bytes": 4028696,
+                                    "pools": 0,
+                                    "fds": 6,
+                                    "server_open_connections": 0
+                                }
+                            }
+                        },
+                        {
+                            "requests": 1000,
+                            "wall_s": 1.804,
+                            "rps": 554.3,
+                            "latency_ms": {
+                                "p50": 1.039,
+                                "p95": 10.789,
+                                "p99": 22.983,
+                                "max": 43.304,
+                                "samples": 1000
+                            },
+                            "peak_over_start_mib": 4.278,
+                            "mem_start_bytes": 3989184,
+                            "mem_end_bytes": 8202496,
+                            "mem_growth_bytes": 4213312,
+                            "mem_growth_after_gc_bytes": 4405040,
+                            "recorder_bytes_estimate": 16000,
+                            "cpu_s": 0.48,
+                            "transport_errors": 0,
+                            "http_status": {
+                                "200": 1000
+                            },
+                            "outcomes": [],
+                            "fds": {
+                                "before": 6,
+                                "after": 606
+                            },
+                            "server": {
+                                "connections_opened": 200,
+                                "connections_total_since_reset": 200,
+                                "tcp_connections": 200,
+                                "requests_received": 1000,
+                                "requests_processed": 1000,
+                                "max_concurrent_streams_cumulative": 4,
+                                "open_connections_after": 200
+                            },
+                            "extra": {
+                                "series": [
+                                    {
+                                        "tenants_done": 20,
+                                        "pools": 20,
+                                        "evictions": 0,
+                                        "fds": 66,
+                                        "memory_bytes": 4428048,
+                                        "server_open_connections": 20,
+                                        "server_connections_total": 20
+                                    },
+                                    {
+                                        "tenants_done": 40,
+                                        "pools": 40,
+                                        "evictions": 0,
+                                        "fds": 126,
+                                        "memory_bytes": 4866112,
+                                        "server_open_connections": 40,
+                                        "server_connections_total": 40
+                                    },
+                                    {
+                                        "tenants_done": 60,
+                                        "pools": 60,
+                                        "evictions": 0,
+                                        "fds": 186,
+                                        "memory_bytes": 5298584,
+                                        "server_open_connections": 60,
+                                        "server_connections_total": 60
+                                    },
+                                    {
+                                        "tenants_done": 80,
+                                        "pools": 80,
+                                        "evictions": 0,
+                                        "fds": 246,
+                                        "memory_bytes": 5743856,
+                                        "server_open_connections": 80,
+                                        "server_connections_total": 80
+                                    },
+                                    {
+                                        "tenants_done": 100,
+                                        "pools": 100,
+                                        "evictions": 0,
+                                        "fds": 306,
+                                        "memory_bytes": 6172232,
+                                        "server_open_connections": 100,
+                                        "server_connections_total": 100
+                                    },
+                                    {
+                                        "tenants_done": 120,
+                                        "pools": 120,
+                                        "evictions": 0,
+                                        "fds": 366,
+                                        "memory_bytes": 6609120,
+                                        "server_open_connections": 120,
+                                        "server_connections_total": 120
+                                    },
+                                    {
+                                        "tenants_done": 140,
+                                        "pools": 140,
+                                        "evictions": 0,
+                                        "fds": 426,
+                                        "memory_bytes": 7050104,
+                                        "server_open_connections": 140,
+                                        "server_connections_total": 140
+                                    },
+                                    {
+                                        "tenants_done": 160,
+                                        "pools": 160,
+                                        "evictions": 0,
+                                        "fds": 486,
+                                        "memory_bytes": 7478800,
+                                        "server_open_connections": 160,
+                                        "server_connections_total": 160
+                                    },
+                                    {
+                                        "tenants_done": 180,
+                                        "pools": 180,
+                                        "evictions": 0,
+                                        "fds": 546,
+                                        "memory_bytes": 7907496,
+                                        "server_open_connections": 180,
+                                        "server_connections_total": 180
+                                    },
+                                    {
+                                        "tenants_done": 200,
+                                        "pools": 200,
+                                        "evictions": 0,
+                                        "fds": 606,
+                                        "memory_bytes": 8336352,
+                                        "server_open_connections": 200,
+                                        "server_connections_total": 200
+                                    }
+                                ],
+                                "after_close": {
+                                    "memory_after_gc_bytes": 4036424,
+                                    "pools": 0,
+                                    "fds": 6,
+                                    "server_open_connections": 0
+                                }
+                            }
+                        },
+                        {
+                            "requests": 1000,
+                            "wall_s": 0.8768,
+                            "rps": 1140.5,
+                            "latency_ms": {
+                                "p50": 0.757,
+                                "p95": 3.05,
+                                "p99": 6.12,
+                                "max": 25.746,
+                                "samples": 1000
+                            },
+                            "peak_over_start_mib": 4.278,
+                            "mem_start_bytes": 3996912,
+                            "mem_end_bytes": 8210224,
+                            "mem_growth_bytes": 4213312,
+                            "mem_growth_after_gc_bytes": 4405040,
+                            "recorder_bytes_estimate": 16000,
+                            "cpu_s": 0.459,
+                            "transport_errors": 0,
+                            "http_status": {
+                                "200": 1000
+                            },
+                            "outcomes": [],
+                            "fds": {
+                                "before": 6,
+                                "after": 606
+                            },
+                            "server": {
+                                "connections_opened": 200,
+                                "connections_total_since_reset": 200,
+                                "tcp_connections": 200,
+                                "requests_received": 1000,
+                                "requests_processed": 1000,
+                                "max_concurrent_streams_cumulative": 4,
+                                "open_connections_after": 200
+                            },
+                            "extra": {
+                                "series": [
+                                    {
+                                        "tenants_done": 20,
+                                        "pools": 20,
+                                        "evictions": 0,
+                                        "fds": 66,
+                                        "memory_bytes": 4435776,
+                                        "server_open_connections": 20,
+                                        "server_connections_total": 20
+                                    },
+                                    {
+                                        "tenants_done": 40,
+                                        "pools": 40,
+                                        "evictions": 0,
+                                        "fds": 126,
+                                        "memory_bytes": 4873840,
+                                        "server_open_connections": 40,
+                                        "server_connections_total": 40
+                                    },
+                                    {
+                                        "tenants_done": 60,
+                                        "pools": 60,
+                                        "evictions": 0,
+                                        "fds": 186,
+                                        "memory_bytes": 5306312,
+                                        "server_open_connections": 60,
+                                        "server_connections_total": 60
+                                    },
+                                    {
+                                        "tenants_done": 80,
+                                        "pools": 80,
+                                        "evictions": 0,
+                                        "fds": 246,
+                                        "memory_bytes": 5751584,
+                                        "server_open_connections": 80,
+                                        "server_connections_total": 80
+                                    },
+                                    {
+                                        "tenants_done": 100,
+                                        "pools": 100,
+                                        "evictions": 0,
+                                        "fds": 306,
+                                        "memory_bytes": 6179960,
+                                        "server_open_connections": 100,
+                                        "server_connections_total": 100
+                                    },
+                                    {
+                                        "tenants_done": 120,
+                                        "pools": 120,
+                                        "evictions": 0,
+                                        "fds": 366,
+                                        "memory_bytes": 6616848,
+                                        "server_open_connections": 120,
+                                        "server_connections_total": 120
+                                    },
+                                    {
+                                        "tenants_done": 140,
+                                        "pools": 140,
+                                        "evictions": 0,
+                                        "fds": 426,
+                                        "memory_bytes": 7057832,
+                                        "server_open_connections": 140,
+                                        "server_connections_total": 140
+                                    },
+                                    {
+                                        "tenants_done": 160,
+                                        "pools": 160,
+                                        "evictions": 0,
+                                        "fds": 486,
+                                        "memory_bytes": 7486528,
+                                        "server_open_connections": 160,
+                                        "server_connections_total": 160
+                                    },
+                                    {
+                                        "tenants_done": 180,
+                                        "pools": 180,
+                                        "evictions": 0,
+                                        "fds": 546,
+                                        "memory_bytes": 7915224,
+                                        "server_open_connections": 180,
+                                        "server_connections_total": 180
+                                    },
+                                    {
+                                        "tenants_done": 200,
+                                        "pools": 200,
+                                        "evictions": 0,
+                                        "fds": 606,
+                                        "memory_bytes": 8344080,
+                                        "server_open_connections": 200,
+                                        "server_connections_total": 200
+                                    }
+                                ],
+                                "after_close": {
+                                    "memory_after_gc_bytes": 4044152,
+                                    "pools": 0,
+                                    "fds": 6,
+                                    "server_open_connections": 0
+                                }
+                            }
+                        }
+                    ],
+                    "summary": {
+                        "runs": 3,
+                        "rps": {
+                            "median": 554.3,
+                            "min": 503,
+                            "max": 1140.5,
+                            "spread_pct": 115
+                        },
+                        "wall_s": {
+                            "median": 1.804,
+                            "min": 0.877,
+                            "max": 1.988,
+                            "spread_pct": 61.6
+                        },
+                        "p50_ms": {
+                            "median": 1.039,
+                            "min": 0.757,
+                            "max": 1.067,
+                            "spread_pct": 29.8
+                        },
+                        "p95_ms": {
+                            "median": 8.991,
+                            "min": 3.05,
+                            "max": 10.789,
+                            "spread_pct": 86.1
+                        },
+                        "p99_ms": {
+                            "median": 22.379,
+                            "min": 6.12,
+                            "max": 22.983,
+                            "spread_pct": 75.4
+                        },
+                        "max_ms": {
+                            "median": 43.304,
+                            "min": 25.746,
+                            "max": 47.541,
+                            "spread_pct": 50.3
+                        },
+                        "peak_over_start_mib": {
+                            "median": 4.278,
+                            "min": 4.278,
+                            "max": 4.278,
+                            "spread_pct": 0
+                        },
+                        "mem_growth_bytes": {
+                            "median": 4213312,
+                            "min": 4213312,
+                            "max": 4213312,
+                            "spread_pct": 0
+                        },
+                        "mem_growth_after_gc_bytes": {
+                            "median": 4405040,
+                            "min": 4405040,
+                            "max": 4405040,
+                            "spread_pct": 0
+                        },
+                        "cpu_s": {
+                            "median": 0.48,
+                            "min": 0.459,
+                            "max": 0.486,
+                            "spread_pct": 5.6
+                        },
+                        "transport_errors": {
+                            "median": 0,
+                            "min": 0,
+                            "max": 0,
+                            "spread_pct": 0
+                        },
+                        "connections_opened": {
+                            "median": 200,
+                            "min": 200,
+                            "max": 200,
+                            "spread_pct": 0
+                        },
+                        "max_concurrent_streams": {
+                            "median": 4,
+                            "min": 4,
+                            "max": 4,
+                            "spread_pct": 0
+                        }
+                    }
+                }
+            ]
+        }
+    ]
+}

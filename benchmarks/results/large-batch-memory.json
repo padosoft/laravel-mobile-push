@@ -1,0 +1,472 @@
+{
+    "env": {
+        "date_utc": "2026-11-21T00:54:28+00:00",
+        "php": "8.3.6 (cli, NTS)",
+        "libcurl": "8.5.0",
+        "libcurl_ssl": "OpenSSL/3.0.13",
+        "libcurl_protocols_h2": true,
+        "node": "v22.23.5",
+        "cpu_model": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+        "cpu_cores": 4,
+        "mem_total": "16473744 kB",
+        "kernel": "6.18.44-fc-v726",
+        "loadavg_at_start": [
+            18.02197265625,
+            18.9716796875,
+            18.71875
+        ],
+        "package_commit": "a3a7618",
+        "pushok": {
+            "version": "0.19.1",
+            "reference": "34e97101ab4ead13ef3154cb389bca4d46dc0cba"
+        },
+        "php_memory_limit": "-1"
+    },
+    "command": "php benchmarks/run.php --scenario=large-batch-memory --million --json --out=benchmarks/results/large-batch-memory.json",
+    "scenarios": [
+        {
+            "scenario": "large-batch-memory",
+            "description": "Destinations are produced lazily by a generator and the report is consumed as a cursor; memory_get_usage is sampled during the run (about every 5% of the destinations). Latency is sampled (every k-th request) to keep the recorder itself small.",
+            "cases": [
+                {
+                    "label": "apns pipeline, 100,000 destinations from a generator, window 100",
+                    "params": {
+                        "count": 100000,
+                        "window": 100,
+                        "connections": 1,
+                        "payload": 256,
+                        "delay": 0,
+                        "repeat": 1,
+                        "peerLimit": 1000,
+                        "warm": true,
+                        "provider": "apns"
+                    },
+                    "runs": [
+                        {
+                            "requests": 100000,
+                            "wall_s": 14.8485,
+                            "rps": 6734.7,
+                            "latency_ms": {
+                                "p50": 8.935,
+                                "p95": 20.579,
+                                "p99": 32.514,
+                                "max": 63.644,
+                                "samples": 20000
+                            },
+                            "peak_over_start_mib": 2.56,
+                            "mem_start_bytes": 5123192,
+                            "mem_end_bytes": 6314640,
+                            "mem_growth_bytes": 1191448,
+                            "mem_growth_after_gc_bytes": 1202944,
+                            "recorder_bytes_estimate": 320000,
+                            "cpu_s": 6.78,
+                            "transport_errors": 0,
+                            "http_status": {
+                                "200": 100000
+                            },
+                            "outcomes": {
+                                "accepted/none": 100000
+                            },
+                            "fds": {
+                                "before": 9,
+                                "after": 9
+                            },
+                            "server": {
+                                "connections_opened": 0,
+                                "connections_total_since_reset": 1,
+                                "tcp_connections": 0,
+                                "requests_received": 100000,
+                                "requests_processed": 100000,
+                                "max_concurrent_streams_cumulative": 100,
+                                "open_connections_after": 1
+                            },
+                            "checkpoints": [
+                                {
+                                    "at": 5000,
+                                    "usage": 6962808
+                                },
+                                {
+                                    "at": 10000,
+                                    "usage": 6979784
+                                },
+                                {
+                                    "at": 15000,
+                                    "usage": 7012928
+                                },
+                                {
+                                    "at": 20000,
+                                    "usage": 7013304
+                                },
+                                {
+                                    "at": 25000,
+                                    "usage": 7079216
+                                },
+                                {
+                                    "at": 30000,
+                                    "usage": 7079592
+                                },
+                                {
+                                    "at": 35000,
+                                    "usage": 7079968
+                                },
+                                {
+                                    "at": 40000,
+                                    "usage": 7080344
+                                },
+                                {
+                                    "at": 45000,
+                                    "usage": 7211792
+                                },
+                                {
+                                    "at": 50000,
+                                    "usage": 7212328
+                                },
+                                {
+                                    "at": 55000,
+                                    "usage": 7212704
+                                },
+                                {
+                                    "at": 60000,
+                                    "usage": 7213080
+                                },
+                                {
+                                    "at": 65000,
+                                    "usage": 7213456
+                                },
+                                {
+                                    "at": 70000,
+                                    "usage": 7213832
+                                },
+                                {
+                                    "at": 75000,
+                                    "usage": 7214208
+                                },
+                                {
+                                    "at": 80000,
+                                    "usage": 7214584
+                                },
+                                {
+                                    "at": 85000,
+                                    "usage": 7477104
+                                },
+                                {
+                                    "at": 90000,
+                                    "usage": 7477800
+                                },
+                                {
+                                    "at": 95000,
+                                    "usage": 7478176
+                                },
+                                {
+                                    "at": 100000,
+                                    "usage": 7369848
+                                }
+                            ],
+                            "body_bytes_on_server": 256
+                        }
+                    ],
+                    "summary": {
+                        "runs": 1,
+                        "rps": {
+                            "median": 6734.7,
+                            "min": 6734.7,
+                            "max": 6734.7,
+                            "spread_pct": 0
+                        },
+                        "wall_s": {
+                            "median": 14.849,
+                            "min": 14.849,
+                            "max": 14.849,
+                            "spread_pct": 0
+                        },
+                        "p50_ms": {
+                            "median": 8.935,
+                            "min": 8.935,
+                            "max": 8.935,
+                            "spread_pct": 0
+                        },
+                        "p95_ms": {
+                            "median": 20.579,
+                            "min": 20.579,
+                            "max": 20.579,
+                            "spread_pct": 0
+                        },
+                        "p99_ms": {
+                            "median": 32.514,
+                            "min": 32.514,
+                            "max": 32.514,
+                            "spread_pct": 0
+                        },
+                        "max_ms": {
+                            "median": 63.644,
+                            "min": 63.644,
+                            "max": 63.644,
+                            "spread_pct": 0
+                        },
+                        "peak_over_start_mib": {
+                            "median": 2.56,
+                            "min": 2.56,
+                            "max": 2.56,
+                            "spread_pct": 0
+                        },
+                        "mem_growth_bytes": {
+                            "median": 1191448,
+                            "min": 1191448,
+                            "max": 1191448,
+                            "spread_pct": 0
+                        },
+                        "mem_growth_after_gc_bytes": {
+                            "median": 1202944,
+                            "min": 1202944,
+                            "max": 1202944,
+                            "spread_pct": 0
+                        },
+                        "cpu_s": {
+                            "median": 6.78,
+                            "min": 6.78,
+                            "max": 6.78,
+                            "spread_pct": 0
+                        },
+                        "transport_errors": {
+                            "median": 0,
+                            "min": 0,
+                            "max": 0,
+                            "spread_pct": 0
+                        },
+                        "connections_opened": {
+                            "median": 0,
+                            "min": 0,
+                            "max": 0,
+                            "spread_pct": 0
+                        },
+                        "max_concurrent_streams": {
+                            "median": 100,
+                            "min": 100,
+                            "max": 100,
+                            "spread_pct": 0
+                        }
+                    }
+                },
+                {
+                    "label": "apns pipeline, 1,000,000 destinations from a generator, window 100",
+                    "params": {
+                        "count": 1000000,
+                        "window": 100,
+                        "connections": 1,
+                        "payload": 256,
+                        "delay": 0,
+                        "repeat": 1,
+                        "peerLimit": 1000,
+                        "warm": true,
+                        "provider": "apns"
+                    },
+                    "runs": [
+                        {
+                            "requests": 1000000,
+                            "wall_s": 173.1816,
+                            "rps": 5774.3,
+                            "latency_ms": {
+                                "p50": 9.555,
+                                "p95": 24.828,
+                                "p99": 39.664,
+                                "max": 79.486,
+                                "samples": 20000
+                            },
+                            "peak_over_start_mib": 2.505,
+                            "mem_start_bytes": 5199384,
+                            "mem_end_bytes": 6333336,
+                            "mem_growth_bytes": 1133952,
+                            "mem_growth_after_gc_bytes": 1145448,
+                            "recorder_bytes_estimate": 320000,
+                            "cpu_s": 70.717,
+                            "transport_errors": 0,
+                            "http_status": {
+                                "200": 1000000
+                            },
+                            "outcomes": {
+                                "accepted/none": 1000000
+                            },
+                            "fds": {
+                                "before": 9,
+                                "after": 9
+                            },
+                            "server": {
+                                "connections_opened": 0,
+                                "connections_total_since_reset": 1,
+                                "tcp_connections": 0,
+                                "requests_received": 1000000,
+                                "requests_processed": 1000000,
+                                "max_concurrent_streams_cumulative": 100,
+                                "open_connections_after": 1
+                            },
+                            "checkpoints": [
+                                {
+                                    "at": 50000,
+                                    "usage": 6981496
+                                },
+                                {
+                                    "at": 100000,
+                                    "usage": 6998472
+                                },
+                                {
+                                    "at": 150000,
+                                    "usage": 7031616
+                                },
+                                {
+                                    "at": 200000,
+                                    "usage": 7031992
+                                },
+                                {
+                                    "at": 250000,
+                                    "usage": 7097904
+                                },
+                                {
+                                    "at": 300000,
+                                    "usage": 7098280
+                                },
+                                {
+                                    "at": 350000,
+                                    "usage": 7098656
+                                },
+                                {
+                                    "at": 400000,
+                                    "usage": 7099032
+                                },
+                                {
+                                    "at": 450000,
+                                    "usage": 7230480
+                                },
+                                {
+                                    "at": 500000,
+                                    "usage": 7231016
+                                },
+                                {
+                                    "at": 550000,
+                                    "usage": 7231392
+                                },
+                                {
+                                    "at": 600000,
+                                    "usage": 7231768
+                                },
+                                {
+                                    "at": 650000,
+                                    "usage": 7232144
+                                },
+                                {
+                                    "at": 700000,
+                                    "usage": 7232520
+                                },
+                                {
+                                    "at": 750000,
+                                    "usage": 7232896
+                                },
+                                {
+                                    "at": 800000,
+                                    "usage": 7233272
+                                },
+                                {
+                                    "at": 850000,
+                                    "usage": 7495792
+                                },
+                                {
+                                    "at": 900000,
+                                    "usage": 7496488
+                                },
+                                {
+                                    "at": 950000,
+                                    "usage": 7496864
+                                },
+                                {
+                                    "at": 1000000,
+                                    "usage": 7388544
+                                }
+                            ],
+                            "body_bytes_on_server": 256
+                        }
+                    ],
+                    "summary": {
+                        "runs": 1,
+                        "rps": {
+                            "median": 5774.3,
+                            "min": 5774.3,
+                            "max": 5774.3,
+                            "spread_pct": 0
+                        },
+                        "wall_s": {
+                            "median": 173.182,
+                            "min": 173.182,
+                            "max": 173.182,
+                            "spread_pct": 0
+                        },
+                        "p50_ms": {
+                            "median": 9.555,
+                            "min": 9.555,
+                            "max": 9.555,
+                            "spread_pct": 0
+                        },
+                        "p95_ms": {
+                            "median": 24.828,
+                            "min": 24.828,
+                            "max": 24.828,
+                            "spread_pct": 0
+                        },
+                        "p99_ms": {
+                            "median": 39.664,
+                            "min": 39.664,
+                            "max": 39.664,
+                            "spread_pct": 0
+                        },
+                        "max_ms": {
+                            "median": 79.486,
+                            "min": 79.486,
+                            "max": 79.486,
+                            "spread_pct": 0
+                        },
+                        "peak_over_start_mib": {
+                            "median": 2.505,
+                            "min": 2.505,
+                            "max": 2.505,
+                            "spread_pct": 0
+                        },
+                        "mem_growth_bytes": {
+                            "median": 1133952,
+                            "min": 1133952,
+                            "max": 1133952,
+                            "spread_pct": 0
+                        },
+                        "mem_growth_after_gc_bytes": {
+                            "median": 1145448,
+                            "min": 1145448,
+                            "max": 1145448,
+                            "spread_pct": 0
+                        },
+                        "cpu_s": {
+                            "median": 70.717,
+                            "min": 70.717,
+                            "max": 70.717,
+                            "spread_pct": 0
+                        },
+                        "transport_errors": {
+                            "median": 0,
+                            "min": 0,
+                            "max": 0,
+                            "spread_pct": 0
+                        },
+                        "connections_opened": {
+                            "median": 0,
+                            "min": 0,
+                            "max": 0,
+                            "spread_pct": 0
+                        },
+                        "max_concurrent_streams": {
+                            "median": 100,
+                            "min": 100,
+                            "max": 100,
+                            "spread_pct": 0
+                        }
+                    }
+                }
+            ]
+        }
+    ]
+}

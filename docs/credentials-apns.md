@@ -107,7 +107,7 @@ The secret is read when the connection is first used in a process, and the resol
 ```
 
 - Export the push certificate **together with its private key** from the keychain where it was created, then convert it to PEM (for example `openssl pkcs12 -in cert.p12 -out apns-cert.pem -nodes`, or keep the key encrypted and set `passphrase`).
-- When the connection is first used, the package checks that the certificate is within its validity dates, that the private key belongs to it, and that its team matches `team_id`; it warns 30 days before expiry (`credentials.warn_days`). The environment and topic extensions of Apple certificates are decoded on a best-effort basis: **they have not been checked against real Apple certificates** in this project, so always declare `environment`.
+- When the connection is first used, the package checks that the certificate is within its validity dates, that the private key belongs to it, and that its team matches `team_id`; `doctor` and `credentials:check` warn `credentials.warn_days` (default 30) days before it expires. The environment and topic extensions of Apple certificates are decoded on a best-effort basis: **they have not been checked against real Apple certificates** in this project, so always declare `environment`.
 - Certificates are passed to libcurl in memory; `mobile-push:doctor` tells you whether your libcurl supports it (7.71 or newer).
 - Certificates expire every year; `.p8` keys do not. Prefer a key unless you have a reason not to.
 

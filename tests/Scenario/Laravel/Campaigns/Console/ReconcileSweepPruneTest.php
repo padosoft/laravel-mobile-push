@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\DB;
 use Padosoft\MobilePush\Laravel\Campaigns\Audience\DeviceAudience;
-use Padosoft\MobilePush\Laravel\Campaigns\CampaignStatus;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Campaigns\CampaignWorld;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Campaigns\Console\CampaignConsole;
 

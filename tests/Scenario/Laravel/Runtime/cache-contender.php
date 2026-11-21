@@ -49,6 +49,9 @@ $app = Testbench::create(null, null, ['extra' => ['providers' => [MobilePushServ
     $config->set('cache.stores.shared-database', ['driver' => 'database', 'connection' => 'shared', 'table' => 'cache', 'lock_connection' => 'shared', 'lock_table' => 'cache_locks']);
     $config->set('cache.stores.shared-file', ['driver' => 'file', 'path' => $args['cacheDir'] ?? sys_get_temp_dir(), 'lock_path' => $args['cacheDir'] ?? sys_get_temp_dir()]);
     $config->set('mobile-push.cache.store', 'shared-'.$args['store']);
+    // The redis manager copies its config when it is built (possibly during boot): rebuild it with ours.
+    $app->forgetInstance('redis');
+    $app->forgetInstance('redis.connection');
 })($app);
 
 $signer = new class(new OpenSslEs256Signer(PrivateKey::fromPem((string) file_get_contents($args['keyPath'])), 'KEY1111111')) implements Signer
