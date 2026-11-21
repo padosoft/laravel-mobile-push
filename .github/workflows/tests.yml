@@ -273,16 +273,20 @@ jobs:
           for n in $(seq 1 60); do curl -fsS "http://127.0.0.1:8089/push/$n" >> responses.txt; echo >> responses.txt; done
           # sixty more requests, each putting one HTTP/2 request on the wire through the application's transport
           for n in $(seq 1 60); do curl -fsS "http://127.0.0.1:8089/wire/$n" >> wire.txt; echo >> wire.txt; done || true
+          # and sixty at once, eight at a time: requests arrive while the workers are sending
+          seq 61 120 | xargs -P 8 -I{} sh -c 'curl -fsS "http://127.0.0.1:8089/wire/{}" > "wire-{}.json" || echo "{\"n\":{},\"curl\":\"failed\"}" > "wire-{}.json"'
+          for n in $(seq 61 120); do cat "wire-$n.json" >> wire-concurrent.txt; echo >> wire-concurrent.txt; done
           php artisan octane:stop || true
           cat octane.log | tail -5
           head -2 responses.txt
           head -2 wire.txt
           test "$(grep -c '"status":200,"http":"2"' wire.txt)" = 60
+          test "$(grep -c '"status":200,"http":"2"' wire-concurrent.txt)" = 60
           touch wire.json.stop
           for i in $(seq 1 50); do test -s wire.json.stats && break; sleep 0.2; done
           cat wire.json.stats; echo
-          # the mock received all sixty, on at most one connection per worker: the pool outlives the request
-          php -r '$s = json_decode(file_get_contents("wire.json.stats"), true); exit($s["received"] === 60 && $s["processed"] === 60 && $s["connections"] >= 1 && $s["connections"] <= 2 ? 0 : 1);'
+          # the mock received all 120, on at most one connection per worker: the pool outlives the request
+          php -r '$s = json_decode(file_get_contents("wire.json.stats"), true); exit($s["received"] === 120 && $s["processed"] === 120 && $s["connections"] >= 1 && $s["connections"] <= 2 ? 0 : 1);'
           # every request was served and simulated, in the default scope, by the two long-lived workers
           test "$(grep -c '"statuses":\["simulated"\]' responses.txt)" = 60
           test "$(grep -c '"scope":"default"' responses.txt)" = 60

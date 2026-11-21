@@ -27,3 +27,11 @@ Route::get('/wire/{n}', function (int $n) {
 
     return response()->json($out);
 });
+
+// Under Swoole: the coroutine id of the request and the hook flags of the worker (0 and null elsewhere).
+Route::get('/hooks', fn () => response()->json([
+    'coroutine' => class_exists(\Swoole\Coroutine::class) ? \Swoole\Coroutine::getCid() : 0,
+    'hook_flags' => class_exists(\Swoole\Runtime::class) ? \Swoole\Runtime::getHookFlags() : null,
+    'native_curl' => defined('SWOOLE_HOOK_NATIVE_CURL') ? SWOOLE_HOOK_NATIVE_CURL : null,
+    'curl' => defined('SWOOLE_HOOK_CURL') ? SWOOLE_HOOK_CURL : null,
+]));

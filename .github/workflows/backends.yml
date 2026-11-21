@@ -148,9 +148,15 @@ jobs:
           - server: swoole
             label: Swoole
             extensions: ', swoole'
+            ext: swoole
+          - server: swoole
+            label: OpenSwoole
+            extensions: ', openswoole'
+            ext: openswoole
           - server: frankenphp
             label: FrankenPHP
             extensions: ''
+            ext: ''
     name: Octane on ${{ matrix.label }}
     steps:
       - uses: actions/checkout@v4
@@ -177,7 +183,7 @@ jobs:
         run: |
           php artisan octane:install --server=${{ matrix.server }} --no-interaction
           # for the record: which server this run exercised
-          if [ "${{ matrix.server }}" = swoole ]; then php --ri swoole | grep -i '^Version'; else ./frankenphp version; fi
+          if [ "${{ matrix.server }}" = swoole ]; then php --ri ${{ matrix.ext }} | grep -i 'version'; else ./frankenphp version; fi
           cat ../package/tests/Support/FreshApp/octane-routes.php >> routes/web.php
           # the real transport on the wire: a local HTTP/2 mock that counts the connections it sees
           php ../package/tests/Support/FreshApp/wire-mock.php "$PWD/wire.json" > wire-mock.log 2>&1 &
@@ -189,16 +195,20 @@ jobs:
           for n in $(seq 1 60); do curl -fsS "http://127.0.0.1:8089/push/$n" >> responses.txt; echo >> responses.txt; done || true
           # sixty more requests, each putting one HTTP/2 request on the wire through the application's transport
           for n in $(seq 1 60); do curl -fsS "http://127.0.0.1:8089/wire/$n" >> wire.txt; echo >> wire.txt; done || true
+          # and sixty at once, eight at a time: requests arrive while the workers are sending
+          seq 61 120 | xargs -P 8 -I{} sh -c 'curl -fsS "http://127.0.0.1:8089/wire/{}" > "wire-{}.json" || echo "{\"n\":{},\"curl\":\"failed\"}" > "wire-{}.json"'
+          for n in $(seq 61 120); do cat "wire-$n.json" >> wire-concurrent.txt; echo >> wire-concurrent.txt; done
           php artisan octane:stop --server=${{ matrix.server }} || true
           tail -20 octane.log
           head -2 responses.txt
           head -2 wire.txt
           test "$(grep -c '"status":200,"http":"2"' wire.txt)" = 60
+          test "$(grep -c '"status":200,"http":"2"' wire-concurrent.txt)" = 60
           touch wire.json.stop
           for i in $(seq 1 50); do test -s wire.json.stats && break; sleep 0.2; done
           cat wire.json.stats; echo
-          # the mock received all sixty, on at most one connection per worker: the pool outlives the request
-          php -r '$s = json_decode(file_get_contents("wire.json.stats"), true); exit($s["received"] === 60 && $s["processed"] === 60 && $s["connections"] >= 1 && $s["connections"] <= 2 ? 0 : 1);'
+          # the mock received all 120, on at most one connection per worker: the pool outlives the request
+          php -r '$s = json_decode(file_get_contents("wire.json.stats"), true); exit($s["received"] === 120 && $s["processed"] === 120 && $s["connections"] >= 1 && $s["connections"] <= 2 ? 0 : 1);'
           # every request was served and simulated, in the default scope, by the long-lived workers
           test "$(grep -c '"statuses":\["simulated"\]' responses.txt)" = 60
           test "$(grep -c '"scope":"default"' responses.txt)" = 60
@@ -208,3 +218,117 @@ jobs:
           # the log records of each request were flushed when that request ended (database sink, mode all)
           php artisan tinker --execute='echo "logs: ".DB::table("mobile_push_logs")->count()."\n";' | tee logs.txt
           grep -q '^logs: 60$' logs.txt
+
+  # An observation, not a gate: Swoole with its coroutine hooks on (curl included), and requests arriving eight at a
+  # time. The transport blocks in curl_multi and keeps one pool per process; with the hooks a second request can
+  # enter the same pool while the first one waits. The step prints what happened; docs/runtimes.md reports it.
+  swoole-coroutine-hooks:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    name: Octane on Swoole with coroutine hooks (observation)
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: package
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: curl, openssl, json, intl, pdo_sqlite, pcntl, posix, sockets, swoole
+          coverage: none
+      - name: Create the application, require the package, install and migrate
+        run: |
+          composer create-project "laravel/laravel:^13.0" app --no-interaction --prefer-dist
+          cd app
+          composer config repositories.mobile-push '{"type":"path","url":"../package","options":{"symlink":false}}'
+          composer require padosoft/laravel-mobile-push:@dev laravel/octane --no-interaction
+          php artisan mobile-push:install --no-interaction --profile=durable --modules=devices,live-activities,logs,campaigns,receipts
+          php ../package/tests/Support/FreshApp/configure.php "$PWD"
+          php artisan migrate --no-interaction
+      - name: Sixty sequential and sixty concurrent requests through the transport, hooks on
+        working-directory: app
+        run: |
+          php artisan octane:install --server=swoole --no-interaction
+          php --ri swoole | grep -iE 'version|curl'
+          # every hook Swoole has, curl included, for the HTTP workers
+          sed -i "s/^return \[/return [\n    'swoole' => ['options' => ['hook_flags' => SWOOLE_HOOK_ALL, 'enable_coroutine' => true]],/" config/octane.php
+          grep -q "SWOOLE_HOOK_ALL" config/octane.php
+          cat ../package/tests/Support/FreshApp/octane-routes.php >> routes/web.php
+          php ../package/tests/Support/FreshApp/wire-mock.php "$PWD/wire.json" > wire-mock.log 2>&1 &
+          for i in $(seq 1 50); do test -s wire.json && break; sleep 0.2; done
+          test -s wire.json
+          echo "MOBILE_PUSH_WIRE_MOCK=$PWD/wire.json" >> .env
+          php artisan octane:start --server=swoole --host=127.0.0.1 --port=8089 --workers=2 --max-requests=1000 > octane.log 2>&1 &
+          for i in $(seq 1 60); do curl -fsS -o /dev/null http://127.0.0.1:8089/up && break; sleep 0.5; done
+          curl -fsS http://127.0.0.1:8089/hooks; echo
+          for n in $(seq 1 60); do curl -sS -m 20 "http://127.0.0.1:8089/wire/$n" >> wire.txt; echo >> wire.txt; done || true
+          seq 61 120 | xargs -P 8 -I{} sh -c 'curl -sS -m 20 "http://127.0.0.1:8089/wire/{}" > "wire-{}.json" || echo "{\"n\":{},\"curl\":\"failed\"}" > "wire-{}.json"' || true
+          for n in $(seq 61 120); do cat "wire-$n.json" >> wire-concurrent.txt; echo >> wire-concurrent.txt; done
+          php artisan octane:stop --server=swoole || true
+          touch wire.json.stop
+          for i in $(seq 1 50); do test -s wire.json.stats && break; sleep 0.2; done
+          echo "sequential ok: $(grep -c '"status":200,"http":"2"' wire.txt) of 60"
+          echo "concurrent ok: $(grep -c '"status":200,"http":"2"' wire-concurrent.txt) of 60"
+          echo "mock: $(cat wire.json.stats)"
+          echo "--- answers that were not a 200 over HTTP/2 (first ten)"
+          grep -hv '"status":200,"http":"2"' wire.txt wire-concurrent.txt | grep -v '^$' | cut -c1-400 | head -10 || true
+          echo "--- octane log (last thirty lines)"
+          tail -30 octane.log
+          echo "--- application log (errors)"
+          grep -hE 'ERROR|Fatal|Exception' storage/logs/*.log 2>/dev/null | cut -c1-400 | sort | uniq -c | sort -rn | head -10 || true
+          test "$(grep -c '"status":200,"http":"2"' wire.txt)" = 60
+          test "$(grep -c '"status":200,"http":"2"' wire-concurrent.txt)" = 60
+
+  beanstalkd:
+    runs-on: ubuntu-latest
+    name: beanstalkd queue
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: package
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: curl, openssl, json, intl, pdo_sqlite, pcntl, posix, sockets
+          coverage: none
+      - name: Start beanstalkd
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq beanstalkd
+          sudo systemctl stop beanstalkd || true
+          beanstalkd -l 127.0.0.1 -p 11300 > beanstalkd.log 2>&1 &
+          sleep 1
+          beanstalkd -v
+      - name: Create the application, require the package, install and migrate
+        run: |
+          composer create-project "laravel/laravel:^13.0" app --no-interaction --prefer-dist
+          cd app
+          composer config repositories.mobile-push '{"type":"path","url":"../package","options":{"symlink":false}}'
+          composer require padosoft/laravel-mobile-push:@dev pda/pheanstalk --no-interaction
+          php artisan mobile-push:install --no-interaction --profile=durable --modules=devices,live-activities,logs,campaigns,receipts
+          php ../package/tests/Support/FreshApp/configure.php "$PWD"
+          sed -i '/^QUEUE_CONNECTION=/d;/^BEANSTALKD_/d' .env
+          printf '%s\n' QUEUE_CONNECTION=beanstalkd BEANSTALKD_QUEUE_HOST=127.0.0.1 >> .env
+          php artisan migrate --no-interaction
+      - name: beanstalkd as queue, with queue:work
+        working-directory: app
+        run: |
+          php artisan mobile-push:doctor | tee doctor.txt || true
+          php artisan tinker --execute="$(cat ../package/tests/Support/FreshApp/send.php)" | tee send.txt
+          ! grep -q 'FRESH-APP SMOKE FAILED' send.txt
+          grep -q 'queue driver: beanstalkd' send.txt
+          php artisan queue:work beanstalkd --queue=push,push-bulk --stop-when-empty --tries=1 --timeout=55
+          php artisan tinker --execute="$(cat ../package/tests/Support/FreshApp/verify.php)" | tee verify.txt
+          ! grep -q 'FRESH-APP SMOKE FAILED' verify.txt
+          test "$(grep -c '^ok: ' verify.txt)" = 4
+      - name: A campaign of 250 devices, planned in slices of 100, on the beanstalkd queue
+        working-directory: app
+        run: |
+          sed -i "s/'slice' => 1000/'slice' => 100/" config/mobile-push.php
+          grep -q "'slice' => 100," config/mobile-push.php
+          php artisan migrate:fresh --no-interaction
+          php artisan tinker --execute="$(cat ../package/tests/Support/FreshApp/campaign.php)" | tee campaign.txt
+          ! grep -q 'FRESH-APP SMOKE FAILED' campaign.txt
+          grep -q 'queue driver: beanstalkd' campaign.txt
+          php artisan queue:work beanstalkd --queue=push,push-bulk --stop-when-empty --tries=1 --timeout=55
+          php artisan tinker --execute="$(cat ../package/tests/Support/FreshApp/verify-campaign.php)" | tee verify-campaign.txt
+          ! grep -q 'FRESH-APP SMOKE FAILED' verify-campaign.txt
+          test "$(grep -c '^ok: ' verify-campaign.txt)" = 4
