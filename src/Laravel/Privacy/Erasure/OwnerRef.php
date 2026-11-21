@@ -39,7 +39,9 @@ final readonly class OwnerRef
         $type = ltrim(str_replace('\\\\', '\\', trim(substr($argument, 0, $at))), '\\');
         $id = trim(substr($argument, $at + 1));
 
-        return new self(Relation::getMorphAlias($type), $id);
+        $alias = array_search($type, Relation::morphMap(), true);
+
+        return new self(is_string($alias) ? $alias : $type, $id);
     }
 
     public function label(): string

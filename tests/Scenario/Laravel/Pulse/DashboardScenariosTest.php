@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use Carbon\CarbonInterval;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Blade;
+use Illuminate\Support\ServiceProvider;
 use Laravel\Pulse\Contracts\Storage;
 use Laravel\Pulse\Facades\Pulse;
 use Livewire\Livewire;
@@ -13,6 +15,7 @@ use Padosoft\MobilePush\Core\Outcome\ReasonCode;
 use Padosoft\MobilePush\Core\Outcome\SendStatus;
 use Padosoft\MobilePush\Laravel\Pulse\Livewire\MobilePushCard;
 use Padosoft\MobilePush\Laravel\Pulse\MobilePushRecorder;
+use Padosoft\MobilePush\Laravel\Pulse\PulseModule;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Pulse\Canary;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Pulse\Kit;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Pulse\PulseWorld;
@@ -233,4 +236,21 @@ it('counts a failure inside the recorder instead of throwing', function () {
     $recorder->record(Kit::result(Kit::binding(), SendStatus::Rejected, ReasonCode::PayloadInvalid));
 
     expect($recorder->failures())->toBe(2);
+});
+
+it('can be dropped into a dashboard view with the documented tag', function () {
+    event(Kit::batch(Kit::binding('ios-main'), ['accepted' => 4]));
+    Pulse::ingest();
+
+    $html = Blade::render('<livewire:mobile-push.pulse-card cols="6" />');
+
+    expect($html)->toContain('Mobile push')->toContain('apns / ios-main')->toContain('col-span-6');
+});
+
+it('publishes its view under the mobile-push-views tag', function () {
+    $paths = ServiceProvider::pathsToPublish(null, PulseModule::PUBLISH_TAG);
+
+    expect(array_keys($paths))->toHaveCount(1)
+        ->and(array_keys($paths)[0])->toEndWith('resources/views/pulse')
+        ->and(array_values($paths)[0])->toEndWith('views/vendor/mobile-push/pulse');
 });

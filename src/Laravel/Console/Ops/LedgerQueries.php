@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Padosoft\MobilePush\Laravel\Console\Ops;
 
 use Illuminate\Contracts\Container\Container;
+use Illuminate\Database\Connection;
 use Illuminate\Database\Query\Builder;
 use Padosoft\MobilePush\Core\Ledger\DeliveryState;
 use Padosoft\MobilePush\Core\Ledger\LedgerTime;
@@ -80,7 +81,7 @@ final readonly class LedgerQueries
         return $this->connection()->table(LedgerTables::fromConfig()->deliveries);
     }
 
-    private function connection(): \Illuminate\Database\Connection
+    private function connection(): Connection
     {
         return $this->container->make(DatabaseLedger::class)->connection();
     }

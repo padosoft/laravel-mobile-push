@@ -6,7 +6,7 @@ namespace Padosoft\MobilePush\Laravel\Pulse\Livewire;
 
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Contracts\Support\Renderable;
-use Illuminate\Support\Facades\View;
+use Illuminate\View\Factory as ViewFactory;
 use Laravel\Pulse\Livewire\Card;
 use Livewire\Attributes\Lazy;
 use Padosoft\MobilePush\Laravel\Pulse\CardData;
@@ -26,7 +26,6 @@ use Padosoft\MobilePush\Laravel\Pulse\PulseSettings;
 #[Lazy]
 final class MobilePushCard extends Card
 {
-    /** @var view-string */
     private const VIEW = 'mobile-push::pulse.card';
 
     /** Columns the card shows, in order. */
@@ -41,7 +40,11 @@ final class MobilePushCard extends Card
 
         $rate = PulseSettings::fromConfig(app(Repository::class))->sampleRate;
 
-        return View::make(self::VIEW, [
+        // Resolved through the finder (so a published override wins) and rendered as a file: the view lives in the
+        // package's own namespace, which static analysis cannot know as a view-string.
+        $views = app(ViewFactory::class);
+
+        return $views->file($views->getFinder()->find(self::VIEW), [
             'connections' => $data->connections,
             'reasons' => $data->reasons,
             'openCircuits' => $data->openCircuits,
@@ -155,7 +158,12 @@ final class MobilePushCard extends Card
     /** @return array<string, mixed> */
     private static function fields(mixed $row): array
     {
-        return is_object($row) ? get_object_vars($row) : [];
+        $fields = [];
+        foreach (is_object($row) ? get_object_vars($row) : [] as $name => $value) {
+            $fields[(string) $name] = $value;
+        }
+
+        return $fields;
     }
 
     private static function int(mixed $value): int

@@ -8,8 +8,8 @@ use Illuminate\Support\Str;
 use Padosoft\MobilePush\Core\Driver\SendOptions;
 use Padosoft\MobilePush\Core\Identity\BindingRef;
 use Padosoft\MobilePush\Core\Message\Message;
-use Padosoft\MobilePush\Laravel\Contracts\QueueOptions;
 use Padosoft\MobilePush\Laravel\Contracts\QueuedSender;
+use Padosoft\MobilePush\Laravel\Contracts\QueueOptions;
 
 /** Records queue requests instead of dispatching jobs. @internal */
 final readonly class FakeQueuedSender implements QueuedSender
