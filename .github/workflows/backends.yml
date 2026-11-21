@@ -115,6 +115,7 @@ jobs:
         run: |
           sed -i "s/'slice' => 1000/'slice' => 100/" config/mobile-push.php
           grep -q "'slice' => 100," config/mobile-push.php
+          php artisan migrate:fresh --no-interaction
           php artisan tinker --execute="$(cat ../package/tests/Support/FreshApp/campaign.php)" | tee campaign.txt
           ! grep -q 'FRESH-APP SMOKE FAILED' campaign.txt
           grep -q 'queue driver: sqs' campaign.txt

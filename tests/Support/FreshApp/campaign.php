@@ -14,12 +14,12 @@ $must = static function (bool $ok, string $what): void {
     echo "ok: {$what}\n";
 };
 
+// Run on a fresh schema (php artisan migrate:fresh): the counts below are exact.
 $binding = MobilePush::binding('ios');
-for ($i = 1; $i <= 250; $i++) {
-    $user = User::firstOrCreate(['email' => "user{$i}@example.test"], ['name' => "User {$i}", 'password' => 'x']);
+foreach (User::factory()->count(250)->create() as $i => $user) {
     $user->registerPushDevice($binding, ApnsDeviceToken::of(sprintf('%064x', 0xC0FFEE00000 + $i)));
 }
-$must(DB::table('mobile_push_devices')->count() === 250, '250 devices are registered');
+$must(DB::table('mobile_push_devices')->count() === 250, '250 devices are registered, one per user');
 
 $campaign = MobilePush::campaign(PushMessage::make('Black Friday', '-40% today'))
     ->name('smoke-campaign')->via('ios')->audience(DeviceAudience::all())->dispatch();
