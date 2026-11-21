@@ -165,6 +165,94 @@ jobs:
           php artisan mobile-push:send cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd --platform=ios --title=CI --body=hello
           test "$?" = 3
 
+  # The runtimes the unit suite cannot stand in for, on a freshly created application: a real Redis as queue and cache
+  # store, Laravel Horizon with the supervisors `mobile-push:install` prints, and Laravel Octane on RoadRunner serving
+  # real HTTP requests. Everything is simulated on the provider side: no credential exists.
+  runtimes:
+    runs-on: ubuntu-latest
+    name: Redis, Horizon and Octane (RoadRunner)
+    services:
+      redis:
+        image: redis:7
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s --health-timeout=3s --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: package
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: curl, openssl, json, intl, pdo_sqlite, redis, pcntl, posix, sockets
+          coverage: none
+      - name: Create the application, require the package, install and migrate
+        run: |
+          composer create-project "laravel/laravel:^13.0" app --no-interaction --prefer-dist
+          cd app
+          composer config repositories.mobile-push '{"type":"path","url":"../package","options":{"symlink":false}}'
+          composer require padosoft/laravel-mobile-push:@dev --no-interaction
+          php artisan mobile-push:install --no-interaction --profile=durable --modules=devices,live-activities,logs,campaigns,receipts
+          php ../package/tests/Support/FreshApp/configure.php "$PWD"
+          sed -i '/^QUEUE_CONNECTION=/d;/^CACHE_STORE=/d;/^REDIS_/d' .env
+          printf '%s\n' QUEUE_CONNECTION=redis CACHE_STORE=redis REDIS_CLIENT=phpredis REDIS_HOST=127.0.0.1 REDIS_PORT=6379 >> .env
+          php artisan migrate --no-interaction
+      - name: Redis as queue and cache store, with queue:work
+        working-directory: app
+        run: |
+          php artisan mobile-push:doctor | tee doctor.txt || true
+          grep -q 'The cache store takes locks' doctor.txt
+          php artisan tinker --execute="$(cat ../package/tests/Support/FreshApp/send.php)" | tee send.txt
+          ! grep -q 'FRESH-APP SMOKE FAILED' send.txt
+          grep -q 'queue driver: redis' send.txt
+          php artisan queue:work redis --queue=push,push-bulk --stop-when-empty --tries=1 --timeout=55
+          php artisan tinker --execute="$(cat ../package/tests/Support/FreshApp/verify.php)" | tee verify.txt
+          ! grep -q 'FRESH-APP SMOKE FAILED' verify.txt
+          test "$(grep -c '^ok: ' verify.txt)" = 4
+      - name: Horizon with the supervisors the install command prints
+        working-directory: app
+        run: |
+          composer require laravel/horizon --no-interaction
+          php artisan horizon:install
+          php ../package/tests/Support/FreshApp/horizon.php "$PWD"
+          php artisan migrate:fresh --no-interaction
+          php artisan tinker --execute='Illuminate\Support\Facades\Redis::flushall(); echo "flushed\n";'
+          php artisan mobile-push:doctor | tee doctor.txt || true
+          grep -q 'job_timeout (50 s) < worker_timeout (55 s)' doctor.txt
+          ! grep -q 'not verifiable: job_timeout' doctor.txt
+          php artisan tinker --execute="$(cat ../package/tests/Support/FreshApp/send.php)" | tee send.txt
+          ! grep -q 'FRESH-APP SMOKE FAILED' send.txt
+          timeout 30 php artisan horizon || true
+          php artisan tinker --execute="$(cat ../package/tests/Support/FreshApp/verify-horizon.php)" | tee horizon.txt
+          ! grep -q 'FRESH-APP SMOKE FAILED' horizon.txt
+          test "$(grep -c '^ok: ' horizon.txt)" = 6
+      - name: Octane on RoadRunner, sixty HTTP requests through two workers
+        working-directory: app
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          composer require laravel/octane spiral/roadrunner-cli spiral/roadrunner-http --no-interaction
+          php artisan octane:install --server=roadrunner --no-interaction
+          test -x ./rr
+          cat ../package/tests/Support/FreshApp/octane-routes.php >> routes/web.php
+          php artisan migrate:fresh --no-interaction
+          php artisan octane:start --server=roadrunner --host=127.0.0.1 --port=8089 --workers=2 --max-requests=1000 > octane.log 2>&1 &
+          for i in $(seq 1 40); do curl -fsS -o /dev/null http://127.0.0.1:8089/up && break; sleep 0.5; done
+          for n in $(seq 1 60); do curl -fsS "http://127.0.0.1:8089/push/$n" >> responses.txt; echo >> responses.txt; done
+          php artisan octane:stop || true
+          cat octane.log | tail -5
+          head -2 responses.txt
+          # every request was served and simulated, in the default scope, by the two long-lived workers
+          test "$(grep -c '"statuses":\["simulated"\]' responses.txt)" = 60
+          test "$(grep -c '"scope":"default"' responses.txt)" = 60
+          workers="$(grep -o '"pid":[0-9]*' responses.txt | sort -u | wc -l)"
+          echo "distinct worker processes: $workers"
+          test "$workers" -ge 1 && test "$workers" -le 2
+          # the log records of each request were flushed when that request ended (database sink, mode all)
+          php artisan tinker --execute='echo "logs: ".DB::table("mobile_push_logs")->count()."\n";' | tee logs.txt
+          grep -q '^logs: 60$' logs.txt
+
   static:
     runs-on: ubuntu-latest
     steps:

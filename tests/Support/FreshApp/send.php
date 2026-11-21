@@ -28,4 +28,4 @@ $must(! DB::table('mobile_push_devices')->where('token', 'like', '%abab%')->exis
 
 MobilePush::to($user)->queue(PushMessage::make('Queued', 'Through the ledger'));
 $must(DB::table('mobile_push_deliveries')->where('state', 'pending')->count() === 2, 'the durable queue wrote two pending deliveries');
-$must(DB::table('jobs')->count() >= 1, 'a relay job is waiting for the worker');
+$must(Queue::size('push') >= 1, 'a relay job is waiting for the worker (queue driver: '.config('queue.default').')');

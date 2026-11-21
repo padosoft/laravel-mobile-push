@@ -7,6 +7,6 @@ $must = static function (bool $ok, string $what): void {
 };
 $states = DB::table('mobile_push_deliveries')->selectRaw('state, count(*) as n')->groupBy('state')->pluck('n', 'state')->all();
 $must($states === ['simulated' => 2], 'the worker relayed both deliveries (states: '.json_encode($states).')');
-$must(DB::table('jobs')->count() === 0, 'no job is left in the queue');
+$must(Queue::size('push') === 0, 'no job is left in the queue');
 $must(DB::table('mobile_push_logs')->count() >= 5, 'the database log sink recorded the sends');
 $must(! DB::table('mobile_push_logs')->where('destination_masked', 'like', '%'.str_repeat('ab', 20).'%')->exists(), 'the log holds masked destinations only');
