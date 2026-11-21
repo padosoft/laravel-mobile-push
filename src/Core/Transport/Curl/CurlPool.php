@@ -121,15 +121,21 @@ final class CurlPool
 
     /**
      * Drive the transfers and wait up to $waitSeconds for activity.
+     *
+     * With `$owner`, the wait is skipped only when that owner already has a completion to take. Completions queued
+     * for OTHER owners (another send() generator on this pool that is not being iterated right now, e.g. a
+     * suspended Fiber) must not cancel the wait: they stay queued for their owner, and skipping the wait would turn
+     * the caller's loop into a busy spin until its own transfer finishes (measured: ~100% CPU for the whole wait).
      */
-    public function perform(float $waitSeconds): void
+    public function perform(float $waitSeconds, ?int $owner = null): void
     {
         do {
             $status = curl_multi_exec($this->multi, $running);
         } while ($status === CURLM_CALL_MULTI_PERFORM);
 
         $this->collect();
-        if ($running > 0 && $waitSeconds > 0 && $this->completedCountTotal() === 0) {
+        $ready = $owner === null ? $this->completedCountTotal() : count($this->completed[$owner] ?? []);
+        if ($running > 0 && $waitSeconds > 0 && $ready === 0) {
             curl_multi_select($this->multi, $waitSeconds);
             do {
                 $status = curl_multi_exec($this->multi, $running);

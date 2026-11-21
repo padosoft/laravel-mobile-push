@@ -12,6 +12,7 @@ use Padosoft\MobilePush\Laravel\Facades\MobilePush;
 use Padosoft\MobilePush\Laravel\Health\HealthInspector;
 use Padosoft\MobilePush\Laravel\Health\HealthStatus;
 use Padosoft\MobilePush\Laravel\Health\OpsAlert;
+use Padosoft\MobilePush\Laravel\Health\OpsAlerter;
 use Padosoft\MobilePush\Laravel\Health\PrometheusExporter;
 use Padosoft\MobilePush\Laravel\Sending\Events\CircuitOpened;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Integration\IntegrationWorld;
@@ -60,6 +61,6 @@ it('a revoked key opens the breaker once: one alert, an open-circuit metric, rea
         ->and($guards->message)->toContain('ios/auth');
 
     // A later evaluation of the periodic alerts does not repeat it (cooldown).
-    app(Padosoft\MobilePush\Laravel\Health\OpsAlerter::class)->evaluate();
+    app(OpsAlerter::class)->evaluate();
     Notification::assertSentOnDemandTimes(OpsAlert::class, 1);
 });

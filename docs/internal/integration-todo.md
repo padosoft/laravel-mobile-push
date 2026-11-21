@@ -4,6 +4,8 @@ Pending wiring and config keys reported by finished slices. `config/mobile-push.
 
 ## Config keys to add
 
+**[x] W4-I: every key below is in `config/mobile-push.php` and in `Padosoft\MobilePush\Laravel\Integration\ConfigSchema` (`docs/configuration.md` is generated; a test enforces it). Env names of module flags follow the `_ENABLED` pattern (see the W4-I section at the end).**
+
 ### Ledger (W2-P4)
 | Key | Env | Default | Allowed |
 |---|---|---|---|
@@ -42,18 +44,20 @@ Health reads `mobile-push.queue.connection` and `mobile-push.queue.timeout` (nam
 
 ## Wiring to do
 
-- Sender observer → `Padosoft\MobilePush\Laravel\Health\MetricsRecorder::record(BindingRef, SendResult, TrafficClass)`, `recordThrottle(...)`, `recordGuardTransition(GuardTransition)`; and `OpsAlerter::guardTransition(GuardTransition)`.
-- Scheduler (about once a minute) → `OpsAlerter::evaluate()`.
-- Bind a real `Padosoft\MobilePush\Laravel\Health\ConnectionCredentialsSource` from the manager's connections (the module registers a null source with `bindIf`).
+(W4-I: items marked [x] are done; see the W4-I section at the end.)
+
+- [x] Sender observer → `Padosoft\MobilePush\Laravel\Health\MetricsRecorder::record(BindingRef, SendResult, TrafficClass)`, `recordThrottle(...)`, `recordGuardTransition(GuardTransition)`; and `OpsAlerter::guardTransition(GuardTransition)`.
+- [x] Scheduler (about once a minute) → `OpsAlerter::evaluate()`.
+- [x] Bind a real `Padosoft\MobilePush\Laravel\Health\ConnectionCredentialsSource` from the manager's connections (the module registers a null source with `bindIf`).
 - Commands still to write: `mobile-push:health`, `mobile-push:credentials:check` (uses `CredentialMonitor::check()`), `mobile-push:logs:prune` (`LogPruner`, `log.database.retention_days`), `mobile-push:devices:prune` (`DevicePruner`), `mobile-push:relay` / sweeper.
 - Sender observer → `SinkManager::recordResult()` with runtime secrets in `secrets` (W3-A is doing this).
 
 ## Small backlog
 
-- `EndpointCatalog::fcmTopicSubscriptionItemUrl()` (the topic client appends the topic segment itself today).
-- A dedicated `ReasonCode` for the APNs channel limit (`CannotCreateChannelConfig` maps to `QuotaExceeded` today).
+- [x] `EndpointCatalog::fcmTopicSubscriptionItemUrl()` (the topic client appends the topic segment itself today).
+- [x] A dedicated `ReasonCode` for the APNs channel limit (`CannotCreateChannelConfig` maps to `QuotaExceeded` today).
 - Make `tests/Scenario/Transport/ConnectionPoolTest` ("cleans up when the consumer stops early", `clientResets`) deterministic: it failed once in a full run.
-- Fingerprint of the ledger payload is an unkeyed SHA-256: consider keying it (short messages such as OTPs could be guessed offline).
+- [x] Fingerprint of the ledger payload is an unkeyed SHA-256: consider keying it (short messages such as OTPs could be guessed offline).
 - Real-database concurrency tests for the ledger claim (`SKIP LOCKED`) on MySQL and PostgreSQL in CI; Redis for cache locks.
 
 ### Receipts (W3-D)
@@ -95,22 +99,22 @@ The queue module reads `transport.timeout_ms` and `connections.*.timeout_ms` (na
 Queue follow-ups: `SendPushJob::failed()` logs to the default logger, not to the log sinks; `DeviceEligibility::checkMany()` does not return rows so `RegistryResolver` duplicates its rules (add a `resolveMany()` on the devices side); the ledger has no "effects with due work" query (the sweeper dispatches scope-wide relays); `tests/Scenario/Send/SendKit::apnsToken()` pads with 'a' so token 10 equals token 170.
 
 ### Live Activities (W3-L) — passed to W4-I as section D
-- Device-only gates (eligibility, frequency cap) must ignore Live Activity destination kinds: their `DestinationRef` ids are rows of the Live Activities tables.
-- `ApnsDriver::connectionProfile()` must support `EndpointRole::ApnsChannelManagement`.
-- Bind `EndpointCatalog` in the container.
-- Config keys under `mobile-push.live_activities.*` (enabled, binding, connection, tables, models, types, default_priority, high_priority.max_per_hour, local_expiry, max_update_retries, prune, channels).
-- Schedule `ActivityManager::flushDue()`; queued job carrying `ActivityTicket`.
+- [x] Device-only gates (eligibility, frequency cap) must ignore Live Activity destination kinds: their `DestinationRef` ids are rows of the Live Activities tables.
+- [x] `ApnsDriver::connectionProfile()` must support `EndpointRole::ApnsChannelManagement`.
+- [x] Bind `EndpointCatalog` in the container.
+- [x] Config keys under `mobile-push.live_activities.*` (enabled, binding, connection, tables, models, types, default_priority, high_priority.max_per_hour, local_expiry, max_update_retries, prune, channels).
+- [x] Schedule `ActivityManager::flushDue()`; queued job carrying `ActivityTicket`.
 - Commands still to write (later task): `live-activity:{start,update,end,prune}`, `channels:{list,create,delete,sync}`, `campaign:{status,pause,resume,cancel}`.
 - Client contract for the docs is in the W3-L report (progress.md) and must be turned into `docs/live-activities.md`.
 
 ### Testing fakes (W4-T) — follow-up after W4-I releases `src/Laravel/Sending`
 - The fakes work through reflection into `PushManager`'s private connection cache and by making `$app->environment()` read `production` while a fake is active (app-wide side effect: host code calling `app()->isProduction()` sees true during a faked test). Replace both with official seams: an execution override on the manager (`forceExecution(?ExecutionMode, ?LiveSettings)`) and a supported way to install/remove a driver for a connection name; then remove the reflection and the environment toggle from `src/Laravel/Testing`.
-- `PendingSend::options()` dropped `SendOptions::$observers` (passed to W4-I as F1).
+- [x] `PendingSend::options()` dropped `SendOptions::$observers` (passed to W4-I as F1).
 - Runtime `register()` cannot be undone (`unregister`), which the fakes need for cleanup.
-- Config key: `testing.allow_fakes` (bool, default false, no env).
+- [x] Config key: `testing.allow_fakes` (bool, default false, no env).
 
 ### Whole-suite state on 2026-11-21 (2178 tests)
-- `tests/Unit/Laravel/Policies/PoliciesModuleTest` (2 cases) red while W4-I changes the `frequency.enabled` default (passed to W4-I as F2).
+- [x] `tests/Unit/Laravel/Policies/PoliciesModuleTest` (2 cases) red while W4-I changes the `frequency.enabled` default (passed to W4-I as F2).
 - `tests/Scenario/Laravel/Queue/LightProfileTest` "queue it and forget" fails only in whole-suite runs (passes alone and with every sub-group tried): order- or load-dependent; under investigation.
 
 ### Operational commands and erasure (W4-K2)
@@ -122,3 +126,28 @@ Follow-ups found:
 - Commands resolve `PushManager` directly because `PushDispatcher` cannot enumerate connections.
 - Schedule suggestions: `deliveries:prune`, `devices:prune`, `logs:prune`, `credentials:check`.
 - RESOLVED: `LightProfileTest` whole-suite failure was `queue:work`'s default `--memory=128` (now `--memory=2048` in the test).
+
+## W4-I integration pass (2026-11-21)
+
+Done (each with a scenario under `tests/Scenario/Laravel/Integration`):
+- [x] Config: every key of every module present in `src/` (ledger, queue, receipts, metrics, health, alerts, credentials, Live Activities, frequency, badge, fallback, campaigns, Pulse, Telescope, testing, `devices.prune.*`, `ledger.retention_days`) in `config/mobile-push.php` + `ConfigSchema`; `docs/configuration.md` generated by `ConfigReference::write()`; `ConfigReferenceTest` fails on a key read but undocumented, a default that differs from the file (evaluated in a clean environment), an undocumented file key, a stale document.
+- [x] Names guessed by queue/health (`transport.timeout_ms`, `connections.*.timeout_ms`, `queue.connection`, `queue.timeout`) are the real keys: nothing to change on the reader side.
+- [x] Metrics + alerts: `Sending\OperationsObserver` per call (record, recordThrottle, recordGuardTransition, `OpsAlerter::guardTransition`), isolated; `OpsAlerter::evaluate()` scheduled every minute when `alerts.enabled` (`IntegrationModule`).
+- [x] Credentials: `Integration\ManagerCredentialsSource` (public facts collected by `ConnectionFactory` into `ResolvedConnection::$credentials`), bound by `IntegrationModule`.
+- [x] Receipts: `defaultOptions()` carries `ReceiptMarkerIssuer::callback()` when receipts are on and the profile durable; the manager issues a marker only for destinations with a ledger delivery id and hands it to the sinks as a secret (`Sending\ReceiptMarkers`). The relay's own `withReceiptMarker()` is the same callback: issued once.
+- [x] Policies: frequency gate after eligibility and consent, restricted to registry kinds; every `PendingSend::send()`/`queue()` has an effect key; badge resolved once per owner and effect; `PushManager::resetBadge()` / `currentBadge()`. `frequency.enabled` default is now false (validated only when enabled).
+- [x] `PendingSend::send()` on the durable profile writes no ledger row (documented in the class and in `docs/contracts/ledger.md`); no `durably()`.
+- [x] `SendPushJob::failed()` records every destination as OutcomeUnknown in the sinks when they are enabled.
+- [x] Rate limit per provider account verified (two FCM aliases share, APNs independent): no fix needed.
+- [x] Small fixes C1–C7, D1–D5, E1–E3, F1, F2; `PushManager::forceExecution()` testing seam.
+- [x] E5: `Integration\EffectSettled` dispatched once per effect after a relay run (`EffectSettlement`, via `JobProcessed`).
+
+Remaining:
+- [ ] The orchestrator adds `Padosoft\MobilePush\Laravel\Integration\IntegrationModule` to `MobilePushServiceProvider::MODULES` (until then the integration scenarios register it themselves).
+- [ ] Facade `@method` docblocks for the new manager/PendingSend methods: `resetBadge`, `currentBadge`, `forceExecution` (internal), `PendingSend::forNotification`, `PendingSend::onlyProvider`.
+- [ ] Notifications channel: use `forNotification()` and `onlyProvider()` instead of resolving routes itself; durable fallback: a listener on `EffectSettled` that rebuilds the notification and calls `FallbackEvaluator::evaluate()` (the package stores no Notification object).
+- [ ] `src/Laravel/Console/Support/ConnectionInspector.php` and `ManagerCredentialsSource` inspect credentials twice: converge the console on `ConnectionCredentialsSource` / `ResolvedConnection::$credentials`.
+- [ ] `log.payload` = keys/full has no effect on the manager path: the observer never receives the message payload (`AttemptReport` carries only its size). Pass the compiled payload keys (redacted) if the feature must work.
+- [ ] Campaigns: `campaigns.retention_days` default is 30 in `CampaignSettings` (the orchestrator suggested 90): the config file follows the code (30); confirm.
+- [ ] Consent gates (`eligibleUsing`) still see every destination kind, Live Activity tokens included (the callback gets the typed destination and decides); confirm that this is wanted.
+- [ ] Testing seams beyond `forceExecution()` (connection-cache injection, `unregister()`) for the testing module.

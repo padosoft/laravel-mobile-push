@@ -5,6 +5,8 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\DB;
 use Padosoft\MobilePush\Core\Identity\Destination\ApnsDeviceToken;
 use Padosoft\MobilePush\Core\Message\PushMessage;
+use Padosoft\MobilePush\Core\Transport\Request;
+use Padosoft\MobilePush\Core\Transport\Response;
 use Padosoft\MobilePush\Laravel\Facades\MobilePush;
 use Padosoft\MobilePush\Laravel\Receipts\ReceiptFunnelReader;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Integration\IntegrationWorld;
@@ -72,10 +74,10 @@ it('redacts the marker from the send log even when the provider echoes it back',
         ->withDatabaseLog()
         ->withDurableLedger(receipts: true);
     $echoed = [];
-    $world->send->answer = static function (Padosoft\MobilePush\Core\Transport\Request $request) use (&$echoed): Padosoft\MobilePush\Core\Transport\Response {
+    $world->send->answer = static function (Request $request) use (&$echoed): Response {
         $echoed[] = $marker = (string) (IntegrationWorld::body($request)['mp_r'] ?? '');
 
-        return new Padosoft\MobilePush\Core\Transport\Response(400, [], (string) json_encode(['reason' => 'BadPayload '.$marker]));
+        return new Response(400, [], (string) json_encode(['reason' => 'BadPayload '.$marker]));
     };
 
     MobilePush::connection('ios')->to(ApnsDeviceToken::of(W::apnsToken('echo-phone')))->queue(PushMessage::make('Hi'));
