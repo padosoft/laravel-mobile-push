@@ -15,7 +15,7 @@ MobilePush::to($user)->send(PushMessage::make('Order shipped', 'Arrives Friday')
 
 **Pre-release.** The package is complete enough to try, but read this before you rely on it:
 
-- It is verified against a **protocol-level HTTP/2 mock server** (a Node `http2` server that counts what it receives, drops connections, resets streams and sends `GOAWAY`) and against the providers' **published schemas** (Apple's documentation, the FCM Discovery document revision 20261112). More than two thousand tests run in CI.
+- It is verified against a **protocol-level HTTP/2 mock server** (a Node `http2` server that counts what it receives, drops connections, resets streams and sends `GOAWAY`) and against the providers' **published schemas** (Apple's documentation, the FCM Discovery document revision 20261112). The suite has more than two thousand tests.
 - It has **never been run against the real APNs or FCM servers, nor on a real device**, in this project. Real-provider verification is the next step before 1.0.
 
 Specific points not yet verified against the real services or infrastructure:
@@ -24,7 +24,7 @@ Specific points not yet verified against the real services or infrastructure:
 - the exact **FCM payload-size counting rule**: Google publishes the 4096 / 2048-byte limits but not how they are measured; the package applies a conservative rule of its own ([messages.md](docs/messages.md#size-limits-and-truncation));
 - FCM error codes and minimum delays come from the official Firebase Admin SDK sources, not from Google's web pages; the error strings of APNs broadcast **channel management** come from Apple's documentation by name;
 - the decoding of the topic and environment extensions of **Apple push certificates** (never tried on a real certificate);
-- **concurrency of the durable ledger on MySQL and PostgreSQL** (`SKIP LOCKED` claims are exercised on SQLite only, where the lock clause is ignored) and of **cache locks on Redis**; queues were tested with Laravel's database and sync drivers, not with Redis, SQS or Horizon;
+- **concurrency of the durable ledger on MySQL and PostgreSQL** (`SKIP LOCKED` claims are exercised on SQLite only, where the lock clause is ignored) and of **cache locks on Redis**; queues were tested with Laravel's local test drivers, not with Redis, SQS or Horizon;
 - long-lived runtimes beyond queue workers: **Octane / Swoole / RoadRunner** have not been tested;
 - **Application Default Credentials** on Google Cloud, the iOS Simulator command (`xcrun`) on a real Mac, the Pulse card and Telescope entries in a browser, and five cells of the [capability matrix](docs/messages.md#the-capability-matrix) marked "unverified".
 

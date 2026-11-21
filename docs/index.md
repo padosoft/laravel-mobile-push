@@ -16,6 +16,7 @@
 - [Outcomes](outcomes.md): every status and reason code, and what "accepted" and "unknown outcome" really mean.
 - [Notifications and fallback](notifications-and-fallback.md): the `push`, `apns` and `fcm` notification channels, and falling back to another channel.
 - [Live Activities](live-activities.md): start, update, end, push-to-start tokens, broadcast channels.
+- [Topics](topics.md): FCM topics and topic subscriptions.
 - [Campaigns](campaigns.md): large sends with audiences, slices, pause/resume/cancel and progress.
 
 ## Reliability
