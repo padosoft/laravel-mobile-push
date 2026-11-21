@@ -72,3 +72,37 @@ it('does not split graphemes', function () {
 
     expect(str_repeat($family, intdiv(strlen($kept), strlen($family))))->toBe($kept);
 });
+
+it('treats a payload that is exactly at the limit as fitting, with no field to shorten', function () {
+    expect(TextFitter::fit([], fitSize([]), 'fitSize'))->toBe([])
+        ->and(TextFitter::fit([], fitSize([]) - 1, 'fitSize'))->toBeNull();
+});
+
+it('keeps a body that lands exactly on the limit and shortens one that is a byte over', function () {
+    $body = str_repeat('b', 60);
+    $exact = fitSize(['body' => $body, 'title' => '']);
+
+    expect(TextFitter::fit(['body' => $body, 'title' => ''], $exact, 'fitSize'))->toBe(['body' => $body, 'title' => ''])
+        ->and(TextFitter::fit(['body' => $body, 'title' => ''], $exact - 1, 'fitSize'))
+        ->toBe(['body' => str_repeat('b', 56).'…', 'title' => '']);
+});
+
+it('empties a one-byte field that cannot be shortened and reports null when it is still too big', function () {
+    $fixed = fitSize(['body' => '', 'title' => '']);
+
+    expect(TextFitter::fit(['body' => 'x', 'title' => ''], $fixed, 'fitSize'))->toBe(['body' => '', 'title' => ''])
+        ->and(TextFitter::fit(['body' => 'x', 'title' => ''], $fixed - 1, 'fitSize'))->toBeNull();
+});
+
+it('empties the first field entirely when the overflow is larger than the field', function () {
+    $fixed = fitSize(['body' => '', 'title' => 'T']);
+    $fitted = TextFitter::fit(['body' => str_repeat('b', 30), 'title' => 'T'], $fixed + 1, 'fitSize');
+
+    expect($fitted)->toBe(['body' => '', 'title' => 'T']);
+});
+
+it('uses the custom ellipsis', function () {
+    $fitted = TextFitter::fit(['body' => str_repeat('b', 60), 'title' => ''], fitSize(['body' => str_repeat('b', 40), 'title' => '']), 'fitSize', '...');
+
+    expect($fitted['body'])->toBe(str_repeat('b', 37).'...');
+});

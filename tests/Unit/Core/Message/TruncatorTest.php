@@ -117,3 +117,47 @@ it('supports a custom ellipsis and returns nothing for invalid UTF-8', function 
         ->and(Truncator::graphemes("bad \xB1 bytes"))->toBe([])
         ->and(Truncator::graphemes(''))->toBe([]);
 });
+
+it('cuts at the exact byte boundary: max - 1, max and max + 1 around the ellipsis budget', function (string $mode, string $text, int $max, string $expected) {
+    Truncator::forceMode($mode);
+
+    expect(Truncator::truncateToBytes($text, $max))->toBe($expected)
+        ->and(strlen($expected))->toBeLessThanOrEqual($max);
+})->with('modes')->with([
+    'one byte of budget left (max = ellipsis + 1)' => ['hello', 4, 'h…'],
+    'budget exactly zero (max = ellipsis)' => ['hello', 3, ''],
+    'max fits the whole text' => ['hello', 5, 'hello'],
+    'one byte short of the whole text' => ['hello', 4, 'h…'],
+    'multi-byte grapheme that exactly fills the budget' => ['aéb cdef', 6, 'aé…'],
+    'multi-byte grapheme one byte too wide for the budget' => ['aéb cdef', 5, 'a…'],
+    'budget filled by a 3 grapheme prefix' => ['aéb cdef', 7, 'aéb…'],
+    'emoji exactly filling the budget' => ['ab👍cdef', 9, 'ab👍…'],
+    'emoji one byte too wide' => ['ab👍cdef', 8, 'ab…'],
+]);
+
+it('returns an empty string, not a bare ellipsis, when no grapheme fits or only whitespace would be kept', function (string $mode, string $text, int $max) {
+    Truncator::forceMode($mode);
+
+    expect(Truncator::truncateToBytes($text, $max))->toBe('');
+})->with('modes')->with([
+    'first grapheme wider than the budget' => ['日本語', 5],
+    'budget of one byte and a 3-byte first grapheme' => ['日本語', 4],
+    'only spaces would remain' => ['    hello', 6],
+    'only newlines would remain' => ["\n\nhello world", 5],
+]);
+
+it('is a no-op for an empty text whatever the budget', function (string $mode) {
+    Truncator::forceMode($mode);
+
+    expect(Truncator::truncateToBytes('', 0))->toBe('')
+        ->and(Truncator::truncateToBytes('', 10))->toBe('')
+        ->and(Truncator::graphemes(''))->toBe([]);
+})->with('modes');
+
+it('segments two adjacent 2-byte pictographs like intl does', function () {
+    Truncator::forceMode(Truncator::MODE_INTL);
+    $intl = Truncator::graphemes('a©®b');
+    Truncator::forceMode(Truncator::MODE_PCRE);
+
+    expect(Truncator::graphemes('a©®b'))->toBe($intl);
+});

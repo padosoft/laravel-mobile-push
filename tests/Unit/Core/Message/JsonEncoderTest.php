@@ -27,3 +27,19 @@ it('wraps invalid UTF-8 and unrepresentable numbers in InvalidMessageException',
         ->and(fn () => JsonEncoder::encode(['v' => NAN]))->toThrow(InvalidMessageException::class)
         ->and(fn () => JsonEncoder::encode(['v' => INF]))->toThrow(InvalidMessageException::class);
 });
+
+it('reports a JSON failure with a stable message, no code and the original exception as the cause', function () {
+    try {
+        JsonEncoder::encode(['v' => "\xB1"]);
+        $this->fail('expected an exception');
+    } catch (InvalidMessageException $e) {
+        expect($e->getMessage())->toStartWith('The message cannot be encoded as JSON: ')
+            ->and($e->getCode())->toBe(0)
+            ->and($e->getPrevious())->toBeInstanceOf(JsonException::class)
+            ->and($e->getMessage())->toEndWith($e->getPrevious()->getMessage());
+    }
+});
+
+it('does not reduce the encoding flags: unicode, slashes and zero fraction survive together in one payload', function () {
+    expect(JsonEncoder::encode(['a' => 'é/', 'b' => 2.0]))->toBe('{"a":"é/","b":2.0}');
+});

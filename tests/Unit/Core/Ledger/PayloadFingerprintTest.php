@@ -132,3 +132,131 @@ it('still verifies legacy unkeyed values and keeps verifying after a key rotatio
         ->and(PayloadFingerprint::matches($storedWithV1, $message, $dropped, 'default'))->toBeFalse()
         ->and(PayloadFingerprint::matches('garbage', $message, $rotated, 'default'))->toBeFalse();
 });
+
+enum FpSuit
+{
+    case Hearts;
+    case Spades;
+}
+
+class FpBase
+{
+    public string $shared = 'base';
+
+    protected int $prot = 2;
+
+    private string $hidden = 'h';
+}
+
+final class FpSample extends FpBase implements Message
+{
+    public static int $counter = 5;
+
+    public string $text = 'a/b é';
+
+    public float $ratio = 0.1;
+
+    /** @var array<mixed> */
+    public array $map = ['b' => 1, 'a' => [1, 'two']];
+
+    /** @var array<mixed> */
+    public array $nums = [2 => 'x', 1 => 'y'];
+
+    public DateTimeImmutable $at;
+
+    public FpSuit $suit = FpSuit::Hearts;
+
+    public string $late;
+
+    public ?string $none = null;
+
+    public bool $flag = true;
+
+    public int $n = 7;
+
+    private int $own = 3;
+
+    public function __construct()
+    {
+        $this->at = new DateTimeImmutable('2026-11-20T12:00:00+01:00');
+    }
+
+    public function with(string $property, mixed $value): self
+    {
+        $copy = clone $this;
+        $copy->{$property} = $value;
+
+        return $copy;
+    }
+}
+
+const FP_GOLDEN_JSON = '{"@class":"FpSample","@props":{"FpBase::hidden":"h","at":{"@time":"2026-11-20T11:00:00.000000"},'
+    .'"flag":true,"late":{"@uninitialized":true},"map":{"@map":[["a",[1,"two"]],["b",1]]},"n":7,"none":null,'
+    .'"nums":{"@map":[["1","y"],["2","x"]]},"own":3,"prot":2,"ratio":{"@float":"0.10000000000000001"},"shared":"base",'
+    .'"suit":{"@enum":"FpSuit","case":"Hearts"},"text":"a/b é"}}';
+
+it('fingerprints the exact canonical JSON: sorted props, tagged float/enum/date/map, parent privates, no statics', function (): void {
+    $sample = new FpSample;
+
+    expect(PayloadFingerprint::of($sample))->toBe('v1:'.hash('sha256', FP_GOLDEN_JSON));
+});
+
+it('stores an unescaped, URL-safe-slash canonical JSON (the legacy hash must not drift)', function (): void {
+    $slashy = (new FpSample)->with('text', 'https://x.test/é');
+    $json = str_replace('"a/b é"', '"https://x.test/é"', FP_GOLDEN_JSON);
+
+    expect(PayloadFingerprint::of($slashy))->toBe('v1:'.hash('sha256', $json));
+});
+
+it('changes when any single canonical field changes', function (string $property, mixed $value): void {
+    $base = new FpSample;
+
+    expect(PayloadFingerprint::of($base->with($property, $value)))->not->toBe(PayloadFingerprint::of($base));
+})->with([
+    'string' => ['text', 'other'],
+    'float' => ['ratio', 0.2],
+    'map value' => ['map', ['b' => 2, 'a' => [1, 'two']]],
+    'map key' => ['map', ['c' => 1, 'a' => [1, 'two']]],
+    'numeric map key' => ['nums', [3 => 'x', 1 => 'y']],
+    'list item' => ['map', ['b' => 1, 'a' => [1, 'three']]],
+    'date instant' => ['at', new DateTimeImmutable('2026-11-20T11:00:01Z')],
+    'enum case' => ['suit', FpSuit::Spades],
+    'bool' => ['flag', false],
+    'int' => ['n', 8],
+    'null to value' => ['none', ''],
+    'initialising the uninitialized property' => ['late', 'now'],
+    'own private' => ['own', 4],
+    'protected' => ['prot', 3],
+    'inherited public' => ['shared', 'changed'],
+]);
+
+it('ignores static properties', function (): void {
+    $before = PayloadFingerprint::of(new FpSample);
+    FpSample::$counter = 99;
+
+    try {
+        expect(PayloadFingerprint::of(new FpSample))->toBe($before);
+    } finally {
+        FpSample::$counter = 5;
+    }
+});
+
+it('refuses a string that is not valid UTF-8 instead of hashing nothing', function (): void {
+    expect(fn () => PayloadFingerprint::of((new FpSample)->with('text', "bad \xB1\x31")))
+        ->toThrow(InvalidMessageException::class, 'UTF-8');
+});
+
+it('does not take a value with a version prefix but no colon for a stored fingerprint', function (): void {
+    $cipher = new TokenCipher(new KeyRing([1 => str_repeat("\x01", 32)]));
+    $message = PushMessage::make('Hi');
+    $stored = PayloadFingerprint::keyed($message, $cipher, 'default');
+    $forged = 'v2Z'.substr($stored, strlen('v2:'));
+
+    expect(PayloadFingerprint::matches($stored, $message, $cipher, 'default'))->toBeTrue()
+        ->and(PayloadFingerprint::matches($forged, $message, $cipher, 'default'))->toBeFalse();
+});
+
+it('compares fingerprints for equality', function (): void {
+    expect(PayloadFingerprint::equals('v1:ab', 'v1:ab'))->toBeTrue()
+        ->and(PayloadFingerprint::equals('v1:ab', 'v1:ac'))->toBeFalse();
+});

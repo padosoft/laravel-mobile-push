@@ -91,7 +91,8 @@ final class Truncator
 
         $result = [];
         foreach ($matches[0] as $cluster) {
-            $parts = strlen($cluster) > 4
+            // 4 bytes is the shortest glued pair: two 2-byte pictographs such as "©®".
+            $parts = strlen($cluster) >= 4
                 ? preg_split('/(?<!\x{200D})(?=\p{Extended_Pictographic})/u', $cluster, -1, PREG_SPLIT_NO_EMPTY)
                 : false;
             if ($parts === false) {
