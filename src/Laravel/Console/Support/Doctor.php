@@ -21,6 +21,7 @@ use Padosoft\MobilePush\Core\Policy\ModeResolver;
 use Padosoft\MobilePush\Core\Privacy\Redactor;
 use Padosoft\MobilePush\Core\Privacy\TokenIndex;
 use Padosoft\MobilePush\Core\Transport\Curl\CurlCapabilities;
+use Padosoft\MobilePush\Laravel\Campaigns\CampaignsModule;
 use Padosoft\MobilePush\Laravel\Devices\DevicesModule;
 use Padosoft\MobilePush\Laravel\Integration\ModuleMigrations;
 use Padosoft\MobilePush\Laravel\Ledger\LedgerModule;
@@ -303,8 +304,14 @@ final class Doctor
                 Cfg::string('mobile-push.live_activities.channels_table', 'mobile_push_broadcast_channels'),
             ], LiveActivitiesModule::PUBLISH_TAG];
         }
+        if ((bool) config('mobile-push.campaigns.enabled', false)) {
+            $needed[] = ['campaigns', config('mobile-push.campaigns.connection'), [Cfg::string('mobile-push.campaigns.table', 'mobile_push_campaigns')], CampaignsModule::PUBLISH_TAG];
+        }
 
         $checks = [];
+        if ((bool) config('mobile-push.campaigns.enabled', false) && config('mobile-push.delivery.profile', 'light') !== 'durable') {
+            $checks[] = DoctorCheck::warning($s, 'Campaigns are enabled but the delivery profile is "light": campaigns are planned in the ledger and cannot be dispatched.', 'Set MOBILE_PUSH_DELIVERY_PROFILE=durable, or disable campaigns.');
+        }
         if ((bool) config('mobile-push.receipts.enabled', false) && config('mobile-push.delivery.profile', 'light') !== 'durable') {
             $checks[] = DoctorCheck::warning($s, 'Receipts are enabled but the delivery profile is "light": receipts write to the ledger and stay inactive.', 'Set MOBILE_PUSH_DELIVERY_PROFILE=durable, or disable receipts.');
         }

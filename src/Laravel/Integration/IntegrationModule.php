@@ -8,7 +8,6 @@ use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Contracts\Foundation\Application;
-use Illuminate\Queue\Events\JobProcessed;
 use Padosoft\MobilePush\Core\Credentials\CredentialCheck;
 use Padosoft\MobilePush\Core\Exceptions\ConfigurationException;
 use Padosoft\MobilePush\Core\Ledger\Ledger;
@@ -85,11 +84,8 @@ final class IntegrationModule implements Module
             $schedule($app->make(Schedule::class));
         }
 
-        if ($app->bound('events')) {
-            $app->make('events')->listen(JobProcessed::class, static function (JobProcessed $event) use ($app): void {
-                self::afterJob($app, $event);
-            });
-        }
+        // EffectSettled is announced from the relay itself (QueueModule listens to RelayRunFinished and asks
+        // EffectSettlement): nothing here needs to look at the jobs the application processes.
     }
 
     /** The scheduled events of this module for the current config (idempotent: an event is added once). */
@@ -184,28 +180,6 @@ final class IntegrationModule implements Module
         $driver = is_string($store) ? $config->get('cache.stores.'.$store.'.driver') : null;
 
         return is_string($driver) && in_array($driver, self::SHARED_LOCK_DRIVERS, true);
-    }
-
-    private static function afterJob(Application $app, JobProcessed $event): void
-    {
-        try {
-            if (self::config($app)->get('mobile-push.delivery.profile', 'light') !== 'durable') {
-                return;
-            }
-            // resolveName() is the job's displayName(): match the command class of the payload instead.
-            $data = $event->job->payload()['data'] ?? null;
-            if (! is_array($data) || ($data['commandName'] ?? null) !== RelayDeliveriesJob::class) {
-                return;
-            }
-            $command = $data['command'] ?? null;
-            $job = is_string($command) ? unserialize($command, ['allowed_classes' => [RelayDeliveriesJob::class]]) : null;
-            if (! $job instanceof RelayDeliveriesJob || $job->effectId === null) {
-                return;
-            }
-            $app->make(EffectSettlement::class)->check($job->scope, $job->effectId);
-        } catch (\Throwable) {
-            // a settlement check never fails the job that was just processed
-        }
     }
 
     private static function flag(mixed $value): bool

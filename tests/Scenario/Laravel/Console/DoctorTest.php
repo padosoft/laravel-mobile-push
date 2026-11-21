@@ -189,3 +189,14 @@ it('on staging, --live stays blocked for a connection that does not allow live s
         ->and($out)->toContain('blocked before the network')
         ->toContain('live.allow = true');
 });
+
+it('checks the campaigns table too, and warns when campaigns are enabled on the light profile', function () {
+    W::install(C::both());
+    config()->set('mobile-push.campaigns.enabled', true);
+
+    [$code, $out] = C::run('mobile-push:doctor');
+
+    expect($code)->toBe(2)
+        ->and($out)->toContain('mobile_push_campaigns')->toContain('vendor:publish --tag=mobile-push-migrations-campaigns')
+        ->and($out)->toContain('Campaigns are enabled but the delivery profile is "light"');
+});

@@ -143,13 +143,13 @@ Done (each with a scenario under `tests/Scenario/Laravel/Integration`):
 - [x] E5: `Integration\EffectSettled` dispatched once per effect after a relay run (`EffectSettlement`, via `JobProcessed`).
 
 Remaining:
-- [ ] The orchestrator adds `Padosoft\MobilePush\Laravel\Integration\IntegrationModule` to `MobilePushServiceProvider::MODULES` (until then the integration scenarios register it themselves).
+- [x] (done) The orchestrator adds `Padosoft\MobilePush\Laravel\Integration\IntegrationModule` to `MobilePushServiceProvider::MODULES` (until then the integration scenarios register it themselves).
 - [x] W5-T2: Facade `@method` docblocks (every public manager method, internals marked) for the new manager/PendingSend methods: `resetBadge`, `currentBadge`, `forceExecution` (internal), `PendingSend::forNotification`, `PendingSend::onlyProvider`.
 - [x] W5-T2: channel uses `forNotification()`/`onlyProvider()`; durable fallback = `Notifications\DurableFallbacks` (encrypted record per effect at queue time, TTL `fallback.idempotency_ttl`, max 64 KiB; `EffectSettled` listener evaluates once all effects of the push settled). Was: Notifications channel: use `forNotification()` and `onlyProvider()` instead of resolving routes itself; durable fallback: a listener on `EffectSettled` that rebuilds the notification and calls `FallbackEvaluator::evaluate()` (the package stores no Notification object).
 - [x] W5-T2: the console takes the findings of a resolved connection from `ConnectionCredentialsSource` + the container `CredentialCheck` (test: four commands agree). Was: `src/Laravel/Console/Support/ConnectionInspector.php` and `ManagerCredentialsSource` inspect credentials twice: converge the console on `ConnectionCredentialsSource` / `ResolvedConnection::$credentials`.
 - [x] W5-T2: `AttemptReport::payload()` (lazy, redacted) + `SendingObserver` passes `payload` to the sinks only when the level is not none. Was: `log.payload` = keys/full has no effect on the manager path: the observer never receives the message payload (`AttemptReport` carries only its size). Pass the compiled payload keys (redacted) if the feature must work.
-- [ ] Campaigns: `campaigns.retention_days` default is 30 in `CampaignSettings` (the orchestrator suggested 90): the config file follows the code (30); confirm.
-- [ ] Consent gates (`eligibleUsing`) still see every destination kind, Live Activity tokens included (the callback gets the typed destination and decides); confirm that this is wanted.
+- [x] (decided: 30) Campaigns: `campaigns.retention_days` default is 30 in `CampaignSettings` (the orchestrator suggested 90): the config file follows the code (30); confirm.
+- [x] (decided: wanted, documented in docs/policies.md) Consent gates (`eligibleUsing`) still see every destination kind, Live Activity tokens included (the callback gets the typed destination and decides); confirm that this is wanted.
 - [x] W5-T2 (see above). Was: Testing seams beyond `forceExecution()` (connection-cache injection, `unregister()`) for the testing module.
 
 ### Findings from the module documentation pass (W5-D3), 2026-11-21
@@ -185,8 +185,8 @@ Remaining:
 - [x] G1: `PendingSend::send()/queue()` pre-flight every connection before the network/queue; a message invalid for some connections only gives Rejected(PayloadInvalid) results for them (queue: nothing queued nor written for them), invalid for all throws.
 - [x] G2: the intent fake validates with the real compilers by default; `PushFake::withoutValidation()` opts out.
 - [x] `PushManager::campaign()`.
-- [ ] `src/Laravel/Console/Ops/ProbeEnvironmentCommand.php` (edited by another agent at 01:04) has 2 phpstan errors (`cast.string`, lines 113 and 140).
-- [ ] With `IntegrationModule` now in MODULES, three health tests that expect "not verifiable" without a credentials source are red (`HealthScenariosTest`, `SpatieCheckTest`, `HealthAndCredentialsTest` "not verifiable"): ManagerCredentialsSource is always available now; the tests must bind `NullConnectionCredentialsSource` themselves (not in W5-T2's lane).
+- [x] (fixed: phpstan max is clean on the whole repository) `src/Laravel/Console/Ops/ProbeEnvironmentCommand.php` (edited by another agent at 01:04) has 2 phpstan errors (`cast.string`, lines 113 and 140).
+- [x] (fixed: the health test world binds a null credentials source) With `IntegrationModule` now in MODULES, three health tests that expect "not verifiable" without a credentials source are red (`HealthScenariosTest`, `SpatieCheckTest`, `HealthAndCredentialsTest` "not verifiable"): ManagerCredentialsSource is always available now; the tests must bind `NullConnectionCredentialsSource` themselves (not in W5-T2's lane).
 
 ### Resolved by W6-F (2026-11-21)
 - [x] **Migrations run twice.** One rule for every module: migrations are published, not auto-loaded (`ModuleMigrations::wire()` in `src/Laravel/Integration`); opt-in `mobile-push.migrations.autoload` (`MOBILE_PUSH_MIGRATIONS_AUTOLOAD`, default false) registers the package files instead, publishes nothing, and a published copy wins over the package file. Every migration is idempotent (`hasTable`/`hasColumn`/index checks, symmetric `down()`). Tests: `tests/Scenario/Laravel/Install`.
@@ -195,9 +195,9 @@ Remaining:
 - [x] Environment probe frequency limit: `devices.probe.cooldown_hours` (24), last probe stored in `devices.metadata.environment_probe`, `cooling_down` outcome, `--ignore-cooldown` (asks, `--force` does not skip it).
 - [x] Stale text in `docs/contracts/{ledger,modes,retry,classification,messages,outcomes,identity}.md` and `contracts/README.md`.
 - [x] `docs/live-activities.md` (local expiry enforced at transition time), `docs/commands.md` (eight `campaign:*` commands, probe options), `docs/campaigns.md` (commands exist).
-- [ ] For the orchestrator: `AGENTS.md` still says migrations are "also loaded by the module only when that module is enabled"; it should say they are published, with `migrations.autoload` as the opt-in.
-- [ ] `InstallPlan` campaigns group has no file suffixes (its "already published" detection does not run); `CampaignsModule::migrationPath()` could be used.
-- [ ] `tests/Scenario/Laravel/Console/InstallTest.php` publishes into `vendor/orchestra/testbench-core/laravel` (and cleans up); move it to a temporary application path like `tests/Scenario/Laravel/Install`.
+- [x] (done) For the orchestrator: `AGENTS.md` still says migrations are "also loaded by the module only when that module is enabled"; it should say they are published, with `migrations.autoload` as the opt-in.
+- [x] (done) `InstallPlan` campaigns group has no file suffixes (its "already published" detection does not run); `CampaignsModule::migrationPath()` could be used.
+- [x] (accepted as is: the test removes what it publishes; the publish targets are fixed at boot, so moving it needs a dedicated test case) `tests/Scenario/Laravel/Console/InstallTest.php` publishes into `vendor/orchestra/testbench-core/laravel` (and cleans up); move it to a temporary application path like `tests/Scenario/Laravel/Install`.
 
 ## W5-P scaling pass (2026-11-21)
 
@@ -213,7 +213,17 @@ Done (scenarios in `tests/Scenario/Laravel/{Ledger,Queue,Campaigns}`, slow ones 
 - [x] H2 `CampaignStore::pruneFinished()` keeps `failed` campaigns; `CampaignManager::list()` / `countPrunable()`; List/Prune commands use them.
 
 Remaining (outside W5-P's lane):
-- [ ] `src/Laravel/Console/Support/InstallPlan.php` lists `DevicesModule::migrationPath()` (the table only): use `DevicesModule::migrationPaths()` so install/doctor show the devices index migration too.
-- [ ] `IntegrationModule`'s `JobProcessed` listener is now redundant with the `RelayRunFinished` listener of `QueueModule` (both go through `EffectSettlement`, deduplicated by its cache marker); it can be removed.
+- [x] (done: it uses migrationPaths()) `src/Laravel/Console/Support/InstallPlan.php` lists `DevicesModule::migrationPath()` (the table only): use `DevicesModule::migrationPaths()` so install/doctor show the devices index migration too.
+- [x] (removed) `IntegrationModule`'s `JobProcessed` listener is now redundant with the `RelayRunFinished` listener of `QueueModule` (both go through `EffectSettlement`, deduplicated by its cache marker); it can be removed.
 - [ ] MySQL/PostgreSQL: run `ScalingQueryPlansTest`-like checks with `EXPLAIN` on those engines in the experimental CI jobs (the plans are asserted on SQLite only).
 - [x] W9-D: `docs/campaigns.md` / `docs/delivery-profiles.md`: completion is immediate (RelayRunFinished), failed campaigns are not pruned, `IntentResult::$previousEffectId`, follow-up folding (`queue.follow_up_bucket` now also bounds relay follow-ups).
+
+## State on 2026-11-21 (after the closing pass)
+
+Open:
+- [ ] Query plans on MySQL and PostgreSQL: the scenarios pass on both engines in CI and the whole suite passed on a local PostgreSQL 16, but the plans of the claim, audience and lookup queries are asserted on SQLite only (`ScalingQueryPlansTest`), and no timing was taken on a server engine.
+- [ ] Everything past authentication against the real providers (an accepted push, `BadDeviceToken`, `Unregistered`, quota answers, Live Activities, broadcast channels, topic subscriptions): needs the owner's credentials and a device.
+- [ ] Octane, Swoole, RoadRunner, FrankenPHP, Horizon, Vapor, Redis/SQS queues, memcached/dynamodb cache stores, MariaDB, a real KMS, `xcrun` on a Mac, Pulse/Telescope in a browser: never run.
+- [ ] `ExpiredProviderToken` refresh path against the real APNs (not observable without a real key).
+
+Verified by hand or by CI in the closing pass (see `progress.md`): install into a fresh Laravel 12 and 13 application (`fresh-app` job), MySQL 8.4 and PostgreSQL 17 scenarios, credential-less probes of APNs sandbox / FCM / Google OAuth from a hosted runner (`providers` workflow), FCM Discovery drift check, mutation testing workflow.

@@ -93,8 +93,9 @@ Next: back to [getting started](getting-started.md).
 ## What was checked against Google's real endpoints
 
 Nothing in this project has run with a real Firebase project or service account. Three things were checked against
-Google's real servers on 2026-11-21, none of which needs credentials or can deliver anything (the requests went through
-the build environment's HTTPS proxy, so they say nothing about TLS or HTTP/2 negotiation with Google itself):
+Google's real servers on 2026-11-21, none of which needs credentials or can deliver anything. They were run from the
+build environment (through its HTTPS proxy) and from a GitHub-hosted runner, which connects to Google directly, with
+the same results:
 
 - **A send with a made-up bearer token.** `fcm.googleapis.com` answered HTTP 401 with
   `{"error": {"code": 401, "status": "UNAUTHENTICATED", ...}}`. The package classified it as `auth_token_expired`,
@@ -108,5 +109,6 @@ the build environment's HTTPS proxy, so they say nothing about TLS or HTTP/2 neg
   identical to the snapshot the message builders and the tests are pinned to.
 
 You can repeat the first two with `php tests/Support/Probes/fcm-unauthenticated-probe.php` from a clone of the
-repository. Everything past authentication (a real token accepted, `UNREGISTERED`, quota answers, topic subscriptions,
+repository, and the third with `php tests/Support/Probes/fcm-discovery-drift.php`. The `providers` GitHub workflow runs
+all three every week and on demand; when the Discovery document changes it fails and opens an issue with the summary. Everything past authentication (a real token accepted, `UNREGISTERED`, quota answers, topic subscriptions,
 `validate_only` with a valid credential) is still verified against fixtures only.

@@ -97,13 +97,13 @@ Next: back to [getting started](/get-started/getting-started).
 
 ## What was checked against Google's real endpoints
 
-Nothing in this project has run with a real Firebase project or service account. Three things were checked against Google's real servers on 2026-11-21, none of which needs credentials or can deliver anything (the requests went through the build environment's HTTPS proxy, so they say nothing about TLS or HTTP/2 negotiation with Google itself):
+Nothing in this project has run with a real Firebase project or service account. Three things were checked against Google's real servers on 2026-11-21, none of which needs credentials or can deliver anything. They were run from the build environment (through its HTTPS proxy) and from a GitHub-hosted runner, which connects to Google directly, with the same results:
 
 - **A send with a made-up bearer token.** `fcm.googleapis.com` answered HTTP 401 with `{"error": {"code": 401, "status": "UNAUTHENTICATED", ...}}`. The package classified it as `auth_token_expired`, refreshed the token once, tried once more, and returned `deferred`: the behaviour described in [retries and limits](/reliability/retries-and-limits) for an access token the provider refuses.
 - **The OAuth exchange with a made-up service account** (a key generated on the spot). `oauth2.googleapis.com/token` answered HTTP 400 `invalid_grant`; the provider raised an `AuthenticationException` naming the status and the error code (never the assertion), and a send through that credential ended `failed` / `auth_token_invalid` with zero requests to FCM.
 - **The Discovery document.** The live `https://fcm.googleapis.com/$discovery/rest?version=v1` (revision `20261112`) is identical to the snapshot the message builders and the tests are pinned to.
 
-You can repeat the first two with `php tests/Support/Probes/fcm-unauthenticated-probe.php` from a clone of the repository. Everything past authentication (a real token accepted, `UNREGISTERED`, quota answers, topic subscriptions, `validate_only` with a valid credential) is still verified against fixtures only.
+You can repeat the first two with `php tests/Support/Probes/fcm-unauthenticated-probe.php` from a clone of the repository, and the third with `php tests/Support/Probes/fcm-discovery-drift.php`. The `providers` GitHub workflow runs all three every week and on demand; when the Discovery document changes it fails and opens an issue with the summary. Everything past authentication (a real token accepted, `UNREGISTERED`, quota answers, topic subscriptions, `validate_only` with a valid credential) is still verified against fixtures only.
 
 ---
 

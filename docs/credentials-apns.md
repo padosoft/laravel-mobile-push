@@ -206,9 +206,10 @@ Next: [FCM credentials](credentials-fcm.md), or back to [getting started](gettin
 ## What was checked against Apple's real endpoint
 
 Nothing in this project has run with a real Apple key or certificate. One thing was checked against Apple's real
-**sandbox** host (`api.sandbox.push.apple.com`) on 2026-11-21, and it needs no credential and can deliver nothing (the
-requests went through the build environment's HTTPS proxy, so they say nothing about TLS or HTTP/2 negotiation with
-Apple itself):
+**sandbox** host (`api.sandbox.push.apple.com`) on 2026-11-21, and it needs no credential and can deliver nothing. It was run twice: from the build environment, through its HTTPS
+proxy, and from a GitHub-hosted runner, which connects to Apple directly, so the second run also went through the
+package's own TLS and HTTP/2 negotiation with Apple (the transport refuses anything but HTTP/2 for APNs). Both gave the
+same results:
 
 - **A push with a provider token signed by a key Apple does not know** (a P-256 key generated on the spot, a made-up team
   id and key id, a device token of 64 zeros). APNs answered HTTP 403 `{"reason":"InvalidProviderToken"}`; the package
@@ -221,6 +222,7 @@ Apple itself):
   one): HTTP 403 `{"reason":"MissingProviderToken"}`, with an `apns-id` response header.
 
 You can repeat the first two with `php tests/Support/Probes/apns-unauthenticated-probe.php` from a clone of the
-repository. Everything past authentication (an accepted push, `BadDeviceToken`, `Unregistered` with its timestamp, the
+repository; the `providers` GitHub workflow runs it every week and on demand, and fails if Apple's answer or its
+classification changes. Everything past authentication (an accepted push, `BadDeviceToken`, `Unregistered` with its timestamp, the
 5xx advice, Live Activities, broadcast channels, certificates) is still verified against fixtures and the local mock
 server only. The production host was not contacted.

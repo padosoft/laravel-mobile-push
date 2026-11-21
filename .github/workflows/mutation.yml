@@ -2,7 +2,7 @@ name: mutation
 
 # Mutation testing of the dense, fragile parts of the core (signatures, retry planning, classifiers, the ledger state
 # machine, truncation). It is slow and its score is a quality signal, not a gate: weekly, and by hand from the Actions
-# tab. Each group runs only the tests that are meant to pin that code.
+# tab. Each group runs the unit tests and the scenarios that are meant to pin that code.
 
 on:
   schedule:
@@ -24,22 +24,22 @@ jobs:
             tests: tests/Unit/Core/Auth tests/Scenario/Auth
           - name: retry
             classes: 'Padosoft\MobilePush\Core\Retry'
-            tests: tests/Unit/Core/Retry
+            tests: tests/Unit/Core/Retry tests/Scenario/Outcome tests/Scenario/Send
           - name: apns-outcome
             classes: 'Padosoft\MobilePush\Core\Apns\Outcome'
-            tests: tests/Unit/Core/Apns/Outcome
+            tests: tests/Unit/Core/Apns/Outcome tests/Scenario/Outcome tests/Scenario/Send
           - name: fcm-outcome
             classes: 'Padosoft\MobilePush\Core\Fcm\Outcome'
-            tests: tests/Unit/Core/Fcm/Outcome
+            tests: tests/Unit/Core/Fcm/Outcome tests/Scenario/Outcome tests/Scenario/Send
           - name: ledger-rules
             classes: 'Padosoft\MobilePush\Core\Ledger\DeliveryStateMachine,Padosoft\MobilePush\Core\Ledger\PayloadFingerprint'
-            tests: tests/Unit/Core/Ledger
+            tests: tests/Unit/Core/Ledger tests/Scenario/Ledger
           - name: message-support
             classes: 'Padosoft\MobilePush\Core\Message\Support'
-            tests: tests/Unit/Core/Message
+            tests: tests/Unit/Core/Message tests/Scenario/Apns/Compile tests/Scenario/Fcm/Compile
           - name: guards
             classes: 'Padosoft\MobilePush\Core\Guard\RateLimiter,Padosoft\MobilePush\Core\Guard\AuthBreaker,Padosoft\MobilePush\Core\Guard\DestinationQualityBreaker,Padosoft\MobilePush\Core\Guard\ThrottleGate'
-            tests: tests/Unit/Core/Guard
+            tests: tests/Unit/Core/Guard tests/Scenario/Guard tests/Scenario/Send
     name: Mutation · ${{ matrix.name }}
     steps:
       - uses: actions/checkout@v4
@@ -48,6 +48,10 @@ jobs:
           php-version: '8.3'
           extensions: curl, openssl, json, intl
           coverage: pcov
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - run: composer update --prefer-dist --no-interaction
+      # Not --parallel: the parallel runner takes a single test path, and each group names several.
       - name: Mutate
-        run: vendor/bin/pest --mutate --parallel --class='${{ matrix.classes }}' ${{ matrix.tests }}
+        run: vendor/bin/pest --mutate --class='${{ matrix.classes }}' ${{ matrix.tests }}
