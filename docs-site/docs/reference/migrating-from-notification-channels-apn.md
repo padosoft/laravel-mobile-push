@@ -5,21 +5,11 @@ description: "laravel-notification-channels/apn is the community Laravel notific
 
 # Migrating from `laravel-notification-channels/apn`
 
-`laravel-notification-channels/apn` is the community Laravel notification channel for APNs. It is a thin, tidy wrapper
-around [Pushok](/reference/migrating-from-pushok): you return an `ApnMessage` from `toApn()`, the channel adapts it to a Pushok
-`Notification` and sends it. If that is your setup, this page maps it to `padosoft/laravel-mobile-push` and lists what
-behaves differently.
+`laravel-notification-channels/apn` is the community Laravel notification channel for APNs. It is a thin, tidy wrapper around [Pushok](/reference/migrating-from-pushok): you return an `ApnMessage` from `toApn()`, the channel adapts it to a Pushok `Notification` and sends it. If that is your setup, this page maps it to `padosoft/laravel-mobile-push` and lists what behaves differently.
 
-**What I read.** The README, `src/ApnMessage.php`, `src/ApnChannel.php` and `composer.json` at tag **`v6.5.0`** (the latest
-tag listed by `git ls-remote --tags https://github.com/laravel-notification-channels/apn`), fetched from
-`raw.githubusercontent.com`. I did not run it. At that tag it requires PHP `^8.4`, `edamov/pushok ^0.18|^0.19` and
-`illuminate/* ^12.0|^13.0`; this package requires PHP 8.3+ and Laravel 12 to 13. For the Pushok side read the
-[Pushok guide](/reference/migrating-from-pushok); everything about outcomes, configuration and the plan applies here too and is not
-repeated in full.
+**What I read.** The README, `src/ApnMessage.php`, `src/ApnChannel.php` and `composer.json` at tag **`v6.5.0`** (the latest tag listed by `git ls-remote --tags https://github.com/laravel-notification-channels/apn`), fetched from `raw.githubusercontent.com`. I did not run it. At that tag it requires PHP `^8.4`, `edamov/pushok ^0.18|^0.19` and `illuminate/* ^12.0|^13.0`; this package requires PHP 8.3+ and Laravel 12 to 13. For the Pushok side read the [Pushok guide](/reference/migrating-from-pushok); everything about outcomes, configuration and the plan applies here too and is not repeated in full.
 
-Related pages: [notifications and fallback](/sending/notifications-and-fallback), [getting started](/get-started/getting-started),
-[messages](/sending/messages), [devices](/modules/devices), [credentials for APNs](/get-started/credentials-apns), [outcomes](/reliability/outcomes),
-[testing](/sending/testing), [comparison](/reference/comparison), [upgrading](/operations/upgrading).
+Related pages: [notifications and fallback](/sending/notifications-and-fallback), [getting started](/get-started/getting-started), [messages](/sending/messages), [devices](/modules/devices), [credentials for APNs](/get-started/credentials-apns), [outcomes](/reliability/outcomes), [testing](/sending/testing), [comparison](/reference/comparison), [upgrading](/operations/upgrading).
 
 ## Side-by-side
 
@@ -152,61 +142,31 @@ The channel reads `config/broadcasting.php` (`connections.apn`). Here it is one 
 
 ## Behavioural differences that matter for a channel user
 
-All the points of the [Pushok guide](/reference/migrating-from-pushok#migrating-from-pushok-edamovpushok-behavioural-differences-a-migrating-team-must-know) apply:
-simulation by default outside production, explicit platform and environment, statuses instead of exceptions, an unknown
-outcome that is not a failure, retries inside the package. In addition, specific to the notification channel:
+All the points of the [Pushok guide](/reference/migrating-from-pushok#migrating-from-pushok-edamovpushok-behavioural-differences-a-migrating-team-must-know) apply: simulation by default outside production, explicit platform and environment, statuses instead of exceptions, an unknown outcome that is not a failure, retries inside the package. In addition, specific to the notification channel:
 
-1. **`NotificationFailed` is not dispatched.** The apn channel dispatches Laravel's `NotificationFailed` for every response
-   that is not 200, carrying the APNs id, the **token** and the error reason. This package's channel does not dispatch that
-   event: failures of single destinations are `SendResult`s. If you have a `NotificationFailed` listener that deletes tokens,
-   replace it with the registry (automatic invalidation and quarantine) or with a listener on the package events
-   (`DestinationInvalidated`, `DestinationQuarantined`, `PushResultProduced`, which carry a masked view of the destination,
-   not the token), and see [observability](/modules/observability).
-2. **What the channel returns.** The apn channel returns the Pushok responses (or `null` when there are no tokens). This one
-   returns a `SendReport` that is consumed before the channel returns, and it becomes the `response` of `NotificationSent`.
-   No destination at all is an empty report, not an error.
-3. **Simulation shows up as "sent".** In `auto` mode on a non-production environment a notification goes through the channel
-   and every result is `Simulated`; `NotificationSent` still fires. Check the results, or the execution mode, before
-   concluding that a staging device should have received something ([safe mode](/reliability/safe-mode)).
-4. **Queueing has one owner.** If the notification implements `ShouldQueue`, Laravel's job owns it and the push is sent
-   inline inside it (one job per channel). The package queue is a different, opt-in path (`QueuesPush`) and never runs
-   together with `ShouldQueue` ([notifications and fallback](/sending/notifications-and-fallback)).
-5. **Retries reuse the same message id.** A retried queued notification keeps its notification id, so the effect key and the
-   provider message id are stable.
-6. **Fallback to mail or SMS** is available on the push channel: `pushFallback()` returns the channels, and it fires only
-   when the push is *known* not to have been accepted (never after an unknown outcome or an opt-out). See
-   [notifications and fallback](/sending/notifications-and-fallback).
+1. **`NotificationFailed` is not dispatched.** The apn channel dispatches Laravel's `NotificationFailed` for every response that is not 200, carrying the APNs id, the **token** and the error reason. This package's channel does not dispatch that event: failures of single destinations are `SendResult`s. If you have a `NotificationFailed` listener that deletes tokens, replace it with the registry (automatic invalidation and quarantine) or with a listener on the package events (`DestinationInvalidated`, `DestinationQuarantined`, `PushResultProduced`, which carry a masked view of the destination, not the token), and see [observability](/modules/observability).
+2. **What the channel returns.** The apn channel returns the Pushok responses (or `null` when there are no tokens). This one returns a `SendReport` that is consumed before the channel returns, and it becomes the `response` of `NotificationSent`. No destination at all is an empty report, not an error.
+3. **Simulation shows up as "sent".** In `auto` mode on a non-production environment a notification goes through the channel and every result is `Simulated`; `NotificationSent` still fires. Check the results, or the execution mode, before concluding that a staging device should have received something ([safe mode](/reliability/safe-mode)).
+4. **Queueing has one owner.** If the notification implements `ShouldQueue`, Laravel's job owns it and the push is sent inline inside it (one job per channel). The package queue is a different, opt-in path (`QueuesPush`) and never runs together with `ShouldQueue` ([notifications and fallback](/sending/notifications-and-fallback)).
+5. **Retries reuse the same message id.** A retried queued notification keeps its notification id, so the effect key and the provider message id are stable.
+6. **Fallback to mail or SMS** is available on the push channel: `pushFallback()` returns the channels, and it fires only when the push is *known* not to have been accepted (never after an unknown outcome or an opt-out). See [notifications and fallback](/sending/notifications-and-fallback).
 
 ## A step-by-step plan, with a way back
 
-1. **Inventory** the notifications that use `ApnChannel`/`ApnVoipChannel`, the `routeNotificationForApn*()` methods, any
-   `NotificationFailed` listener and every `ApnMessage::via($client)`.
-2. **Install** `padosoft/laravel-mobile-push` next to the channel and add the connection (same key and bundle as today).
-   `php artisan mobile-push:doctor`; `php artisan mobile-push:connections`.
-3. **Decide where tokens live**: keep your own column and return typed destinations from `routeNotificationForPush()` (the
-   smallest change), or adopt the registry ([devices](/modules/devices)). Adding the registry is a separate project; do not couple it
-   to this migration unless you want to.
-4. **Convert one notification**: add `toApns()` next to `toApn()` and keep `via()` switchable by a flag: return
-   `[ApnChannel::class]` while the flag is off and `['apns']` when it is on. Both methods can live in the class during the
-   transition.
-5. **Compare** with `php artisan mobile-push:preview --connection=ios --title=... --body=...` (what the message compiles to,
-   nothing sent), then send to your own device with the allowlist (`MOBILE_PUSH_MODE=live`, `live.allow`, `live.only_to`)
-   through `mobile-push:send`.
-6. **Replace the failure handling** (point 1 above) before switching the traffic that matters, so dead tokens keep being
-   cleaned up.
-7. **Roll out notification by notification**, watching `outcome_unknown` and `rejected` by reason (log sink, Pulse or
-   Prometheus: [observability](/modules/observability)).
+1. **Inventory** the notifications that use `ApnChannel`/`ApnVoipChannel`, the `routeNotificationForApn*()` methods, any `NotificationFailed` listener and every `ApnMessage::via($client)`.
+2. **Install** `padosoft/laravel-mobile-push` next to the channel and add the connection (same key and bundle as today). `php artisan mobile-push:doctor`; `php artisan mobile-push:connections`.
+3. **Decide where tokens live**: keep your own column and return typed destinations from `routeNotificationForPush()` (the smallest change), or adopt the registry ([devices](/modules/devices)). Adding the registry is a separate project; do not couple it to this migration unless you want to.
+4. **Convert one notification**: add `toApns()` next to `toApn()` and keep `via()` switchable by a flag: return `[ApnChannel::class]` while the flag is off and `['apns']` when it is on. Both methods can live in the class during the transition.
+5. **Compare** with `php artisan mobile-push:preview --connection=ios --title=... --body=...` (what the message compiles to, nothing sent), then send to your own device with the allowlist (`MOBILE_PUSH_MODE=live`, `live.allow`, `live.only_to`) through `mobile-push:send`.
+6. **Replace the failure handling** (point 1 above) before switching the traffic that matters, so dead tokens keep being cleaned up.
+7. **Roll out notification by notification**, watching `outcome_unknown` and `rejected` by reason (log sink, Pulse or Prometheus: [observability](/modules/observability)).
 8. **Remove** the channel package and its `broadcasting.php` entry when no `ApnChannel` is left.
 
-**Rollback.** Flip the flag of step 4 back: `via()` returns `ApnChannel::class` again and the old path (config, key,
-`toApn()`) is untouched. What a rollback does not undo: pushes already sent through this package, rows it wrote (registry,
-ledger, logs) and any token it invalidated or quarantined. Keep your token column as the source of truth until the end of
-step 7.
+**Rollback.** Flip the flag of step 4 back: `via()` returns `ApnChannel::class` again and the old path (config, key, `toApn()`) is untouched. What a rollback does not undo: pushes already sent through this package, rows it wrote (registry, ledger, logs) and any token it invalidated or quarantined. Keep your token column as the source of truth until the end of step 7.
 
 ## Not verified
 
-Nothing here has run against real APNs or a real device. How the channel behaves is read from its source at `v6.5.0`, not
-from running it; check the method names against the version you have installed.
+Nothing here has run against real APNs or a real device. How the channel behaves is read from its source at `v6.5.0`, not from running it; check the method names against the version you have installed.
 
 ---
 

@@ -5,18 +5,13 @@ description: "queue() puts work on a Laravel queue; this page says on which queu
 
 # Queues, workers, Horizon and the scheduler
 
-`queue()` puts work on a Laravel queue; this page says on which queue, with what timeouts, which jobs exist, what to run
-in production (a Horizon block and its plain `queue:work` equivalent, both printed by `mobile-push:install`), which
-entries the package adds to the scheduler, and what has and has not been verified per queue driver.
+`queue()` puts work on a Laravel queue; this page says on which queue, with what timeouts, which jobs exist, what to run in production (a Horizon block and its plain `queue:work` equivalent, both printed by `mobile-push:install`), which entries the package adds to the scheduler, and what has and has not been verified per queue driver.
 
-Related pages: [delivery profiles](/reliability/delivery-profiles) (what the jobs do), [retries and limits](/reliability/retries-and-limits),
-[commands](/operations/commands), [troubleshooting](/operations/troubleshooting).
+Related pages: [delivery profiles](/reliability/delivery-profiles) (what the jobs do), [retries and limits](/reliability/retries-and-limits), [commands](/operations/commands), [troubleshooting](/operations/troubleshooting).
 
 ## Two different "connections"
 
-A **push connection** is an APNs or FCM app binding (`mobile-push.connections.*`). A **queue connection** is a Laravel
-queue backend (`config/queue.php`). They are unrelated names. On `PendingSend`, the queue connection is chosen with
-`onQueueConnection()`, never `connection()`.
+A **push connection** is an APNs or FCM app binding (`mobile-push.connections.*`). A **queue connection** is a Laravel queue backend (`config/queue.php`). They are unrelated names. On `PendingSend`, the queue connection is chosen with `onQueueConnection()`, never `connection()`.
 
 ```php
 use Padosoft\MobilePush\Core\Message\PushMessage;
@@ -42,9 +37,7 @@ $effectId = MobilePush::to($user)
 | `queue.queue` | `MOBILE_PUSH_QUEUE` | `push` | **Transactional** traffic (one-to-one messages), the sweeper, relay follow-ups. |
 | `queue.bulk_queue` | `MOBILE_PUSH_BULK_QUEUE` | `push-bulk` | **Bulk** traffic (`->bulk()`, campaigns). |
 
-A job goes to the queue named by `onQueue()` when given, otherwise to the queue of its traffic class. Keep the two
-queues on **separate worker pools** so a large campaign cannot delay a login code. Follow-up jobs created inside a
-worker (continuations, relay follow-ups) inherit the queue of their traffic class.
+A job goes to the queue named by `onQueue()` when given, otherwise to the queue of its traffic class. Keep the two queues on **separate worker pools** so a large campaign cannot delay a login code. Follow-up jobs created inside a worker (continuations, relay follow-ups) inherit the queue of their traffic class.
 
 ## The jobs
 
@@ -56,15 +49,9 @@ worker (continuations, relay follow-ups) inherit the queue of their traffic clas
 | `PlanCampaignJob`, `SweepCampaignsJob` | campaigns | Write one slice of a campaign's audience to the ledger; detect completion and stalled planners. | See [campaigns](/modules/campaigns) |
 | `SendLiveActivityTransitionJob` | Live Activities | Sends one Live Activity transition. Never retried by the queue; a lost job is replayed by the module. | No |
 
-Laravel's own `SendQueuedNotifications` job is the **only** owner of queueing when a notification implements
-`ShouldQueue`: the push channel then sends inside that job and does not queue a second one. See
-[notifications and fallback](/sending/notifications-and-fallback).
+Laravel's own `SendQueuedNotifications` job is the **only** owner of queueing when a notification implements `ShouldQueue`: the push channel then sends inside that job and does not queue a second one. See [notifications and fallback](/sending/notifications-and-fallback).
 
-All package jobs set `onConnection` / `onQueue` / `delay` at dispatch. The light job is marked **after commit** (held until
-the surrounding transaction commits, dropped on rollback) when both the `afterCommit()` call option and
-`queue.after_commit` (`MOBILE_PUSH_QUEUE_AFTER_COMMIT`, default `true`) are on. The durable relay is dispatched after the
-commit of the **ledger connection's** transaction. A job dispatched from inside a worker (a continuation, a follow-up,
-a sweep) never waits for a commit.
+All package jobs set `onConnection` / `onQueue` / `delay` at dispatch. The light job is marked **after commit** (held until the surrounding transaction commits, dropped on rollback) when both the `afterCommit()` call option and `queue.after_commit` (`MOBILE_PUSH_QUEUE_AFTER_COMMIT`, default `true`) are on. The durable relay is dispatched after the commit of the **ledger connection's** transaction. A job dispatched from inside a worker (a continuation, a follow-up, a sweep) never waits for a commit.
 
 ### Tags
 
@@ -82,8 +69,7 @@ Horizon only stores tags when it is installed, so look for them in the Horizon d
 
 ## The timeout chain
 
-Retries are the package's business, so the queue must never redeliver a job that is still working. That requires a
-strict order of timeouts, each with a margin:
+Retries are the package's business, so the queue must never redeliver a job that is still working. That requires a strict order of timeouts, each with a margin:
 
 ```
 transport timeout  <  chunk deadline  <  job timeout  <  worker timeout  <  retry_after (SQS: visibility timeout)
@@ -99,19 +85,11 @@ and, in the durable profile:  chunk deadline  <  ledger lease
 | `retry_after` | `queue.connections.<connection>.retry_after`; for SQS the queue's visibility timeout, declared in `queue.visibility_timeout` | the connection's |
 | ledger lease | `ledger.lease_seconds` | 120 s |
 
-The **margin** of each link is `max(5 s, 10 % of the lower value)`. The defaults are chosen to fit a **stock Laravel
-application with no change**, whose `database` and `redis` queue connections use `retry_after` 90:
-30 s (transport) < 40 s (chunk deadline) < 50 s (job timeout) < 55 s (worker timeout, the value `mobile-push:install`
-prints) < 90 s (`retry_after`), and, in the durable profile, 40 s < 120 s (ledger lease). The worker timeout must be at
-least `50 + 5 = 55` s and `retry_after` at least `55 + 5.5`, rounded up to **61 s**: that is what `mobile-push:install`
-prints. A connection that sets no `retry_after` falls back to the framework's 60, which still fits. The chain is checked
-as a whole: if you raise one value (a slower transport, a bigger chunk), raise the ones above it too, and
-`mobile-push:doctor` tells you which link breaks.
+The **margin** of each link is `max(5 s, 10 % of the lower value)`. The defaults are chosen to fit a **stock Laravel application with no change**, whose `database` and `redis` queue connections use `retry_after` 90: 30 s (transport) < 40 s (chunk deadline) < 50 s (job timeout) < 55 s (worker timeout, the value `mobile-push:install` prints) < 90 s (`retry_after`), and, in the durable profile, 40 s < 120 s (ledger lease). The worker timeout must be at least `50 + 5 = 55` s and `retry_after` at least `55 + 5.5`, rounded up to **61 s**: that is what `mobile-push:install` prints. A connection that sets no `retry_after` falls back to the framework's 60, which still fits. The chain is checked as a whole: if you raise one value (a slower transport, a bigger chunk), raise the ones above it too, and `mobile-push:doctor` tells you which link breaks.
 
 ### How `doctor` reports it
 
-`php artisan mobile-push:doctor` prints one line per link in the section "Queue timeouts" (a real run of the defaults,
-durable profile, with a database queue connection whose `retry_after` is 90 as in a fresh Laravel application):
+`php artisan mobile-push:doctor` prints one line per link in the section "Queue timeouts" (a real run of the defaults, durable profile, with a database queue connection whose `retry_after` is 90 as in a fresh Laravel application):
 
 ```text
 Queue timeouts
@@ -125,10 +103,7 @@ Queue timeouts
   ✓ chunk_deadline (40 s) < lease_seconds (120 s), margin 5 s
 ```
 
-There is no violation. The two "not verifiable" lines are about the one value the application cannot read, the
-`queue:work --timeout` flag (see below); the line that follows them proves the rule that matters most, job timeout below
-`retry_after`. With a higher `queue.timeout` (for example 120) and the same `retry_after` of 90 the last two lines turn
-into a violation with a remedy such as `Raise retry_after to at least 132 s, or lower job_timeout to at most 81.818 s`.
+There is no violation. The two "not verifiable" lines are about the one value the application cannot read, the `queue:work --timeout` flag (see below); the line that follows them proves the rule that matters most, job timeout below `retry_after`. With a higher `queue.timeout` (for example 120) and the same `retry_after` of 90 the last two lines turn into a violation with a remedy such as `Raise retry_after to at least 132 s, or lower job_timeout to at most 81.818 s`.
 
 Each link is one of:
 
@@ -141,24 +116,16 @@ Each link is one of:
 
 What can and cannot be read:
 
-- **Horizon:** the worker timeout is read from `horizon.defaults` and `horizon.environments.<APP_ENV>` for every
-  supervisor that uses the same queue connection **and** lists `push` or `push-bulk`; a supervisor without `timeout` counts
-  as 60 s. The smallest value is checked against the job timeout and the largest against `retry_after`.
-- **`queue:work --timeout`:** it is a command-line flag of a process the application cannot see. It stays "not
-  verifiable" until you declare the value in `queue.worker_timeout` (`MOBILE_PUSH_QUEUE_WORKER_TIMEOUT`). Declaring is
-  trusting yourself: the doctor then verifies the arithmetic, not the process.
-- **SQS:** the visibility timeout is an attribute of the queue, not part of Laravel's config. Declare it in
-  `queue.visibility_timeout` (`MOBILE_PUSH_QUEUE_VISIBILITY_TIMEOUT`).
-- **`redis`, `database`, `beanstalkd`:** `retry_after` is read from the connection (the framework default of 60 when the
-  connection sets none).
+- **Horizon:** the worker timeout is read from `horizon.defaults` and `horizon.environments.<APP_ENV>` for every supervisor that uses the same queue connection **and** lists `push` or `push-bulk`; a supervisor without `timeout` counts as 60 s. The smallest value is checked against the job timeout and the largest against `retry_after`.
+- **`queue:work --timeout`:** it is a command-line flag of a process the application cannot see. It stays "not verifiable" until you declare the value in `queue.worker_timeout` (`MOBILE_PUSH_QUEUE_WORKER_TIMEOUT`). Declaring is trusting yourself: the doctor then verifies the arithmetic, not the process.
+- **SQS:** the visibility timeout is an attribute of the queue, not part of Laravel's config. Declare it in `queue.visibility_timeout` (`MOBILE_PUSH_QUEUE_VISIBILITY_TIMEOUT`).
+- **`redis`, `database`, `beanstalkd`:** `retry_after` is read from the connection (the framework default of 60 when the connection sets none).
 - **Any other driver:** `retry_after` is "not verifiable" ("driver ... cannot be inspected").
 - `mobile-push:health` has its own simpler `queue` check: it compares `retry_after` with the job timeout only.
 
 ## What to run
 
-`php artisan mobile-push:install` prints the block below with the values of **your** settings (timeout =
-`ceil(queue.timeout + margin)`, here 55; memory 256 MB). Take the text from the command, not from this page, when
-your timeouts differ.
+`php artisan mobile-push:install` prints the block below with the values of **your** settings (timeout = `ceil(queue.timeout + margin)`, here 55; memory 256 MB). Take the text from the command, not from this page, when your timeouts differ.
 
 ### Horizon
 
@@ -187,28 +154,22 @@ your timeouts differ.
 ],
 ```
 
-The printed `connection` is `redis`; change it if your queue connection has another name. `tries => 1` is right for
-`SendPushJob`; `RelayDeliveriesJob` declares its own `tries = 3` (a job-level value wins over the worker option) and is
-safe to rerun. Remember `retry_after` of that Redis connection must be at least **61** s.
+The printed `connection` is `redis`; change it if your queue connection has another name. `tries => 1` is right for `SendPushJob`; `RelayDeliveriesJob` declares its own `tries = 3` (a job-level value wins over the worker option) and is safe to rerun. Remember `retry_after` of that Redis connection must be at least **61** s.
 
 ### Plain `queue:work`
 
-Without Horizon, two workers under Supervisor or systemd (the connection is `queue.connection`, else your default queue
-connection, else `redis`):
+Without Horizon, two workers under Supervisor or systemd (the connection is `queue.connection`, else your default queue connection, else `redis`):
 
 ```bash
 php artisan queue:work redis --queue=push --tries=1 --timeout=55 --memory=256
 php artisan queue:work redis --queue=push-bulk --tries=1 --timeout=55 --memory=256
 ```
 
-`--memory=256` makes the worker exit when it grows past 256 MB so the process manager restarts it. (A test that runs a
-worker inside a large test process must raise it, for example `--memory=2048`: a worker that hits the limit stops after
-its first job.)
+`--memory=256` makes the worker exit when it grows past 256 MB so the process manager restarts it. (A test that runs a worker inside a large test process must raise it, for example `--memory=2048`: a worker that hits the limit stops after its first job.)
 
 ### The scheduler
 
-The durable profile **needs the scheduler**: add the standard Laravel cron entry
-(`* * * * * php artisan schedule:run`) or run `schedule:work`.
+The durable profile **needs the scheduler**: add the standard Laravel cron entry (`* * * * * php artisan schedule:run`) or run `schedule:work`.
 
 What the package registers itself (each only when enabled, all `everyMinute()`):
 
@@ -233,26 +194,18 @@ Schedule::command('mobile-push:live-activity:prune')->daily();       // Live Act
 Schedule::command('mobile-push:channels:sync --cleanup --force')->dailyAt('03:30'); // broadcast channels: delete unused ones
 ```
 
-Each prune command is safe to schedule on a profile or module that is off: it prints a notice and exits 0.
-`credentials:check` needs a connections source (`ManagerCredentialsSource` is bound by the package); it never contacts a
-provider. Command details: [commands](/operations/commands).
+Each prune command is safe to schedule on a profile or module that is off: it prints a notice and exits 0. `credentials:check` needs a connections source (`ManagerCredentialsSource` is bound by the package); it never contacts a provider. Command details: [commands](/operations/commands).
 
 ### The cache store
 
-The queue and the guards share state through one Laravel cache store: provider tokens (encrypted), circuit breakers,
-rate-limit buckets, throttle gates, the relay follow-up markers, metrics counters, the fallback idempotency marker.
+The queue and the guards share state through one Laravel cache store: provider tokens (encrypted), circuit breakers, rate-limit buckets, throttle gates, the relay follow-up markers, metrics counters, the fallback idempotency marker.
 
 | Setting | Env | Default |
 |---|---|---|
 | `cache.store` | `MOBILE_PUSH_CACHE_STORE` | `null` (the application's default store) |
 | `cache.prefix` | `MOBILE_PUSH_CACHE_PREFIX` | `mobile-push` |
 
-Use a **lock-capable shared store**: `redis`, `memcached`, `database` or `dynamodb`. The `file` store is atomic on one
-host only; `array` lives inside one process (fine for tests, wrong for workers). Breakers and the rate limiter update
-their state with compare-and-set under cache locks; with a store that cannot take locks the update fails and a send can
-throw `Guard state is too contended to update` before the network. `doctor` checks reachability, read-after-write and
-lock support. An unreachable cache behaves as an empty one (tokens are re-fetched, state is lost) and never throws from
-the token and guard stores themselves.
+Use a **lock-capable shared store**: `redis`, `memcached`, `database` or `dynamodb`. The `file` store is atomic on one host only; `array` lives inside one process (fine for tests, wrong for workers). Breakers and the rate limiter update their state with compare-and-set under cache locks; with a store that cannot take locks the update fails and a send can throw `Guard state is too contended to update` before the network. `doctor` checks reachability, read-after-write and lock support. An unreachable cache behaves as an empty one (tokens are re-fetched, state is lost) and never throws from the token and guard stores themselves.
 
 ## What is verified, per queue driver
 
@@ -266,9 +219,7 @@ the token and guard stores themselves.
 | Horizon | **Not verified** against a running Horizon. The supervisor timeouts are read from the config files. The block printed by `install` is derived from your settings, not from a Horizon run. |
 | Octane / Swoole / RoadRunner | **Not verified.** The transport's connection pools are per process, with a guard for `fork()`; behaviour under Swoole is an open question (see [transport](/reference/transport)). |
 
-Treat Redis, SQS and Horizon as "designed for, not yet proven": run `mobile-push:doctor` and a canary push in a
-staging environment on your real backend before you rely on it, and check [troubleshooting](/operations/troubleshooting#troubleshooting-by-symptom-the-queue-sends-twice)
-for the symptoms of a bad chain.
+Treat Redis, SQS and Horizon as "designed for, not yet proven": run `mobile-push:doctor` and a canary push in a staging environment on your real backend before you rely on it, and check [troubleshooting](/operations/troubleshooting#troubleshooting-by-symptom-the-queue-sends-twice) for the symptoms of a bad chain.
 
 ---
 

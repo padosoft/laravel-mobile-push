@@ -1,33 +1,22 @@
 ---
 title: "Artisan commands"
-description: "The package registers 30 mobile-push: commands: 19 core and operational ones (always, when running in the console) and 11 for Live Activities and broadcast channels (only when live_activities.enabled is true)."
+description: "The package registers 38 mobile-push:* commands: 19 core and operational ones (always, when running in the console), 11 for Live Activities and broadcast channels (only when live_activities.enabled is true) and 8 for…"
 ---
 
 # Artisan commands
 
-The package registers **30** `mobile-push:*` commands: 19 core and operational ones (always, when running in the
-console) and 11 for Live Activities and broadcast channels (only when `live_activities.enabled` is true). Signatures,
-options and exit codes below are read from the command classes. There are **no `campaign:*` commands**: campaigns are
-driven from PHP (see [campaigns](/modules/campaigns)).
+The package registers **38** `mobile-push:*` commands: 19 core and operational ones (always, when running in the console), 11 for Live Activities and broadcast channels (only when `live_activities.enabled` is true) and 8 for [campaigns](/modules/campaigns) (only when `campaigns.enabled` is true). Signatures, options and exit codes below are read from the command classes.
 
-Related pages: [safe mode](/reliability/safe-mode), [troubleshooting](/operations/troubleshooting), [queues and Horizon](/reliability/queues-and-horizon),
-[security and privacy](/operations/security-and-privacy), [delivery profiles](/reliability/delivery-profiles).
+Related pages: [safe mode](/reliability/safe-mode), [troubleshooting](/operations/troubleshooting), [queues and Horizon](/reliability/queues-and-horizon), [security and privacy](/operations/security-and-privacy), [delivery profiles](/reliability/delivery-profiles).
 
 ## Conventions
 
-- **`--json`** prints one JSON document instead of text (where the signature lists it). A failure in JSON mode is
-  `{"exit_code": N, "error": "...", "remedy": "..."}`.
-- **Exit codes are part of the public contract** (see [upgrading](/operations/upgrading)). 0 is success; the meaning of the other
-  codes is per command and listed in each section. Scripts should test the codes, not parse the text.
-- **Tokens are never printed**: every table shows the masked form (`aabbcc…8899`). Tokens passed as arguments are visible
-  in the process list and in the shell history: use `--stdin` or `--file`.
-- **Questions.** Commands that ask for confirmation (`forget`, `circuit --reset`, `devices:probe-environment`,
-  `channels:delete`, `channels:sync --cleanup`) refuse in a non-interactive run unless `--force` is given. Pass
-  `--no-interaction` in scripts.
-- **Safe mode.** Commands that could touch a provider ask the [execution mode](/reliability/safe-mode) first. The last column of the
-  table says what they do when the mode is `simulate` (the default outside production).
-- **Scope.** Where `--scope` exists the default is `mobile-push.scope` (or your `scopeUsing()` callback). See
-  [multi-tenancy](/operations/multi-tenancy).
+- **`--json`** prints one JSON document instead of text (where the signature lists it). A failure in JSON mode is `{"exit_code": N, "error": "...", "remedy": "..."}`.
+- **Exit codes are part of the public contract** (see [upgrading](/operations/upgrading)). 0 is success; the meaning of the other codes is per command and listed in each section. Scripts should test the codes, not parse the text.
+- **Tokens are never printed**: every table shows the masked form (`aabbcc…8899`). Tokens passed as arguments are visible in the process list and in the shell history: use `--stdin` or `--file`.
+- **Questions.** Commands that ask for confirmation (`forget`, `circuit --reset`, `devices:probe-environment`, `channels:delete`, `channels:sync --cleanup`) refuse in a non-interactive run unless `--force` is given. Pass `--no-interaction` in scripts.
+- **Safe mode.** Commands that could touch a provider ask the [execution mode](/reliability/safe-mode) first. The last column of the table says what they do when the mode is `simulate` (the default outside production).
+- **Scope.** Where `--scope` exists the default is `mobile-push.scope` (or your `scopeUsing()` callback). See [multi-tenancy](/operations/multi-tenancy).
 
 | Command | What it does | Exit codes | In simulate mode |
 |---|---|---|---|
@@ -62,30 +51,18 @@ mobile-push:install
     {--force : Overwrite files that were already published}
 ```
 
-A guided first setup. Interactive, it asks which optional modules and which delivery profile; non-interactive it works
-from `--modules` and `--profile` alone (defaults: no module, light profile). `receipts` with the light profile is
-refused (receipts need the ledger).
+A guided first setup. Interactive, it asks which optional modules and which delivery profile; non-interactive it works from `--modules` and `--profile` alone (defaults: no module, light profile). `receipts` with the light profile is refused (receipts need the ledger).
 
-It **publishes** `config/mobile-push.php` (kept if it exists, unless `--force`) and the migrations of the modules and
-profile you chose, then prints three things: the `.env` variables for one APNs and one FCM connection plus the module
-switches; the Horizon supervisors and the plain `queue:work` commands for your queue settings (the text in
-[queues and Horizon](/reliability/queues-and-horizon#queues-workers-horizon-and-the-scheduler-what-to-run)); and the next step, `php artisan mobile-push:doctor`. It also
-reminds you that until `MOBILE_PUSH_MODE=live` (or `APP_ENV=production`) every send is simulated.
+It **publishes** `config/mobile-push.php` (kept if it exists, unless `--force`) and the migrations of the modules and profile you chose, then prints three things: the `.env` variables for one APNs and one FCM connection plus the module switches; the Horizon supervisors and the plain `queue:work` commands for your queue settings (the text in [queues and Horizon](/reliability/queues-and-horizon#queues-workers-horizon-and-the-scheduler-what-to-run)); and the next step, `php artisan mobile-push:doctor`. It also reminds you that until `MOBILE_PUSH_MODE=live` (or `APP_ENV=production`) every send is simulated.
 
 | Exit | Meaning |
 |---|---|
 | 0 | Installed |
 | 2 | Invalid option (unknown module or profile, receipts without durable): nothing was published |
 
-> **Migrations.** The package follows one rule: migrations are published, not auto-loaded. `install` publishes the
-> files of the modules you chose and `php artisan migrate` runs the copies; nothing is registered twice. With
-> `MOBILE_PUSH_MIGRATIONS_AUTOLOAD=true` `install` publishes nothing and says why (the modules load their own files);
-> a copy you already published takes precedence. See [delivery profiles](/reliability/delivery-profiles#delivery-profiles-light-and-durable-switching-migrations).
+> **Migrations.** The package follows one rule: migrations are published, not auto-loaded. `install` publishes the files of the modules you chose and `php artisan migrate` runs the copies; nothing is registered twice. With `MOBILE_PUSH_MIGRATIONS_AUTOLOAD=true` `install` publishes nothing and says why (the modules load their own files); a copy you already published takes precedence. See [delivery profiles](/reliability/delivery-profiles#delivery-profiles-light-and-durable-switching-migrations).
 >
-> The question about the delivery profile describes it in one sentence: **light** is best effort (a crash can lose or
-> duplicate a push); **durable** keeps intents across crashes and never re-sends an accepted push, reports an outcome
-> that cannot be known as unknown instead of guessing, and a replaceable message retried after an unknown outcome can
-> arrive twice. The exact windows are in [delivery profiles](/reliability/delivery-profiles).
+> The question about the delivery profile describes it in one sentence: **light** is best effort (a crash can lose or duplicate a push); **durable** keeps intents across crashes and never re-sends an accepted push, reports an outcome that cannot be known as unknown instead of guessing, and a replaceable message retried after an unknown outcome can arrive twice. The exact windows are in [delivery profiles](/reliability/delivery-profiles).
 
 ## `mobile-push:doctor`
 
@@ -96,12 +73,7 @@ mobile-push:doctor
     {--json : Print the result as JSON}
 ```
 
-Checks, in sections: **PHP and curl** (extensions, libcurl version, HTTP/2, ALPN, client certificates in memory),
-**Configuration** (the file parses; delivery profile), **Execution mode** (simulated, live outside production), one
-section per **Connection** (credential parses, type, expiry, secondary, generation), **Cache** (reachable,
-read-after-write, lock support), **Queue timeouts** (the [timeout chain](/reliability/queues-and-horizon#queues-workers-horizon-and-the-scheduler-the-timeout-chain)),
-**Database** (the tables of every enabled module exist), **Clock** (an informational reminder: skew cannot be checked
-offline).
+Checks, in sections: **PHP and curl** (extensions, libcurl version, HTTP/2, ALPN, client certificates in memory), **Configuration** (the file parses; delivery profile), **Execution mode** (simulated, live outside production), one section per **Connection** (credential parses, type, expiry, secondary, generation), **Cache** (reachable, read-after-write, lock support), **Queue timeouts** (the [timeout chain](/reliability/queues-and-horizon#queues-workers-horizon-and-the-scheduler-the-timeout-chain)), **Database** (the tables of every enabled module exist), **Clock** (an informational reminder: skew cannot be checked offline).
 
 Each line is `✓` ok, `i` info, `! warning`, `! not verifiable` or `✗ failed`, and failures carry a `Remedy:`.
 
@@ -125,10 +97,7 @@ Queue timeouts
 Result: failures found, fix them before sending (exit 2).
 ```
 
-**`--live`** adds one **real** request per connection, announced before it is sent: for APNs, one push to an obviously
-invalid device token (APNs is expected to answer `BadDeviceToken`, which proves the credential works; APNs counts that
-request); for FCM, one `validate_only` call (validated by Google, never delivered). `--live` is **refused** when the
-effective mode is `simulate` (it would prove nothing).
+**`--live`** adds one **real** request per connection, announced before it is sent: for APNs, one push to an obviously invalid device token (APNs is expected to answer `BadDeviceToken`, which proves the credential works; APNs counts that request); for FCM, one `validate_only` call (validated by Google, never delivered). `--live` is **refused** when the effective mode is `simulate` (it would prove nothing).
 
 | Exit | Meaning |
 |---|---|
@@ -159,12 +128,7 @@ mobile-push:send
     {--json : Print the result as JSON}
 ```
 
-Sends one push. **Exactly one kind of destination** per run: tokens (arguments, `--file`, `--stdin`), `--user=ID` (the
-model of `auth.providers.users.model`, which must use the devices trait) or `--topic=NAME`. **The platform is never
-guessed.** Name it with `--platform` or `--connection`; only an interactive terminal may *propose* one from the shape of
-the tokens, and it asks you to confirm before anything is sent (not with `--stdin`, not non-interactive). `--type=silent`
-(or `background`) sends a background push. `--validate-only` needs an FCM connection (APNs has no dry run; use `preview`).
-`--queue` goes through the profile's queue and prints the effect id; results are not known until a worker runs the job.
+Sends one push. **Exactly one kind of destination** per run: tokens (arguments, `--file`, `--stdin`), `--user=ID` (the model of `auth.providers.users.model`, which must use the devices trait) or `--topic=NAME`. **The platform is never guessed.** Name it with `--platform` or `--connection`; only an interactive terminal may *propose* one from the shape of the tokens, and it asks you to confirm before anything is sent (not with `--stdin`, not non-interactive). `--type=silent` (or `background`) sends a background push. `--validate-only` needs an FCM connection (APNs has no dry run; use `preview`). `--queue` goes through the profile's queue and prints the effect id; results are not known until a worker runs the job.
 
 ```text
 $ printf '%s\n' "$TOKEN" | php artisan mobile-push:send --platform=ios --connection=ios --stdin --title="Hello" --body="World"
@@ -176,8 +140,7 @@ $ printf '%s\n' "$TOKEN" | php artisan mobile-push:send --platform=ios --connect
 1 destination(s): 1 accepted. Exit code 0 (everything accepted (or validated)).
 ```
 
-Only the first 100 rows are shown; `--json` has them all:
-`{"exit_code", "connection", "summary", "counts", "results": [{destination, kind, status, reason_code, raw_reason, hint, provider_message_id, http_status, attempts, next_attempt_at}], "warnings", "simulated"}`.
+Only the first 100 rows are shown; `--json` has them all: `{"exit_code", "connection", "summary", "counts", "results": [{destination, kind, status, reason_code, raw_reason, hint, provider_message_id, http_status, attempts, next_attempt_at}], "warnings", "simulated"}`.
 
 | Exit | Meaning |
 |---|---|
@@ -187,8 +150,7 @@ Only the first 100 rows are shown; `--json` has them all:
 | 3 | **Simulated**: nothing was sent (the effective mode is `simulate`) |
 | 4 | At least one **unknown outcome** (the request may or may not have been processed). It wins over every other code |
 
-Safe mode: with `mode = simulate` the output has a `SIMULATED: NOTHING WAS SENT` banner and exit 3; blocked destinations
-are `skipped` / `policy_safe_mode`, exit 1. See [safe mode](/reliability/safe-mode).
+Safe mode: with `mode = simulate` the output has a `SIMULATED: NOTHING WAS SENT` banner and exit 3; blocked destinations are `skipped` / `policy_safe_mode`, exit 1. See [safe mode](/reliability/safe-mode).
 
 ## `mobile-push:preview`
 
@@ -206,10 +168,7 @@ mobile-push:preview
     {--json : Print the result as JSON}
 ```
 
-Compiles a message **locally** and prints the headers and the JSON that would go on the wire, the size against the
-provider limit, warnings, what needs app code and what the platform does not support. It sends nothing and validates
-nothing remotely: no credential, token or topic is checked (APNs has no dry run). Without `--connection` it uses a
-placeholder binding.
+Compiles a message **locally** and prints the headers and the JSON that would go on the wire, the size against the provider limit, warnings, what needs app code and what the platform does not support. It sends nothing and validates nothing remotely: no credential, token or topic is checked (APNs has no dry run). Without `--connection` it uses a placeholder binding.
 
 ```text
 Destination  <APNs device token placeholder>
@@ -236,9 +195,7 @@ mobile-push:explain
     {--json : Print the result as JSON}
 ```
 
-Prints, for a reason, the cause and remedy, the package reason code, the resulting status and what the package does.
-`--all` prints the whole catalog (95 entries: 43 APNs, 16 FCM, 36 package codes in this version); the same catalog is in
-[troubleshooting](/operations/troubleshooting#reason-catalog).
+Prints, for a reason, the cause and remedy, the package reason code, the resulting status and what the package does. `--all` prints the whole catalog (95 entries: 43 APNs, 16 FCM, 36 package codes in this version); the same catalog is in [troubleshooting](/operations/troubleshooting#troubleshooting-reason-catalog).
 
 ```text
 $ php artisan mobile-push:explain BadDeviceToken
@@ -269,13 +226,9 @@ mobile-push:simulator
     {--badge= : Badge number (0 or more)}  {--sound= : Sound name}  {--type=alert : alert or silent}
 ```
 
-Builds the `.apns` file the iOS Simulator accepts (the payload plus the `Simulator Target Bundle` key), writes it to
-`--export`, and on macOS with Xcode pushes it with `xcrun simctl push`. It checks how a notification **renders** in the
-simulator; it does **not** exercise APNs, your credentials, the token or the environment. Without `--bundle` it uses the
-bundle of the only APNs connection and refuses to guess when there are several.
+Builds the `.apns` file the iOS Simulator accepts (the payload plus the `Simulator Target Bundle` key), writes it to `--export`, and on macOS with Xcode pushes it with `xcrun simctl push`. It checks how a notification **renders** in the simulator; it does **not** exercise APNs, your credentials, the token or the environment. Without `--bundle` it uses the bundle of the only APNs connection and refuses to guess when there are several.
 
-Exit: 0 done; 2 invalid input, nothing written or pushed (also: no `--export` and no `xcrun`); 5 `xcrun simctl push`
-failed. The `xcrun` step was not verified on a real Mac.
+Exit: 0 done; 2 invalid input, nothing written or pushed (also: no `--export` and no `xcrun`); 5 `xcrun simctl push` failed. The `xcrun` step was not verified on a real Mac.
 
 ## `mobile-push:connections`
 
@@ -285,10 +238,7 @@ mobile-push:connections
     {--json : Print the result as JSON}
 ```
 
-Lists the configured connections: provider, app id, environment, auth type, **non-secret** credential identity (team and
-key id, certificate fingerprint, Google principal), generation, whether a secondary exists, the live-sending state
-outside production and the days left of a certificate. No secret is ever shown. A connection with a configuration
-problem is listed with its error. Exit 0 (even with a broken connection); 2 for an invalid mode.
+Lists the configured connections: provider, app id, environment, auth type, **non-secret** credential identity (team and key id, certificate fingerprint, Google principal), generation, whether a secondary exists, the live-sending state outside production and the days left of a certificate. No secret is ever shown. A connection with a configuration problem is listed with its error. Exit 0 (even with a broken connection); 2 for an invalid mode.
 
 ```text
 Effective mode: simulate (configured "auto", APP_ENV "local").
@@ -306,11 +256,7 @@ mobile-push:circuit
     {--json : Print the result as JSON}
 ```
 
-Shows, per connection, the **authentication breaker** (state, consecutive failures of the threshold, credential generation,
-next probe), the **destination-quality breaker** (state, sample, bad count) and the **provider throttle** (paused
-until). `--reset` closes the two breakers after confirmation; the provider throttle is the provider's own request and is
-left alone. Fix the cause first: a breaker that opened for a real reason opens again. See
-[retries and limits](/reliability/retries-and-limits#retries-limits-and-circuit-breakers-the-three-circuit-breakers).
+Shows, per connection, the **authentication breaker** (state, consecutive failures of the threshold, credential generation, next probe), the **destination-quality breaker** (state, sample, bad count) and the **provider throttle** (paused until). `--reset` closes the two breakers after confirmation; the provider throttle is the provider's own request and is left alone. Fix the cause first: a breaker that opened for a real reason opens again. See [retries and limits](/reliability/retries-and-limits#retries-limits-and-circuit-breakers-the-three-circuit-breakers).
 
 ```text
 Connection "ios"
@@ -337,9 +283,7 @@ mobile-push:relay
     {--json : Print the summary as JSON}
 ```
 
-**Durable profile only.** Runs the relay (the work of a `RelayDeliveriesJob`) in this process: for a cron-driven setup
-without a queue worker, and for debugging. It first applies lease expiry and expiry, then repeats passes until nothing is
-due (a pass stops at the chunk deadline and hands over), and prints counters only.
+**Durable profile only.** Runs the relay (the work of a `RelayDeliveriesJob`) in this process: for a cron-driven setup without a queue worker, and for debugging. It first applies lease expiry and expiry, then repeats passes until nothing is due (a pass stops at the chunk deadline and hands over), and prints counters only.
 
 ```text
  INFO  Relay finished.
@@ -361,9 +305,7 @@ due (a pass stops at the chunk deadline and hands over), and prints counters onl
   now ............................................................ 2026-11-21T00:48:35+00:00
 ```
 
-Exit 0 on success; **1** when refused (the light profile: "The relay needs the durable delivery profile") or on an invalid
-option. Sends follow the normal pipeline, including [safe mode](/reliability/safe-mode): in simulate mode the deliveries end
-`simulated`.
+Exit 0 on success; **1** when refused (the light profile: "The relay needs the durable delivery profile") or on an invalid option. Sends follow the normal pipeline, including [safe mode](/reliability/safe-mode): in simulate mode the deliveries end `simulated`.
 
 ## `mobile-push:sweep`
 
@@ -372,10 +314,7 @@ mobile-push:sweep
     {--json : Print the summary as JSON}
 ```
 
-**Durable profile only.** Runs one ledger sweep inline: lost leases are applied (requeued, retried after an unknown
-outcome, or ended as unknown), overdue deliveries expired, and a scope-wide relay job handed to the queue for every scope
-with due work. It prints `scopes_visited`, `leases_requeued_not_started`, `leases_retried_after_unknown`,
-`ended_unknown_outcome`, `expired` and `relay_jobs_dispatched_for_scopes`. Exit 0; 1 on the light profile.
+**Durable profile only.** Runs one ledger sweep inline: lost leases are applied (requeued, retried after an unknown outcome, or ended as unknown), overdue deliveries expired, and a scope-wide relay job handed to the queue for every scope with due work. It prints `scopes_visited`, `leases_requeued_not_started`, `leases_retried_after_unknown`, `ended_unknown_outcome`, `expired` and `relay_jobs_dispatched_for_scopes`. Exit 0; 1 on the light profile.
 
 ## `mobile-push:deliveries:prune`
 
@@ -387,10 +326,7 @@ mobile-push:deliveries:prune
     {--json : Print the summary as JSON}
 ```
 
-Deletes **terminal** deliveries (and the effects left empty) whose last change is older than the retention and whose
-effect is past its deduplication window. Unfinished rows are never deleted. On the light profile it prints a notice and
-exits 0, so it is safe to schedule everywhere. Output: `retention_days`, `scope`, `pretend`, and `deleted.deliveries` /
-`deleted.effects` (or `would_delete.*` with `--pretend`). Exit 0; 1 on an invalid option (`--days` must be a whole number).
+Deletes **terminal** deliveries (and the effects left empty) whose last change is older than the retention and whose effect is past its deduplication window. Unfinished rows are never deleted. On the light profile it prints a notice and exits 0, so it is safe to schedule everywhere. Output: `retention_days`, `scope`, `pretend`, and `deleted.deliveries` / `deleted.effects` (or `would_delete.*` with `--pretend`). Exit 0; 1 on an invalid option (`--days` must be a whole number).
 
 ## `mobile-push:devices:prune`
 
@@ -402,9 +338,7 @@ mobile-push:devices:prune
     {--json : Print the summary as JSON}
 ```
 
-Deletes invalidated registrations after a grace period and any registration not seen for a long time. With the devices
-module off it prints a notice and exits 0. Output: `invalidated_days`, `inactive_days`, `pretend`, `deleted.invalidated`,
-`deleted.inactive`, `deleted.total`. Exit 0; 1 on an invalid option.
+Deletes invalidated registrations after a grace period and any registration not seen for a long time. With the devices module off it prints a notice and exits 0. Output: `invalidated_days`, `inactive_days`, `pretend`, `deleted.invalidated`, `deleted.inactive`, `deleted.total`. Exit 0; 1 on an invalid option.
 
 ## `mobile-push:logs:prune`
 
@@ -415,8 +349,7 @@ mobile-push:logs:prune
     {--json : Print the summary as JSON}
 ```
 
-Deletes send-log rows (database sink only) older than the retention. Without the database sink: a notice, exit 0. Exit 0;
-1 on an invalid option.
+Deletes send-log rows (database sink only) older than the retention. Without the database sink: a notice, exit 0. Exit 0; 1 on an invalid option.
 
 ## `mobile-push:health`
 
@@ -425,11 +358,7 @@ mobile-push:health
     {--json : Print the report as JSON}
 ```
 
-A report for a monitoring system, in two sections: **Liveness** (PHP extensions, curl capabilities, configuration) and
-**Readiness** (credentials of every connection, cache, ledger backlog, log sinks, circuit breakers and throttled
-accounts, queue `retry_after` against the job timeout, execution mode). It **never contacts a provider**; a live probe is
-a separate operation (`doctor --live`). A check that cannot be verified is reported as such and does not degrade the
-exit code.
+A report for a monitoring system, in two sections: **Liveness** (PHP extensions, curl capabilities, configuration) and **Readiness** (credentials of every connection, cache, ledger backlog, log sinks, circuit breakers and throttled accounts, queue `retry_after` against the job timeout, execution mode). It **never contacts a provider**; a live probe is a separate operation (`doctor --live`). A check that cannot be verified is reported as such and does not degrade the exit code.
 
 ```text
  INFO  Mobile push health: OK (exit code 0).
@@ -445,8 +374,7 @@ Readiness [ok]
 | execution_mode  | ok | Execution mode is simulate in the "local" environment. |
 ```
 
-Exit: 0 ok, 1 warning, 2 failed. A ledger whose oldest due delivery is older than `health.ledger_backlog_seconds` (300)
-is a warning, older than `health.ledger_backlog_failed_seconds` (3600) a failure.
+Exit: 0 ok, 1 warning, 2 failed. A ledger whose oldest due delivery is older than `health.ledger_backlog_seconds` (300) is a warning, older than `health.ledger_backlog_failed_seconds` (3600) a failure.
 
 ## `mobile-push:credentials:check`
 
@@ -456,10 +384,7 @@ mobile-push:credentials:check
     {--json : Print the findings as JSON}
 ```
 
-Inspects the credentials of every configured connection (key validity and type, certificate expiry and team, service
-account) **without contacting any provider**, and, unless `--no-alert`, raises the expiry alerts (see `alerts.*` and
-`credentials.warn_days`, default 30). Schedulable. Connections supplied only by a runtime resolver are not enumerated
-([multi-tenancy](/operations/multi-tenancy)).
+Inspects the credentials of every configured connection (key validity and type, certificate expiry and team, service account) **without contacting any provider**, and, unless `--no-alert`, raises the expiry alerts (see `alerts.*` and `credentials.warn_days`, default 30). Schedulable. Connections supplied only by a runtime resolver are not enumerated ([multi-tenancy](/operations/multi-tenancy)).
 
 ```text
 ios (apns, com.example.shop, production) - ok
@@ -467,8 +392,7 @@ ios (apns, com.example.shop, production) - ok
 | ok       | apns.key.valid | The APNs key parses and is EC P-256. |
 ```
 
-Exit: 0 ok **or not verifiable** (when no credentials source is bound the command says so and does not pass), 1 warnings (for
-example a certificate close to expiry), 2 errors.
+Exit: 0 ok **or not verifiable** (when no credentials source is bound the command says so and does not pass), 1 warnings (for example a certificate close to expiry), 2 errors.
 
 ## `mobile-push:forget`
 
@@ -480,10 +404,7 @@ mobile-push:forget
     {--json : Print the report as JSON}
 ```
 
-Erases what the package holds about one owner inside one scope (devices, Live Activities, ledger deliveries and message
-snapshots, send log rows), says per store how many rows were affected and **always lists what it cannot reach**. It does
-not make an application compliant with any regulation. Idempotent: run it again if a store failed. Full coverage in
-[security and privacy](/operations/security-and-privacy#security-and-privacy-forget-and-export).
+Erases what the package holds about one owner inside one scope (devices, Live Activities, ledger deliveries and message snapshots, send log rows), says per store how many rows were affected and **always lists what it cannot reach**. It does not make an application compliant with any regulation. Idempotent: run it again if a store failed. Full coverage in [security and privacy](/operations/security-and-privacy#security-and-privacy-forget-and-export).
 
 ```text
  INFO  Forget report for an owner of type App\Models\User in scope "default":
@@ -502,8 +423,7 @@ Not reached by this command:
 This command alone does not make the application compliant with the GDPR or any other regulation: ...
 ```
 
-Exit: **0** done; **1** refused (non-interactive without `--force`; confirmation declined; malformed `Type:id`) or a store
-failed.
+Exit: **0** done; **1** refused (non-interactive without `--force`; confirmation declined; malformed `Type:id`) or a store failed.
 
 ## `mobile-push:export`
 
@@ -514,12 +434,7 @@ mobile-push:export
     {--output= : Write the JSON to this file instead of printing it}
 ```
 
-Writes a JSON document of what the package holds about one owner in one scope: `owner`, `scope`, `generated_at`, then
-`devices`, `live_activities`, `deliveries`, `effects`, `send_log` (each with `status`, `truncated` and `rows`) and `notes`.
-Tokens are masked; clear tokens, receipt markers, encrypted envelopes, keyed indexes and message contents are never
-written; each store is capped at 10,000 rows. Without `--output` the JSON is the only thing printed (safe to pipe). With
-`--output` the file is created with mode 0600 and an existing file is never overwritten. Exit 0; 1 on a malformed owner or
-an output path that exists or cannot be created.
+Writes a JSON document of what the package holds about one owner in one scope: `owner`, `scope`, `generated_at`, then `devices`, `live_activities`, `deliveries`, `effects`, `send_log` (each with `status`, `truncated` and `rows`) and `notes`. Tokens are masked; clear tokens, receipt markers, encrypted envelopes, keyed indexes and message contents are never written; each store is capped at 10,000 rows. Without `--output` the JSON is the only thing printed (safe to pipe). With `--output` the file is created with mode 0600 and an existing file is never overwritten. Exit 0; 1 on a malformed owner or an output path that exists or cannot be created.
 
 ## `mobile-push:devices:probe-environment`
 
@@ -536,10 +451,7 @@ mobile-push:devices:probe-environment
     {--json : Print the result as JSON}
 ```
 
-The explicit repair for tokens registered under the wrong APNs environment: one silent push per quarantined device on the
-other environment, one at a time. **Read [the environment probe](/operations/troubleshooting#environment-probe) before you run
-it**: what it does, why it is explicit and its risks. It needs the devices module, a second connection of the same app
-for the other environment, live mode (and, outside production, the allowlist).
+The explicit repair for tokens registered under the wrong APNs environment: one silent push per quarantined device on the other environment, one at a time. **Read [the environment probe](/operations/troubleshooting#troubleshooting-environment-probe) before you run it**: what it does, why it is explicit and its risks. It needs the devices module, a second connection of the same app for the other environment, live mode (and, outside production, the allowlist).
 
 ```text
 $ php artisan mobile-push:devices:probe-environment --quarantined --allow-cross-environment --force
@@ -547,19 +459,9 @@ $ php artisan mobile-push:devices:probe-environment --quarantined --allow-cross-
 | 7      | aabbcc…8899 | com.example.shop | production | sandbox | relabelled  | Accepted on sandbox: re-labelled and active, generation 3. |
 ```
 
-Outcomes: `relabelled`, `still_rejected`, `untouched`, `conflict`, `changed`, `not_sent`, `blocked`, `no_connection`,
-`authentication_error`, `not_contacted`, `unreadable`, `cooling_down`.
+Outcomes: `relabelled`, `still_rejected`, `untouched`, `conflict`, `changed`, `not_sent`, `blocked`, `no_connection`, `authentication_error`, `not_contacted`, `unreadable`, `cooling_down`.
 
-**Frequency limit.** Every rejected probe counts against Apple's error budget, so a device is contacted **at most once
-per `devices.probe.cooldown_hours`** (`MOBILE_PUSH_DEVICES_PROBE_COOLDOWN_HOURS`, default 24; 0 switches the protection
-off). When a probe sent a request, the time and the outcome are stored in the device row (`metadata.environment_probe`:
-no new column, survives restarts and is shared by every host). A device still inside its cooldown is **not contacted**:
-it appears in the table as `cooling_down` with the time of its last probe, its outcome and the instant it may be probed
-again, and it does not use one of the `--limit` places, so a cron that runs every hour moves on to the next devices
-instead of repeating the same ones. `--force` does **not** bypass the cooldown. `--ignore-cooldown` does, after an
-interactive confirmation that `--force` does not replace; a non-interactive run with `--ignore-cooldown` is refused.
-`--limit` (default 10, at most 100) remains the per-run cap. In JSON the result carries `cooling_down` (how many were
-skipped); at most 100 skipped devices are listed per run.
+**Frequency limit.** Every rejected probe counts against Apple's error budget, so a device is contacted **at most once per `devices.probe.cooldown_hours`** (`MOBILE_PUSH_DEVICES_PROBE_COOLDOWN_HOURS`, default 24; 0 switches the protection off). When a probe sent a request, the time and the outcome are stored in the device row (`metadata.environment_probe`: no new column, survives restarts and is shared by every host). A device still inside its cooldown is **not contacted**: it appears in the table as `cooling_down` with the time of its last probe, its outcome and the instant it may be probed again, and it does not use one of the `--limit` places, so a cron that runs every hour moves on to the next devices instead of repeating the same ones. `--force` does **not** bypass the cooldown. `--ignore-cooldown` does, after an interactive confirmation that `--force` does not replace; a non-interactive run with `--ignore-cooldown` is refused. `--limit` (default 10, at most 100) remains the per-run cap. In JSON the result carries `cooling_down` (how many were skipped); at most 100 skipped devices are listed per run.
 
 | Exit | Meaning |
 |---|---|
@@ -581,22 +483,13 @@ mobile-push:fcm:topic-subscription
     {--json : Print the result as JSON}
 ```
 
-Subscribes or unsubscribes installations to an FCM topic, or lists an installation's subscriptions. One call per
-installation (FCM has no bulk operation), multiplexed; one result row per installation. With `--stdin`, a bare line is a
-registration token and a line `fid=<id>` is an installation id (a token is never guessed from its shape). Tokens given as
-options end up in your shell history: use `--stdin`. Topic subscription is a group operation: outside production it needs
-`live.allow_topics`.
+Subscribes or unsubscribes installations to an FCM topic, or lists an installation's subscriptions. One call per installation (FCM has no bulk operation), multiplexed; one result row per installation. With `--stdin`, a bare line is a registration token and a line `fid=<id>` is an installation id (a token is never guessed from its shape). Tokens given as options end up in your shell history: use `--stdin`. Topic subscription is a group operation: outside production it needs `live.allow_topics`.
 
-Exit: 0 every installation succeeded (or the mode is simulate: nothing was sent); 1 at least one failed or was blocked
-by safe mode, or the usage was wrong.
+Exit: 0 every installation succeeded (or the mode is simulate: nothing was sent); 1 at least one failed or was blocked by safe mode, or the usage was wrong.
 
 ## Live Activity and channel commands
 
-Registered only when `live_activities.enabled` is true. Every one refuses with exit 1 and a message when the module is
-disabled. The shared exit codes: **0** done (a simulated run is "done": it reports what it would do, writes nothing and
-sends nothing); **1** nothing was done or the operation did not succeed (module disabled, blocked by safe mode, APNs
-refused, outcome unknown, activity closed, nothing to send to); **2** invalid input, detected before any effect. Tokens
-are masked. For the model of Live Activities see [live activities](/modules/live-activities).
+Registered only when `live_activities.enabled` is true. Every one refuses with exit 1 and a message when the module is disabled. The shared exit codes: **0** done (a simulated run is "done": it reports what it would do, writes nothing and sends nothing); **1** nothing was done or the operation did not succeed (module disabled, blocked by safe mode, APNs refused, outcome unknown, activity closed, nothing to send to); **2** invalid input, detected before any effect. Tokens are masked. For the model of Live Activities see [live activities](/modules/live-activities).
 
 | Command and arguments | Options |
 |---|---|
@@ -612,31 +505,16 @@ are masked. For the model of Live Activities see [live activities](/modules/live
 | `mobile-push:channels:publish {channel}` | `--state=JSON` `--end` `--stale=` `--dismiss=` `--json` |
 | `mobile-push:channels:sync` | `--connection=` `--scope=` `--adopt=CHANNEL_ID[:LOCAL_ROW_ID]` `--cleanup` `--idle-hours=` `--force` `--json` |
 
-- `start` sends a remote start to the push-to-start tokens of **one owner**. It needs a token the app has reported;
-  `Accepted` means APNs took the request, not that the activity is on the screen. A start is never retried (a duplicate
-  would show two activities).
-- `update` and `end` take the activity id from `list`; durations accept an ISO-8601 instant or a relative form such as
-  `"+10 minutes"`. `update` with a second update in the same second reports `Deferred: another update was already sent
-  in this second` (exit 0): the latest state goes out from the next second, through `flush` or the scheduler.
+- `start` sends a remote start to the push-to-start tokens of **one owner**. It needs a token the app has reported; `Accepted` means APNs took the request, not that the activity is on the screen. A start is never retried (a duplicate would show two activities).
+- `update` and `end` take the activity id from `list`; durations accept an ISO-8601 instant or a relative form such as `"+10 minutes"`. `update` with a second update in the same second reports `Deferred: another update was already sent in this second` (exit 0): the latest state goes out from the next second, through `flush` or the scheduler.
 - `flush` sends the transitions that are due (the package schedules it every minute when the module is on).
-- `prune` deletes old closed rows (`ended` and `expired` activities older than `--days`) and still marks as `expired` any
-  open row whose local expiry passed without a transition. The expiry itself is enforced at transition time (every
-  `update` and `end` checks it), so a **daily** prune is enough; see [live activities](/modules/live-activities).
-- `channels:*` manage APNs **broadcast channels** (iOS 18+): `create`, `delete` (irreversible), `publish` (one publication,
-  not N deliveries), `sync` (reconcile with the list APNs holds, in both directions; `--cleanup` deletes channels no
-  open activity references, `--force` is for the scheduler). Channel management needs `live.allow_channel_management`
-  outside production, and `sync` exits 1 when an orphan channel remains.
-- In simulate mode or when safe mode blocks, these commands ask the guard **before** the first database write: nothing is
-  sent and **nothing is written** (no `requested` row, no transition number, no `creating` channel row).
+- `prune` deletes old closed rows (`ended` and `expired` activities older than `--days`) and still marks as `expired` any open row whose local expiry passed without a transition. The expiry itself is enforced at transition time (every `update` and `end` checks it), so a **daily** prune is enough; see [live activities](/modules/live-activities).
+- `channels:*` manage APNs **broadcast channels** (iOS 18+): `create`, `delete` (irreversible), `publish` (one publication, not N deliveries), `sync` (reconcile with the list APNs holds, in both directions; `--cleanup` deletes channels no open activity references, `--force` is for the scheduler). Channel management needs `live.allow_channel_management` outside production, and `sync` exits 1 when an orphan channel remains.
+- In simulate mode or when safe mode blocks, these commands ask the guard **before** the first database write: nothing is sent and **nothing is written** (no `requested` row, no transition number, no `creating` channel row).
 
 ## Campaign commands
 
-Eight commands over the [campaigns](/modules/campaigns) module (registered while `campaigns.enabled` is true; they need the
-durable profile and refuse otherwise, exit 1). `--scope` defaults to the current scope; `--json` prints one JSON document
-(one compact line per refresh with `--watch`). Exit codes: **0** done (or consistent, or already in the wanted state);
-**1** refused (module disabled, light profile), not allowed in the campaign's current state, declined, or a difference
-found by `reconcile`; **2** invalid input or campaign not found in this scope. None of them contacts a provider: they read
-the ledger and change campaign rows.
+Eight commands over the [campaigns](/modules/campaigns) module (registered while `campaigns.enabled` is true; they need the durable profile and refuse otherwise, exit 1). `--scope` defaults to the current scope; `--json` prints one JSON document (one compact line per refresh with `--watch`). Exit codes: **0** done (or consistent, or already in the wanted state); **1** refused (module disabled, light profile), not allowed in the campaign's current state, declined, or a difference found by `reconcile`; **2** invalid input or campaign not found in this scope. None of them contacts a provider: they read the ledger and change campaign rows.
 
 | Command and arguments | Options |
 |---|---|
@@ -650,26 +528,15 @@ the ledger and change campaign rows.
 | `mobile-push:campaign:prune` | `--days=` (default `campaigns.retention_days`) `--scope=` (default every scope) `--pretend` `--json` |
 
 - `status` shows where a campaign is, with every count read from the ledger.
-- `pause` stops planning; `resume` continues a **paused or failed** campaign from its stored cursor. Both are safe to
-  repeat (already paused / already running exit 0).
-- `cancel` plans and sends nothing more and cancels the deliveries not yet sent. It asks for confirmation (interactive;
-  `--force` or a refusal in `--json` without it) because it **cannot undo** what the provider already accepted or what is
-  in flight at that moment.
-- `reconcile` compares the planner's count with the deliveries in the ledger and **never corrects**: it exits 1 when it
-  finds a difference.
-- `sweep` restarts stalled planner chains and completes finished campaigns in every scope; it is the command form of the
-  job the scheduler runs every minute (`campaigns.sweeper.schedule`), so it is safe to schedule or run by hand.
-- `prune` deletes finished campaign rows (`completed`, `cancelled`, `failed`) older than the retention; `--pretend`
-  counts and changes nothing. The ledger rows prune themselves with [`deliveries:prune`](/operations/commands#artisan-commands-mobile-pushdeliveriesprune).
+- `pause` stops planning; `resume` continues a **paused or failed** campaign from its stored cursor. Both are safe to repeat (already paused / already running exit 0).
+- `cancel` plans and sends nothing more and cancels the deliveries not yet sent. It asks for confirmation (interactive; `--force` or a refusal in `--json` without it) because it **cannot undo** what the provider already accepted or what is in flight at that moment.
+- `reconcile` compares the planner's count with the deliveries in the ledger and **never corrects**: it exits 1 when it finds a difference.
+- `sweep` restarts stalled planner chains and completes finished campaigns in every scope; it is the command form of the job the scheduler runs every minute (`campaigns.sweeper.schedule`), so it is safe to schedule or run by hand.
+- `prune` deletes finished campaign rows (`completed`, `cancelled`, `failed`) older than the retention; `--pretend` counts and changes nothing. The ledger rows prune themselves with [`deliveries:prune`](/operations/commands#artisan-commands-mobile-pushdeliveriesprune).
 
 ## Not verified
 
-Run against a Testbench application with simulated and local data: `doctor`, `connections`, `circuit`, `send` (simulate
-and blocked), `preview`, `explain`, `simulator --export`, `health`, `credentials:check`, `relay`, `sweep`, the three
-`prune` commands, `forget` and `export` (on empty tables) and the refusals of `devices:probe-environment`. **Not**
-verified against real systems: any command that sends (`send --live`, `doctor --live`, `devices:probe-environment`,
-`fcm:topic-subscription`, the Live Activity and channel commands) against real APNs and FCM; `simulator` with a real
-`xcrun`; `relay` and `sweep` on MySQL or PostgreSQL under concurrent workers; `send --user` with a real user model.
+Run against a Testbench application with simulated and local data: `doctor`, `connections`, `circuit`, `send` (simulate and blocked), `preview`, `explain`, `simulator --export`, `health`, `credentials:check`, `relay`, `sweep`, the three `prune` commands, `forget` and `export` (on empty tables) and the refusals of `devices:probe-environment`. **Not** verified against real systems: any command that sends (`send --live`, `doctor --live`, `devices:probe-environment`, `fcm:topic-subscription`, the Live Activity and channel commands) against real APNs and FCM; `simulator` with a real `xcrun`; `relay` and `sweep` on MySQL or PostgreSQL under concurrent workers; `send --user` with a real user model.
 
 ---
 

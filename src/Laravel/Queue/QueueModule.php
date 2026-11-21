@@ -11,6 +11,7 @@ use Illuminate\Contracts\Config\Repository;
 use Illuminate\Contracts\Foundation\Application;
 use Padosoft\MobilePush\Core\Ledger\Ledger;
 use Padosoft\MobilePush\Laravel\Contracts\PushDispatcher;
+use Padosoft\MobilePush\Laravel\Logging\SinkManager;
 use Padosoft\MobilePush\Laravel\Contracts\QueuedSender;
 use Padosoft\MobilePush\Laravel\Module;
 use Padosoft\MobilePush\Laravel\Receipts\ReceiptMarkerIssuer;
@@ -69,6 +70,12 @@ final class QueueModule implements Module
             $app->make(ClockInterface::class),
             $app->make(QueueSettings::class),
             class_exists(ReceiptMarkerIssuer::class) && $app->bound(ReceiptMarkerIssuer::class) ? $app->make(ReceiptMarkerIssuer::class) : null,
+            $app->make(BindingMismatches::class),
+        ));
+
+        $app->bind(BindingMismatches::class, static fn (Application $app): BindingMismatches => new BindingMismatches(
+            $app->bound('events') ? $app->make('events') : null,
+            static fn (): ?SinkManager => class_exists(SinkManager::class) && $app->bound(SinkManager::class) ? $app->make(SinkManager::class) : null,
         ));
 
         $app->bind(LedgerSweeper::class, static fn (Application $app): LedgerSweeper => new LedgerSweeper(

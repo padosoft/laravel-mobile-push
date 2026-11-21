@@ -33,6 +33,10 @@ use Padosoft\MobilePush\Laravel\Devices\DeviceRegistrar;
 use Padosoft\MobilePush\Laravel\Devices\DevicesModule;
 use Padosoft\MobilePush\Laravel\Ledger\DatabaseLedger;
 use Padosoft\MobilePush\Laravel\Ledger\LedgerModule;
+use Padosoft\MobilePush\Laravel\Logging\LogRecord;
+use Padosoft\MobilePush\Laravel\Logging\LogRecordFactory;
+use Padosoft\MobilePush\Laravel\Logging\LogSink;
+use Padosoft\MobilePush\Laravel\Logging\SinkManager;
 use Padosoft\MobilePush\Laravel\Queue\DeliveryRelay;
 use Padosoft\MobilePush\Laravel\Queue\LedgerSweeper;
 use Padosoft\MobilePush\Laravel\Queue\RelayDeliveriesJob;
@@ -206,6 +210,15 @@ final class QueueWorld
         return (string) ($body['message']['token'] ?? '');
     }
 
+    /** Send log sinks on, writing into the returned in-memory sink. */
+    public static function recordingSinks(): RecordingSink
+    {
+        $sink = new RecordingSink;
+        app()->instance(SinkManager::class, new SinkManager(['memory' => $sink], 0, 10_000, app(LogRecordFactory::class)));
+
+        return $sink;
+    }
+
     /** @return array<string, int> state => rows */
     public static function deliveryStates(?string $effectId = null): array
     {
@@ -260,8 +273,14 @@ final class WorldDispatcher implements PushDispatcher
         return $this->drivers[$binding->scope.'|'.$binding->name] ?? throw new UnknownConnectionException('No connection '.$binding->name.'.');
     }
 
+    /** Like the manager: a name that no longer resolves to the captured identity throws (the job then reports it). */
     public function defaultOptions(BindingRef $binding): SendOptions
     {
+        $driver = $this->drivers[$binding->scope.'|'.$binding->name] ?? null;
+        if ($driver === null || ! $driver->binding()->sameIdentityAs($binding)) {
+            throw new UnknownConnectionException(sprintf('The connection "%s" in scope "%s" now points to a different app, provider or environment than when this push was prepared; nothing was sent and no other connection was used.', $binding->name, $binding->scope));
+        }
+
         return SendKit::live(window: $this->window);
     }
 
@@ -276,4 +295,18 @@ final class WorldDispatcher implements PushDispatcher
             yield new SendResult($item->destination, SendStatus::Skipped, Reason::of(ReasonCode::BindingMismatch), deliveryId: $item->deliveryId);
         }
     }
+}
+
+/** A log sink that keeps the records it receives (they are already redacted). */
+final class RecordingSink implements LogSink
+{
+    /** @var list<LogRecord> */
+    public array $records = [];
+
+    public function write(LogRecord ...$records): void
+    {
+        array_push($this->records, ...$records);
+    }
+
+    public function flush(): void {}
 }

@@ -25,7 +25,7 @@ Specific points not yet verified against the real services or infrastructure:
 - FCM error codes and minimum delays come from the official Firebase Admin SDK sources, not from Google's web pages; the error strings of APNs broadcast **channel management** come from Apple's documentation by name;
 - the decoding of the topic and environment extensions of **Apple push certificates** (never tried on a real certificate);
 - **concurrency of the durable ledger on MySQL and PostgreSQL** (`SKIP LOCKED` claims are exercised on SQLite only, where the lock clause is ignored) and of **cache locks on Redis**; queues were tested with Laravel's local test drivers, not with Redis, SQS or Horizon;
-- long-lived runtimes beyond queue workers: **Octane / Swoole / RoadRunner** have not been tested;
+- long-lived runtimes: a real queue-worker loop, forked children, two hundred tenants in one process and cache coordination across eight processes were exercised locally, and Octane's per-request sandbox and overlapping sends were simulated ([runtimes](docs/runtimes.md)); **Octane, Swoole, RoadRunner, FrankenPHP, Horizon and Vapor themselves have not been run**;
 - **Application Default Credentials** on Google Cloud, the iOS Simulator command (`xcrun`) on a real Mac, the Pulse card and Telescope entries in a browser, and five cells of the [capability matrix](docs/messages.md#the-capability-matrix) marked "unverified".
 
 If you try it against the real services, an issue with what you saw (even "it worked") is the most useful contribution right now.
@@ -386,7 +386,7 @@ Every command is described, with its options and exit codes, in [docs/commands.m
 | `mobile-push:fcm:topic-subscription` | Subscribes, unsubscribes or lists FCM topic subscriptions |
 | `mobile-push:live-activity:{start,update,end,list,flush,prune}` | Live Activities from the command line |
 | `mobile-push:channels:{list,create,delete,sync,publish}` | APNs broadcast channels |
-| `mobile-push:campaign:{pause,resume,cancel,reconcile,sweep,prune}` | Campaigns |
+| `mobile-push:campaign:{list,status,pause,resume,cancel,reconcile,sweep,prune}` | Campaigns |
 
 ## Configuration
 

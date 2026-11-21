@@ -175,6 +175,63 @@ function mapProse(lines, fn) {
   });
 }
 
+/**
+ * Join soft-wrapped lines. The sources are hard-wrapped at about 120 columns, which GitHub renders as one flowing
+ * paragraph; docmd turns every single newline into a line break, so a wrapped source would read as ragged lines.
+ * Only CommonMark soft breaks are joined: never inside fences, never across a block start (heading, list item,
+ * table row, callout marker, rule, HTML, link definition), never after a hard break (two spaces or a backslash).
+ */
+const BLOCK_START = /^\s*(#{1,6}\s|[-*+]\s|\d+[.)]\s|>|\||```|~~~|:::|-{3,}\s*$|={3,}\s*$|\*{3,}\s*$|_{3,}\s*$|<|\[[^\]]+\]:\s)/;
+const NEVER_CONTINUED = /^\s*(#{1,6}\s|\||```|~~~|:::|-{3,}\s*$|={3,}\s*$|\*{3,}\s*$|_{3,}\s*$|<)/;
+
+function unwrapParagraphs(lines) {
+  const out = [];
+  let fence = null;
+  let afterFence = false;
+  for (const line of lines) {
+    const m = line.match(FENCE);
+    if (m) {
+      const marker = m[1][0];
+      if (!fence) fence = marker;
+      else if (fence === marker) fence = null;
+      out.push(line);
+      afterFence = true;
+      continue;
+    }
+    if (fence) {
+      out.push(line);
+      continue;
+    }
+    const prev = out.length && !afterFence ? out[out.length - 1] : null;
+    afterFence = false;
+    if (prev === null || prev.trim() === '' || line.trim() === '' || NEVER_CONTINUED.test(prev) || /( {2,}|\\)$/.test(prev)) {
+      out.push(line);
+      continue;
+    }
+    const prevQuoted = /^\s*>/.test(prev);
+    const lineQuoted = /^\s*>/.test(line);
+    if (prevQuoted !== lineQuoted) {
+      out.push(line);
+      continue;
+    }
+    const content = lineQuoted ? line.replace(/^\s*>\s?/, '') : line;
+    const prevContent = prevQuoted ? prev.replace(/^\s*>\s?/, '') : prev;
+    // "64) resolved connections" in the middle of a sentence is text: an ordered item interrupts a paragraph only
+    // when it starts at 1, when the line before it is itself a list item, or when it is less indented than that line
+    // (the next item after a paragraph nested in the previous one).
+    const ordered = /^\s*(\d+)[.)]\s/.exec(content);
+    const indent = (text) => text.length - text.trimStart().length;
+    const midSentenceNumber = ordered !== null && Number(ordered[1]) !== 1
+      && !/^\s*(\d+[.)]|[-*+])\s/.test(prevContent) && indent(content) >= indent(prevContent);
+    if (content.trim() === '' || prevContent.trim() === '' || NEVER_CONTINUED.test(prevContent) || (BLOCK_START.test(content) && !midSentenceNumber)) {
+      out.push(line);
+      continue;
+    }
+    out[out.length - 1] = prev.replace(/\s+$/, '') + ' ' + content.trim();
+  }
+  return out;
+}
+
 /** Remove <!-- comments --> (including the `<!-- example: id -->` markers) outside fences. */
 function stripComments(lines) {
   const out = [];
@@ -532,6 +589,7 @@ function renderPage(page) {
 
   let lines = stripFrontmatter(readSource(page));
   lines = prepare(lines);
+  lines = unwrapParagraphs(lines);
   lines = rewriteLinks(lines, page);
   lines = escapeHtmlInProse(lines);
   lines = collapseBlankLines(lines);

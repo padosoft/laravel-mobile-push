@@ -398,3 +398,8 @@ Modello di voce:
 - **Contesto:** `Laravel\Logging\LoggingModule::boot()`.
 - **Fatto:** una closure registrata con `$app->terminating()` che cattura `$app` con `use` guarda l'applicazione che ha fatto il boot; sotto Octane i singleton risolti nella richiesta vivono nel clone (sandbox) e non risultano risolti lì. I record di log in buffer andavano persi.
 - **Regola:** nelle callback di ciclo di vita prendere l'applicazione come parametro (`function (Application $app)`, iniettata da `Application::terminate()`), mai catturarla con `use`.
+
+## 2026-11-21 — Transport è decorato dal modulo Testing; lo scheduler va isolato nei test
+- **Contesto:** W7-I, test di `transport.max_pools` e dello schedule di manutenzione.
+- **Fatto:** `TestingModule` fa `$app->extend(Transport::class, ...)` e avvolge il `CurlTransport` in `SwitchableTransport` (proprietà `inner` privata, nessun `registry()`): `app(Transport::class)` non è mai un `CurlTransport` nudo. Inoltre `IntegrationModule::schedule()` aggiunge ora anche gli eventi `mobile-push:maintenance:*`: un test che si aspetta uno scheduler vuoto deve spegnere `maintenance.schedule`.
+- **Regola:** per ispezionare il registry delle pool nei test leggere `inner` con Reflection; nei test sullo scheduler costruire `new Schedule` e impostare esplicitamente `maintenance.schedule` (la config di un test resta nella stessa app, non si azzera tra due chiamate).

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
 use Padosoft\MobilePush\Core\Guard\TrafficClass;
 use Padosoft\MobilePush\Core\Identity\BindingRef;
@@ -14,6 +15,7 @@ use Padosoft\MobilePush\Core\Transport\Request;
 use Padosoft\MobilePush\Laravel\Contracts\QueuedSender;
 use Padosoft\MobilePush\Laravel\Contracts\QueueOptions;
 use Padosoft\MobilePush\Laravel\Queue\SendPushJob;
+use Padosoft\MobilePush\Laravel\Sending\Events\BindingMismatchDetected;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Queue\QueueWorld;
 use Padosoft\MobilePush\Tests\Scenario\Send\SendKit;
 
@@ -126,10 +128,19 @@ it('a stale job for a re-assigned connection: the binding no longer matches, not
     $stale = new BindingRef('default', 'ios', Provider::Apns, 'com.previous.app', Environment::Production);
 
     lightQueue()->queue($stale, PushMessage::make('Hello', 'There'), SendKit::apnsTokens(2), SendKit::live(), new QueueOptions);
+    Event::fake([BindingMismatchDetected::class]);
+    $sink = QueueWorld::recordingSinks();
     $w->run(Queue::pushed(SendPushJob::class)->first());
 
-    expect($w->transport->sentCount())->toBe(0);
+    expect($w->transport->sentCount())->toBe(0)
+        // one result per destination for the send log, as for a direct send: skipped, binding_mismatch, no attempt
+        ->and(array_map(static fn ($r): string => $r->status->value.'/'.$r->reasonCode->value.'/'.$r->attempts, $sink->records))
+        ->toBe(['skipped/binding_mismatch/0', 'skipped/binding_mismatch/0']);
     Queue::assertPushed(SendPushJob::class, 1);   // no continuation either
+    Event::assertDispatchedTimes(BindingMismatchDetected::class, 1);
+    Event::assertDispatched(BindingMismatchDetected::class, static fn (BindingMismatchDetected $e): bool => $e->scope === 'default'
+        && $e->connection === 'ios' && $e->expected?->appId === 'com.previous.app' && $e->current?->appId === SendKit::apnsBinding()->appId
+        && str_contains($e->reason, 'different app'));
 });
 
 it('sends bulk traffic on the bulk queue and honours an explicit queue, connection and delay', function (): void {

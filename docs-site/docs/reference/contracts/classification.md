@@ -9,7 +9,7 @@ description: "Defines the single point where a provider answer (or a transport f
 
 ## Rules
 
-1. **One classifier.** `OutcomeClassifier::classify(Exchange, ClassifyContext): Decision` is the only code that interprets provider responses or transport failures. The interface docblock states it is pure, total and side-effect free.
+1. **One classifier per provider.** `OutcomeClassifier::classify(Exchange, ClassifyContext): Decision` is the only code that interprets provider responses or transport failures. The interface docblock states it is pure, total and side-effect free. The implementations are `Apns\Outcome\ApnsOutcomeClassifier` (with `ApnsReasonCatalog`) and `Fcm\Outcome\FcmOutcomeClassifier` (with the FCM reason catalog); `Laravel\Testing\FakeClassifier` is the test double.
 2. Every possible exchange maps to exactly one `Decision`. Unknown provider strings map to `ReasonCode::Unknown` with the raw string preserved; the classifier never throws.
 3. Listeners and breakers react only to the final `Decision`, never to intermediate responses (plan §4.4).
 4. `ClassifyContext` carries the destination, the binding and `validateOnly`. A 2xx answer to an FCM `validate_only` request is `Validated`, not `Accepted`.
@@ -43,6 +43,8 @@ description: "Defines the single point where a provider answer (or a transport f
 
 ## Quarantine and invalidation
 
+Public result of a quarantined send: `SendStatus::Rejected` with `ReasonCode::DestinationRejected` or `DestinationMismatch` and `DestinationAction::Quarantine` (orchestrator's resolution, `README.md`). `Laravel\Devices\DeviceOutcomeApplier` applies the action to the registry: quarantine suspends the device row; invalidation only touches the generation that was attempted and only when the APNs `timestamp` is later than the registration.
+
 | Provider answer | Destination action (plan §4.4) |
 |---|---|
 | APNs `BadDeviceToken` (token or environment wrong) | Quarantine |
@@ -63,8 +65,10 @@ Code: `ReasonCode::DestinationRejected` (annotated as APNs `BadDeviceToken`), `D
 ## Environment probe
 
 - The environment of a device is the one the app declared at registration. The send path never switches it.
-- The operator runs `mobile-push:devices:probe-environment {--device=} {--quarantined} {--allow-cross-environment}` (plan §4.4). It sends a silent push on the other environment of the same scope and app, then corrects the label.
-- The probe is rate limited and refuses keys bound to a single environment.
+- The operator runs `mobile-push:devices:probe-environment {--device=} {--quarantined} {--allow-cross-environment}` (plan §4.4; `Laravel\Console\Ops\ProbeEnvironmentCommand` and `EnvironmentProber`). It sends one silent background push per quarantined device through the connection of the same scope and app on the other environment, one device at a time, and re-labels the registration only when Apple accepts.
+- **Rate limit.** A run is capped by `--limit` (default 10, at most 100) and a device is contacted **at most once per `devices.probe.cooldown_hours`** (default 24); the time and outcome of the last probe are kept in the device row (`metadata.environment_probe`). `--force` does not bypass it; `--ignore-cooldown` does after an interactive confirmation.
+- **Keys bound to one environment.** An authentication refusal (`ReasonCode::AuthTokenInvalid` with `ReportAuthFailure`, which is what `BadEnvironmentKeyIdInToken` and `BadEnvironmentKeyInToken` map to; also the other `STOPS` codes of `EnvironmentProber`) stops the **whole run**: no further device is contacted.
+- The probe asks the safe-mode guard first (`OperationKind::Probe`): in simulation nothing is sent.
 
 ## Types
 
@@ -75,8 +79,8 @@ Code: `ReasonCode::DestinationRejected` (annotated as APNs `BadDeviceToken`), `D
 
 **A. Wrong environment token.**
 - Situation: an APNs production send returns `BadDeviceToken`.
-- The package: `Decision` with `DestinationAction::Quarantine`. The plan does not state the `SendStatus` of this case (see Open points).
-- The caller sees: no retry; the registration is suspended in its scope; the environment is not changed. The operator decides with the probe.
+- The package: `Decision` with `DestinationAction::Quarantine` and status `Rejected`.
+- The caller sees: `Rejected` / `DestinationRejected`, no retry; the registration is suspended in its scope; the environment is not changed. The operator decides with the probe.
 
 **B. Old unregistration.**
 - Situation: APNs returns 410 with a `timestamp` earlier than the device's last registration.
@@ -95,17 +99,15 @@ Code: `ReasonCode::DestinationRejected` (annotated as APNs `BadDeviceToken`), `D
 
 ## Plan vs code
 
-- Plan §4.4 says the quarantine response is the "current send discarded". It does not give a `SendStatus` for it. The code has no field for it.
-- The code's `ReasonCode` set has no member for `BadEnvironmentKeyIdInToken` or `BadEnvironmentKeyInToken`; plan §13 lists those strings as still to verify.
-- The `ReasonCode` annotations are the author's comments in the enum, not checked against provider documentation.
+- Plan §4.4 says the quarantine response is the "current send discarded" without a `SendStatus`; the code makes it `Rejected` (see above).
+- The two environment-key strings of plan §13 are in the APNs reason catalog (`BadEnvironmentKeyIdInToken` and the reported variant `BadEnvironmentKeyInToken`, both `AuthTokenInvalid` with `ReportAuthFailure`); `ExpiredProviderToken` is `AuthTokenExpired` with `RefreshToken` (retryable, once); `TooManyProviderTokenUpdates` is `AuthTokenThrottled` with `SlowTokenRefresh`.
+- The `ReasonCode` annotations and the catalog texts are the author's reading of the provider documentation, not checked against live provider answers.
 
 ## Open points
 
-- The final `SendStatus` for a quarantined send (plan silent).
-- The exact scope of APNs `TooManyProviderTokenUpdates` (plan §13).
-- Mapping of `ExpiredProviderToken` and the two environment-key strings to `ReasonCode` (plan §13 and no decision in code).
-- Behaviour of `ReasonCode::Unknown` for a 5xx that is neither listed nor known.
-- Probe rate-limit values (plan gives none).
+- **Real-provider verification.** The strings of the APNs and FCM catalogs (including the two environment-key variants and `TooManyProviderTokenUpdates` scope) were never compared with real Apple and Google answers.
+- Behaviour of `ReasonCode::Unknown` for a 5xx that is neither listed nor known: it is kept with its raw string, but whether it should be retried more or less aggressively than a listed 5xx is not decided.
+- The cooldown (24 h) and the cap (10 per run) of the environment probe are defaults chosen by the package, not values from Apple.
 
 ---
 

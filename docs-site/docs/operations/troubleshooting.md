@@ -5,11 +5,9 @@ description: "Find your symptom, read the cause, apply the remedy. When you do n
 
 # Troubleshooting
 
-Find your symptom, read the cause, apply the remedy. When you do not find it, go to the [reason catalog](/operations/troubleshooting#reason-catalog)
-at the end: every APNs reason, every FCM error and every package reason code, with what the package does about it.
+Find your symptom, read the cause, apply the remedy. When you do not find it, go to the [reason catalog](/operations/troubleshooting#troubleshooting-reason-catalog) at the end: every APNs reason, every FCM error and every package reason code, with what the package does about it.
 
-Start with these four commands; most problems show up in one of them (all are read-only; none sends a push, except
-`doctor --live`, which says so):
+Start with these four commands; most problems show up in one of them (all are read-only; none sends a push, except `doctor --live`, which says so):
 
 | Command | Answers |
 |---|---|
@@ -24,91 +22,58 @@ Details and exit codes of every command are in [commands](/operations/commands).
 
 ### Nothing arrives and the status is `simulated`
 
-**Cause.** The effective mode is `simulate`: no request was sent, by design. With `mode = auto` (the default) a send is live
-only when `APP_ENV` is exactly `production`. `APP_ENV=prod`, `staging`, `local` and a typo all simulate.
+**Cause.** The effective mode is `simulate`: no request was sent, by design. With `mode = auto` (the default) a send is live only when `APP_ENV` is exactly `production`. `APP_ENV=prod`, `staging`, `local` and a typo all simulate.
 
-**Check.** `php artisan mobile-push:connections` prints `Effective mode: simulate (configured "auto", APP_ENV "local")`.
-`mobile-push:send` ends with exit code **3** and a yellow `SIMULATED: NOTHING WAS SENT` banner.
+**Check.** `php artisan mobile-push:connections` prints `Effective mode: simulate (configured "auto", APP_ENV "local")`. `mobile-push:send` ends with exit code **3** and a yellow `SIMULATED: NOTHING WAS SENT` banner.
 
 **Remedy.**
-- In production: make `APP_ENV=production`, or set `MOBILE_PUSH_MODE=live`. Clear the config cache (`php artisan
-  config:clear`, then `config:cache` again): a cached config keeps the old values.
+- In production: make `APP_ENV=production`, or set `MOBILE_PUSH_MODE=live`. Clear the config cache (`php artisan config:clear`, then `config:cache` again): a cached config keeps the old values.
 - On staging, to push to your own phone: [safe mode](/reliability/safe-mode#safe-mode-nothing-leaves-your-machine-by-accident-sending-for-real-from-a-non-production-environment).
 
 ### `skipped` with `policy_safe_mode`
 
-**Cause.** `mode = live` outside production, and the connection does not allow it, or the destination is not on the
-allowlist, or the operation (topic, broadcast, channel management) needs its own switch. The `hint` names the missing
-setting.
+**Cause.** `mode = live` outside production, and the connection does not allow it, or the destination is not on the allowlist, or the operation (topic, broadcast, channel management) needs its own switch. The `hint` names the missing setting.
 
-**Remedy.** Set `live.allow = true` on the connection and add the test device to `live.only_to`; for a topic or broadcast
-also `live.allow_topics` / `live.allow_broadcast`. See [safe mode](/reliability/safe-mode). Remember `only_to` holds raw test tokens
-that are converted to keyed indexes at load: a token for the wrong scope or kind does not match.
+**Remedy.** Set `live.allow = true` on the connection and add the test device to `live.only_to`; for a topic or broadcast also `live.allow_topics` / `live.allow_broadcast`. See [safe mode](/reliability/safe-mode). Remember `only_to` holds raw test tokens that are converted to keyed indexes at load: a token for the wrong scope or kind does not match.
 
 ### `skipped` with `policy_ineligible`
 
-**Cause.** Your `MobilePush::eligibleUsing()` callback said no (an opt-out), or the device registry refused the device: it
-is quarantined or invalidated, its owner changed since the push was queued, or its generation moved on. This is the
-mechanism that stops a push queued for user A from reaching a phone handed to user B.
+**Cause.** Your `MobilePush::eligibleUsing()` callback said no (an opt-out), or the device registry refused the device: it is quarantined or invalidated, its owner changed since the push was queued, or its generation moved on. This is the mechanism that stops a push queued for user A from reaching a phone handed to user B.
 
-**Remedy.** Not an error. If you did not expect it, look at the device row (`state`, `state_reason`, `generation`) and at
-your eligibility callback. See [devices](/modules/devices).
+**Remedy.** Not an error. If you did not expect it, look at the device row (`state`, `state_reason`, `generation`) and at your eligibility callback. See [devices](/modules/devices).
 
 ### `BadDeviceToken` on every token
 
-**Cause.** Almost always the **environment**: the tokens were issued by the other APNs environment than the connection
-talks to. Builds installed from Xcode use the sandbox; TestFlight and App Store builds use production (Apple's rule, not
-something this package measures). Less often the token is malformed or truncated.
+**Cause.** Almost always the **environment**: the tokens were issued by the other APNs environment than the connection talks to. Builds installed from Xcode use the sandbox; TestFlight and App Store builds use production (Apple's rule, not something this package measures). Less often the token is malformed or truncated.
 
-**Check.** `php artisan mobile-push:connections`: the `Env` column is the environment of the **connection**, which must
-match the build that produced the tokens. Check the environment your app declared when it registered the token.
+**Check.** `php artisan mobile-push:connections`: the `Env` column is the environment of the **connection**, which must match the build that produced the tokens. Check the environment your app declared when it registered the token.
 
-**What the package did.** The destination is **quarantined**, not deleted, and not retried. A burst of them opens the
-destination-quality breaker (bulk traffic is then `skipped` / `circuit_open`).
+**What the package did.** The destination is **quarantined**, not deleted, and not retried. A burst of them opens the destination-quality breaker (bulk traffic is then `skipped` / `circuit_open`).
 
-**Remedy.** Fix the connection's `environment` (or register a second connection for the other environment), have the app
-register again so the label is right, or run the [environment probe](/operations/troubleshooting#environment-probe) for the quarantined ones. Then
-`mobile-push:circuit --reset` if a breaker opened.
+**Remedy.** Fix the connection's `environment` (or register a second connection for the other environment), have the app register again so the label is right, or run the [environment probe](/operations/troubleshooting#troubleshooting-environment-probe) for the quarantined ones. Then `mobile-push:circuit --reset` if a breaker opened.
 
 ### Works in TestFlight / debug builds but not in production (or the reverse)
 
-Same family: the two environments have different tokens and different endpoints, and the package **never guesses** the
-environment from a token. A registration carries the environment the app declared. Send debug-build tokens through a
-connection with `environment => 'sandbox'` and store builds' tokens through `environment => 'production'`. If your
-signing key is restricted to one environment, APNs answers `BadEnvironmentKeyIdInToken` (an authentication failure that
-feeds the credential breaker): use a key enabled for both, or one key per environment. A mixed registry is exactly what the
-[environment probe](/operations/troubleshooting#environment-probe) repairs.
+Same family: the two environments have different tokens and different endpoints, and the package **never guesses** the environment from a token. A registration carries the environment the app declared. Send debug-build tokens through a connection with `environment => 'sandbox'` and store builds' tokens through `environment => 'production'`. If your signing key is restricted to one environment, APNs answers `BadEnvironmentKeyIdInToken` (an authentication failure that feeds the credential breaker): use a key enabled for both, or one key per environment. A mixed registry is exactly what the [environment probe](/operations/troubleshooting#troubleshooting-environment-probe) repairs.
 
 ### `410` on devices that still have the app
 
-**What it means.** APNs answered 410 `Unregistered` or `ExpiredToken`: the token is no longer active for that topic. The
-package invalidates the registration only when the answer is a real 410 with that reason **and** its timestamp is later
-than your registration; a bare 410, or an old answer about a previous generation, never invalidates a newer
-registration.
+**What it means.** APNs answered 410 `Unregistered` or `ExpiredToken`: the token is no longer active for that topic. The package invalidates the registration only when the answer is a real 410 with that reason **and** its timestamp is later than your registration; a bare 410, or an old answer about a previous generation, never invalidates a newer registration.
 
-**Causes seen in practice.** The user reinstalled or restored the app (new token), the app registers its token once and
-never again after it changed, or the token was registered under the wrong bundle id.
+**Causes seen in practice.** The user reinstalled or restored the app (new token), the app registers its token once and never again after it changed, or the token was registered under the wrong bundle id.
 
-**Remedy.** Make the app send its current token to your registration endpoint on **every launch** and whenever the token
-changes: a re-registration reactivates the device with a new generation. Check `last_seen_at` in the device row.
-`mobile-push:devices:prune` removes invalidated rows after `devices.prune.invalidated_days` (30), so do not schedule it
-more aggressively than your re-registration cadence.
+**Remedy.** Make the app send its current token to your registration endpoint on **every launch** and whenever the token changes: a re-registration reactivates the device with a new generation. Check `last_seen_at` in the device row. `mobile-push:devices:prune` removes invalidated rows after `devices.prune.invalidated_days` (30), so do not schedule it more aggressively than your re-registration cadence.
 
 ### FCM `QUOTA_EXCEEDED`, or a `deferred` result with `quota_exceeded`
 
 **Cause (one of three).**
 1. Google really answered `QUOTA_EXCEEDED` / `RESOURCE_EXHAUSTED` (429): the project, device or topic quota.
-2. **Your own rate limit** (`guards.rate.fcm`, default 500,000 messages per minute) ran out: no request was sent and the
-   hint says "the provider account is throttled or the send rate limit is reached".
-3. The **throttle gate**: an earlier throttling answer (an APNs 503 for the Apple team, an FCM `UNAVAILABLE` for the
-   project) paused the whole account for at least 60 seconds (15 minutes after an APNs 503).
+2. **Your own rate limit** (`guards.rate.fcm`, default 500,000 messages per minute) ran out: no request was sent and the hint says "the provider account is throttled or the send rate limit is reached".
+3. The **throttle gate**: an earlier throttling answer (an APNs 503 for the Apple team, an FCM `UNAVAILABLE` for the project) paused the whole account for at least 60 seconds (15 minutes after an APNs 503).
 
 **Check.** `php artisan mobile-push:circuit` shows `Provider throttle: sending is paused until ...`.
 
-**Remedy.** Nothing for the pause itself: the destinations were not lost; they are `Deferred` with `nextAttemptAt` and
-are retried inside their budget (a **synchronous** `send()` returns them to you: queue them if they matter). For a big
-campaign use `->bulk()` so one-to-one traffic keeps its share, lower `guards.rate.fcm` to your real quota, and spread the
-load.
+**Remedy.** Nothing for the pause itself: the destinations were not lost; they are `Deferred` with `nextAttemptAt` and are retried inside their budget (a **synchronous** `send()` returns them to you: queue them if they matter). For a big campaign use `->bulk()` so one-to-one traffic keeps its share, lower `guards.rate.fcm` to your real quota, and spread the load.
 
 ### Authentication errors (`auth_token_invalid`, `auth_token_expired`, `auth_forbidden`, `circuit_open`)
 
@@ -124,33 +89,17 @@ load.
 
 ### The queue sends twice
 
-**Cause.** The queue handed a job to a second worker while the first was still sending: `retry_after` (SQS: visibility
-timeout) is shorter than the job timeout, or the worker timeout is shorter than the job. The package's timeout chain
-exists to prevent exactly this. The package's defaults fit Laravel's stock `retry_after` of 90 (job timeout 50 s), so
-this happens when `queue.timeout` was raised without raising `retry_after`, or the application's own `retry_after` is
-lower. A worker process killed and restarted mid-job gives the same symptom.
+**Cause.** The queue handed a job to a second worker while the first was still sending: `retry_after` (SQS: visibility timeout) is shorter than the job timeout, or the worker timeout is shorter than the job. The package's timeout chain exists to prevent exactly this. The package's defaults fit Laravel's stock `retry_after` of 90 (job timeout 50 s), so this happens when `queue.timeout` was raised without raising `retry_after`, or the application's own `retry_after` is lower. A worker process killed and restarted mid-job gives the same symptom.
 
-**Check.** `php artisan mobile-push:doctor`, section "Queue timeouts": any `violation` or `not verifiable` line. Raise
-`retry_after` to at least what `mobile-push:install` prints (61 s with the defaults), or lower `queue.timeout`. Declare
-`queue.worker_timeout` / `queue.visibility_timeout` so the chain can be verified. See
-[queues and Horizon](/reliability/queues-and-horizon#queues-workers-horizon-and-the-scheduler-the-timeout-chain).
+**Check.** `php artisan mobile-push:doctor`, section "Queue timeouts": any `violation` or `not verifiable` line. Raise `retry_after` to at least what `mobile-push:install` prints (61 s with the defaults), or lower `queue.timeout`. Declare `queue.worker_timeout` / `queue.visibility_timeout` so the chain can be verified. See [queues and Horizon](/reliability/queues-and-horizon#queues-workers-horizon-and-the-scheduler-the-timeout-chain).
 
-**Other causes.** The same effect queued twice by your code without an effect key (no deduplication: use
-`->effectKey()` on the [durable profile](/reliability/delivery-profiles)); a notification both `ShouldQueue` and queued by the
-channel (the package has one owner of the queue per notification, but custom code can add a second).
+**Other causes.** The same effect queued twice by your code without an effect key (no deduplication: use `->effectKey()` on the [durable profile](/reliability/delivery-profiles)); a notification both `ShouldQueue` and queued by the channel (the package has one owner of the queue per notification, but custom code can add a second).
 
 ### Unknown outcomes after a deploy
 
-**Cause.** Workers were stopped while a request was in flight (`kill -9`, a container removed, a supervisor that does not
-wait): the request may have left, so the destination is `outcome_unknown` with the hint "The worker stopped after the request
-may have left: the provider may have accepted it". On the durable profile the sweeper writes it when the lease
-expires; on the light profile a failed job records its destinations as unknown in the send log.
+**Cause.** Workers were stopped while a request was in flight (`kill -9`, a container removed, a supervisor that does not wait): the request may have left, so the destination is `outcome_unknown` with the hint "The worker stopped after the request may have left: the provider may have accepted it". On the durable profile the sweeper writes it when the lease expires; on the light profile a failed job records its destinations as unknown in the send log.
 
-**Remedy.** Stop workers gracefully: `php artisan queue:restart` (workers finish the current job), `horizon:terminate`
-with a supervisor `stopwaitsecs` at least as long as the worker `timeout` (55 s with the defaults), and a container
-`terminationGracePeriod` to match. **Do not resend unknown outcomes blindly**: an alert may already have been
-delivered. Replaceable messages were already retried by policy. Count them with `mobile-push:health`, the send log
-(`status = outcome_unknown`) or the `outcome_unknown` results.
+**Remedy.** Stop workers gracefully: `php artisan queue:restart` (workers finish the current job), `horizon:terminate` with a supervisor `stopwaitsecs` at least as long as the worker `timeout` (55 s with the defaults), and a container `terminationGracePeriod` to match. **Do not resend unknown outcomes blindly**: an alert may already have been delivered. Replaceable messages were already retried by policy. Count them with `mobile-push:health`, the send log (`status = outcome_unknown`) or the `outcome_unknown` results.
 
 ### Pushes queued, but nothing leaves the queue
 
@@ -164,81 +113,53 @@ delivered. Replaceable messages were already retried by policy. Count them with 
 
 ### `Guard state is too contended to update`
 
-**Cause.** The shared cache store cannot do the compare-and-set the breakers and the rate limiter need: the store is
-`file` on several hosts, `null`, unreachable, or has no lock support.
+**Cause.** The shared cache store cannot do the compare-and-set the breakers and the rate limiter need: the store is `file` on several hosts, `null`, unreachable, or has no lock support.
 
-**Remedy.** Point `cache.store` (`MOBILE_PUSH_CACHE_STORE`) at `redis`, `memcached`, `database` or `dynamodb`. `doctor`
-reports "The cache store cannot take locks".
+**Remedy.** Point `cache.store` (`MOBILE_PUSH_CACHE_STORE`) at `redis`, `memcached`, `database` or `dynamodb`. `doctor` reports "The cache store cannot take locks".
 
 ### `table "mobile_push_effects" already exists` when migrating
 
-**Cause.** This was a defect of earlier builds: an enabled module registered its own migration files with the migrator
-**and** `mobile-push:install` published copies under new names, so `migrate` ran both sets. The package now follows one
-rule ([delivery profiles](/reliability/delivery-profiles#delivery-profiles-light-and-durable-switching-migrations)): migrations are **published, not auto-loaded**, unless
-`MOBILE_PUSH_MIGRATIONS_AUTOLOAD=true`, in which case nothing is published and a published copy wins over the package
-file. Every migration is also idempotent (`Schema::hasTable` / `hasColumn` guards), so a second run changes nothing.
+**Cause.** This was a defect of earlier builds: an enabled module registered its own migration files with the migrator **and** `mobile-push:install` published copies under new names, so `migrate` ran both sets. The package now follows one rule ([delivery profiles](/reliability/delivery-profiles#delivery-profiles-light-and-durable-switching-migrations)): migrations are **published, not auto-loaded**, unless `MOBILE_PUSH_MIGRATIONS_AUTOLOAD=true`, in which case nothing is published and a published copy wins over the package file. Every migration is also idempotent (`Schema::hasTable` / `hasColumn` guards), so a second run changes nothing.
 
-**Remedy.** If your database still holds the failure from an older build: upgrade, and run `php artisan migrate` again
-(the guarded migrations skip what exists). Choose one source from now on: published copies (default) or autoload.
+**Remedy.** If your database still holds the failure from an older build: upgrade, and run `php artisan migrate` again (the guarded migrations skip what exists). Choose one source from now on: published copies (default) or autoload.
 
 ### `IdempotencyConflictException`
 
-**Cause.** Durable profile: the same effect key was used for a **different message** within `ledger.dedupe_seconds`.
-Nothing was written or queued; the first effect is untouched.
+**Cause.** Durable profile: the same effect key was used for a **different message** within `ledger.dedupe_seconds`. Nothing was written or queued; the first effect is untouched.
 
-**Remedy.** Make the key specific to the content ("order-42-shipped", not "order-42"), or send the same message again.
-The conflict can also appear for an identical message when the encryption key version that fingerprinted the first one was
-removed from the ring ([security](/operations/security-and-privacy#security-and-privacy-key-rings-and-rotation)).
+**Remedy.** Make the key specific to the content ("order-42-shipped", not "order-42"), or send the same message again. The conflict can also appear for an identical message when the encryption key version that fingerprinted the first one was removed from the ring ([security](/operations/security-and-privacy#security-and-privacy-key-rings-and-rotation)).
 
 ### `skipped` with `binding_mismatch`
 
-**Cause.** A queued push was created for one app identity (scope, provider, app id, environment) and the connection name
-now points to another, or no longer resolves. The package refuses to fall back to a default connection.
+**Cause.** A queued push was created for one app identity (scope, provider, app id, environment) and the connection name now points to another, or no longer resolves. The package refuses to fall back to a default connection.
 
 **Remedy.** Restore the connection, or re-queue the push for the current one. See [multi-tenancy](/operations/multi-tenancy#multi-tenancy-scopes-runtime-connections-and-key-rotation-what-a-job-carries).
 
 ### `payload_too_large`, or the text is cut
 
-**Cause.** The compiled payload exceeds the provider limit (APNs 4 KB, 5 KB for VoIP; FCM 4096 bytes, 2048 for topics).
-**Remedy.** Shorten it, send less `data`, or opt in to truncation of the visible text with `->truncate()`. `php artisan
-mobile-push:preview` shows the size against the limit and the warnings.
+**Cause.** The compiled payload exceeds the provider limit (APNs 4 KB, 5 KB for VoIP; FCM 4096 bytes, 2048 for topics). **Remedy.** Shorten it, send less `data`, or opt in to truncation of the visible text with `->truncate()`. `php artisan mobile-push:preview` shows the size against the limit and the warnings.
 
 ### Live Activity update ignored
 
-The server can only tell you what it sent and what APNs answered; `Accepted` is not "the activity changed". Check in this
-order:
+The server can only tell you what it sent and what APNs answered; `Accepted` is not "the activity changed". Check in this order:
 
-1. `php artisan mobile-push:live-activity:list`: the **server state**. Updates go only to an `active` activity (the app
-   has reported its update token). `requested` means the app has not reported a token yet; `ending`, `ended` and `expired`
-   accept nothing more. `expired` is the package's local expiry (`live_activities.local_expiry.hours`, 8): iOS ends an
-   activity after about 8 hours; the server stops sending.
-2. **Two updates in the same second**: the second is held as the row's pending transition (latest state wins) and goes out
-   from the next second through `mobile-push:live-activity:flush` (scheduled every minute by the package when the module
-   is on). Run `flush` to see it.
-3. **High-priority allowance**: above `live_activities.high_priority.max_per_hour` (20) updates are sent at priority 5, which
-   iOS may delay. Use `--low-priority` for chatty updates.
-4. An answer of `channel_unknown`, `feature_not_enabled` or `topic_invalid` (the Live Activity topic suffix) is in the result
-   and in `explain`.
-5. If APNs accepted it and the activity did not change, the content state did not decode in the app (a field mismatch between
-   your server's state and the Swift `ContentState`) or the activity belongs to another device. The package cannot see that.
+1. `php artisan mobile-push:live-activity:list`: the **server state**. Updates go only to an `active` activity (the app has reported its update token). `requested` means the app has not reported a token yet; `ending`, `ended` and `expired` accept nothing more. `expired` is the package's local expiry (`live_activities.local_expiry.hours`, 8): iOS ends an activity after about 8 hours; the server stops sending.
+2. **Two updates in the same second**: the second is held as the row's pending transition (latest state wins) and goes out from the next second through `mobile-push:live-activity:flush` (scheduled every minute by the package when the module is on). Run `flush` to see it.
+3. **High-priority allowance**: above `live_activities.high_priority.max_per_hour` (20) updates are sent at priority 5, which iOS may delay. Use `--low-priority` for chatty updates.
+4. An answer of `channel_unknown`, `feature_not_enabled` or `topic_invalid` (the Live Activity topic suffix) is in the result and in `explain`.
+5. If APNs accepted it and the activity did not change, the content state did not decode in the app (a field mismatch between your server's state and the Swift `ContentState`) or the activity belongs to another device. The package cannot see that.
 
 ### The metrics endpoint answers 403 or 401
 
-403: no token configured (`metrics.prometheus.token` / `MOBILE_PUSH_METRICS_TOKEN`): the endpoint refuses everyone on
-purpose. 401: wrong or missing `Authorization: Bearer <token>`. 404: the endpoint is off
-(`MOBILE_PUSH_PROMETHEUS_ENABLED`) or the routes were cached before it was enabled (`php artisan route:clear`). See
-[security and privacy](/operations/security-and-privacy#security-and-privacy-protecting-the-endpoints-the-package-can-expose).
+403: no token configured (`metrics.prometheus.token` / `MOBILE_PUSH_METRICS_TOKEN`): the endpoint refuses everyone on purpose. 401: wrong or missing `Authorization: Bearer <token>`. 404: the endpoint is off (`MOBILE_PUSH_PROMETHEUS_ENABLED`) or the routes were cached before it was enabled (`php artisan route:clear`). See [security and privacy](/operations/security-and-privacy#security-and-privacy-protecting-the-endpoints-the-package-can-expose).
 
 ### `doctor` says "not verifiable"
 
-It means exactly that: the doctor could not read a value (the `queue:work --timeout` of a worker, an SQS visibility
-timeout, the Horizon config of another environment). It is a warning (exit 1), never a pass. Declare the value in the
-config key the remedy names, or check it by hand.
+It means exactly that: the doctor could not read a value (the `queue:work --timeout` of a worker, an SQS visibility timeout, the Horizon config of another environment). It is a warning (exit 1), never a pass. Declare the value in the config key the remedy names, or check it by hand.
 
 ## Telling the cases apart in code
 
-A short checklist of what to log when a push "did not arrive": the **status**, the **reason code**, the **raw reason**
-and the **hint**. Never log the token.
+A short checklist of what to log when a push "did not arrive": the **status**, the **reason code**, the **raw reason** and the **hint**. Never log the token.
 
 ```php
 use Padosoft\MobilePush\Core\Identity\Destination\ApnsDeviceToken;
@@ -263,17 +184,14 @@ MobilePush::toToken(Platform::Ios, $iosToken)->send(PushMessage::make('Order shi
         );
     });
 
-// $lines[0] starts with "status=outcome_unknown" and ends with "fallback_allowed=no".```
+// $lines[0] starts with "status=outcome_unknown" and ends with "fallback_allowed=no".
+```
 
 ## Environment probe
 
-`php artisan mobile-push:devices:probe-environment` repairs registrations whose APNs environment label is wrong. It is the
-**only** operation in the package that ever tries a device token on the *other* APNs environment, and it never runs by
-itself.
+`php artisan mobile-push:devices:probe-environment` repairs registrations whose APNs environment label is wrong. It is the **only** operation in the package that ever tries a device token on the *other* APNs environment, and it never runs by itself.
 
-**What it does.** For each quarantined APNs device token (selected with `--quarantined`, or one with `--device=<id>`) it
-sends **one silent background push** (expiring in 5 minutes) through the connection of the **same app** (same scope, same
-bundle id) on the **other** environment, one device at a time:
+**What it does.** For each quarantined APNs device token (selected with `--quarantined`, or one with `--device=<id>`) it sends **one silent background push** (expiring in 5 minutes) through the connection of the **same app** (same scope, same bundle id) on the **other** environment, one device at a time:
 
 | Answer | Outcome | Effect |
 |---|---|---|
@@ -288,33 +206,23 @@ bundle id) on the **other** environment, one device at a time:
 | No (or no unique) connection of that app on the other environment | `no_connection` | Name one with `--connection`. |
 | The stored token cannot be decrypted | `unreadable` | Key rotation problem. |
 
-**Why it is explicit.** `BadDeviceToken` is ambiguous (a malformed token, or a good token of the other environment). A
-normal send must never quietly retry a token against the other environment: it would hide a configuration error, push
-to a different app environment than you intended, and burn APNs error budget. So the package quarantines and **waits for
-an operator**. You must pass `--allow-cross-environment` to acknowledge it, and confirm interactively (or `--force`).
+**Why it is explicit.** `BadDeviceToken` is ambiguous (a malformed token, or a good token of the other environment). A normal send must never quietly retry a token against the other environment: it would hide a configuration error, push to a different app environment than you intended, and burn APNs error budget. So the package quarantines and **waits for an operator**. You must pass `--allow-cross-environment` to acknowledge it, and confirm interactively (or `--force`).
 
 **Risks.**
 - A probe **is a real push** (silent, to the device). If accepted, it reaches the phone.
-- Every **rejected** token counts against Apple's error budget; `--limit` (default 10, maximum 100) bounds a run.
-  There is no time-based rate limit: run it in batches.
+- Every **rejected** token counts against Apple's error budget; `--limit` (default 10, maximum 100) bounds a run. There is no time-based rate limit: run it in batches.
 - It needs a second connection for the other environment with a key allowed for it.
-- It needs the devices module, the live mode, and (outside production) the allowlist: a quarantined token not in
-  `live.only_to` is `blocked`.
+- It needs the devices module, the live mode, and (outside production) the allowlist: a quarantined token not in `live.only_to` is `blocked`.
 - It changes registry rows (binding, environment, generation, state). Nothing is undone automatically.
-- Not verified against the real APNs services: the behaviour of environment-restricted keys is read from Apple's
-  documentation and the package's tests, not measured.
+- Not verified against the real APNs services: the behaviour of environment-restricted keys is read from Apple's documentation and the package's tests, not measured.
 
-Exit codes: 0 every device got a clean answer (relabelled, still rejected, or not sent), 1 something needs attention or the
-run was refused, 2 the run was stopped by an authentication error. Full options in [commands](commands.md).
+Exit codes: 0 every device got a clean answer (relabelled, still rejected, or not sent), 1 something needs attention or the run was refused, 2 the run was stopped by an authentication error. Full options in [commands](/operations/commands).
 
 ## Reason catalog
 
-Every reason the package knows, generated from `php artisan mobile-push:explain --all --json` (the command always shows
-the catalog of the installed version; use `php artisan mobile-push:explain <reason>` for one entry).
+Every reason the package knows, generated from `php artisan mobile-push:explain --all --json` (the command always shows the catalog of the installed version; use `php artisan mobile-push:explain <reason>` for one entry).
 
-**Reading the tables.** *Package code* is the provider-neutral `ReasonCode`. *Status* is the status the destination gets
-**if it ends there**. For reasons that are retried the status shown is the one after the budget is exhausted (`failed`),
-but you will normally see `deferred` first. The raw provider string is in `rawReason` of the result.
+**Reading the tables.** *Package code* is the provider-neutral `ReasonCode`. *Status* is the status the destination gets **if it ends there**. For reasons that are retried the status shown is the one after the budget is exhausted (`failed`), but you will normally see `deferred` first. The raw provider string is in `rawReason` of the result.
 
 ### APNs reasons
 

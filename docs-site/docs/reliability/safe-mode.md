@@ -5,12 +5,9 @@ description: "A push notification is the one side effect you cannot take back. A
 
 # Safe mode: nothing leaves your machine by accident
 
-A push notification is the one side effect you cannot take back. A developer running a seed script against a copy of the
-production database must not wake up thousands of phones. So the package decides **before it opens a connection** whether
-a send may touch the network at all, and the default answer outside production is **no**.
+A push notification is the one side effect you cannot take back. A developer running a seed script against a copy of the production database must not wake up thousands of phones. So the package decides **before it opens a connection** whether a send may touch the network at all, and the default answer outside production is **no**.
 
-Related pages: [outcomes](/reliability/outcomes), [commands](/operations/commands), [testing](/sending/testing),
-[getting started](/get-started/getting-started), [troubleshooting](/operations/troubleshooting#troubleshooting-by-symptom-nothing-arrives-and-the-status-is-simulated).
+Related pages: [outcomes](/reliability/outcomes), [commands](/operations/commands), [testing](/sending/testing), [getting started](/get-started/getting-started), [troubleshooting](/operations/troubleshooting#troubleshooting-by-symptom-nothing-arrives-and-the-status-is-simulated).
 
 ## The three modes
 
@@ -22,12 +19,9 @@ Related pages: [outcomes](/reliability/outcomes), [commands](/operations/command
 | `live` | Yes, subject to the rules below | The provider's answer, or `Skipped` (blocked) |
 | `simulate` | Never | `Simulated` |
 
-Any other value throws a `ConfigurationException` ("expected auto, live or simulate"). The comparison with
-`production` is exact: `APP_ENV=prod` or `Production` counts as **not** production, so a misspelled environment
-simulates (safe, but nothing is sent: see [troubleshooting](/operations/troubleshooting#troubleshooting-by-symptom-nothing-arrives-and-the-status-is-simulated)).
+Any other value throws a `ConfigurationException` ("expected auto, live or simulate"). The comparison with `production` is exact: `APP_ENV=prod` or `Production` counts as **not** production, so a misspelled environment simulates (safe, but nothing is sent: see [troubleshooting](/operations/troubleshooting#troubleshooting-by-symptom-nothing-arrives-and-the-status-is-simulated)).
 
-The check happens in the single send pipeline, for **every** destination, before any external effect, and it covers the
-CLI, queue workers, credential failover, fallback sends and channel management alike. There is no path around it.
+The check happens in the single send pipeline, for **every** destination, before any external effect, and it covers the CLI, queue workers, credential failover, fallback sends and channel management alike. There is no path around it.
 
 ## What happens outside production
 
@@ -113,11 +107,7 @@ MOBILE_PUSH_APNS_LIVE_ONLY_TO=<your own device token>
 | `allow_broadcast` | Also allow publishing to APNs broadcast channels. |
 | `allow_channel_management` | Also allow creating and deleting broadcast channels. |
 
-Every other destination is **blocked**: `Skipped` with the reason code `policy_safe_mode` and a hint that names the
-missing setting. Examples of hints: *"Blocked: live sending outside production is not enabled for this binding."*,
-*"Blocked: the destination is not in this binding's live.only_to allowlist of test devices."*,
-*"Blocked: this operation reaches many devices or manages provider state and needs explicit authorisation
-(live.allow_topics=true)."*
+Every other destination is **blocked**: `Skipped` with the reason code `policy_safe_mode` and a hint that names the missing setting. Examples of hints: *"Blocked: live sending outside production is not enabled for this binding."*, *"Blocked: the destination is not in this binding's live.only_to allowlist of test devices."*, *"Blocked: this operation reaches many devices or manages provider state and needs explicit authorisation (live.allow_topics=true)."*
 
 ### What stays blocked unless you ask
 
@@ -132,23 +122,15 @@ A group that can reach many people is therefore never unlocked by an allowlist o
 
 ### An inconsistency blocks; it never degrades to a real send
 
-The guard refuses (in every environment, production included, `Skipped` / `policy_safe_mode`) when the pieces
-contradict each other: a destination of another provider than the connection (an FCM token on an APNs connection) or a
-destination kind that does not fit the operation (a device token published as a broadcast). The guard in the core
-library also refuses an operation that asks for a provider environment other than the connection's (the environment
-probe passes the environment of the connection it uses, so that check always agrees there; ordinary sends pass none).
+The guard refuses (in every environment, production included, `Skipped` / `policy_safe_mode`) when the pieces contradict each other: a destination of another provider than the connection (an FCM token on an APNs connection) or a destination kind that does not fit the operation (a device token published as a broadcast). The guard in the core library also refuses an operation that asks for a provider environment other than the connection's (the environment probe passes the environment of the connection it uses, so that check always agrees there; ordinary sends pass none).
 
 ### In production
 
-With `APP_ENV=production` and `mode` `auto` or `live`, an operation that is consistent with its connection is allowed:
-no allowlist applies. The `live` block is only about non-production. `mobile-push:doctor` warns about the two risky
-combinations: **live outside production** ("real requests can leave this machine") and, in `mobile-push:health`,
-**simulate in production** ("SIMULATE MODE IN PRODUCTION: no push is being sent to any provider").
+With `APP_ENV=production` and `mode` `auto` or `live`, an operation that is consistent with its connection is allowed: no allowlist applies. The `live` block is only about non-production. `mobile-push:doctor` warns about the two risky combinations: **live outside production** ("real requests can leave this machine") and, in `mobile-push:health`, **simulate in production** ("SIMULATE MODE IN PRODUCTION: no push is being sent to any provider").
 
 ## Official endpoints only
 
-The package never sends to an address you give it, and a message cannot name a host. Every URL comes from a fixed
-catalogue by **role**:
+The package never sends to an address you give it, and a message cannot name a host. Every URL comes from a fixed catalogue by **role**:
 
 | Role | Host (production / sandbox) |
 |---|---|
@@ -158,17 +140,11 @@ catalogue by **role**:
 | FCM | `fcm.googleapis.com` |
 | Google token exchange | `oauth2.googleapis.com` |
 
-Path segments (a token, a bundle id, a project id) are validated against a strict pattern and percent-encoded, so a value
-cannot inject a path, a query or a fragment. TLS verification of the certificate chain and the host name is always on;
-there is no option to turn it off. The `proxy` and `ca_bundle` settings of a connection exist for corporate networks;
-a proxy is used only when you set it explicitly (the environment's `HTTPS_PROXY` is ignored on purpose).
+Path segments (a token, a bundle id, a project id) are validated against a strict pattern and percent-encoded, so a value cannot inject a path, a query or a fragment. TLS verification of the certificate chain and the host name is always on; there is no option to turn it off. The `proxy` and `ca_bundle` settings of a connection exist for corporate networks; a proxy is used only when you set it explicitly (the environment's `HTTPS_PROXY` is ignored on purpose).
 
-The one exception is an **endpoint override** for a local mock server. It exists in the core library, is accepted only
-with test credentials and never when `APP_ENV` is `production`, and **there is no configuration key for it**: it is
-meant for the package's own tests.
+The one exception is an **endpoint override** for a local mock server. It exists in the core library, is accepted only with test credentials and never when `APP_ENV` is `production`, and **there is no configuration key for it**: it is meant for the package's own tests.
 
-Which of the two Apple hosts accepts broadcast publications for your app is something to verify by integration; Apple's
-documentation names both. That is why `broadcast_host` is a choice and not a guess.
+Which of the two Apple hosts accepts broadcast publications for your app is something to verify by integration; Apple's documentation names both. That is why `broadcast_host` is a choice and not a guess.
 
 ## What the command line does
 
@@ -183,26 +159,17 @@ documentation names both. That is why `broadcast_host` is a choice and not a gue
 | `mobile-push:live-activity:*`, `mobile-push:channels:*` | "Simulation mode: nothing was sent and nothing was written." exit 0 | "Blocked by safe mode: ... was not attempted." exit 1 |
 | `mobile-push:relay`, `mobile-push:sweep` | They run the normal pipeline: sends are simulated, rows end `simulated` | `skipped` |
 
-Two rules that the Live Activity and channel commands follow, because "nothing was sent" must also mean "nothing was
-written": the mode is asked **before** the first database write, so a simulated or blocked start leaves no row in the
-Live Activity tables and no transition number is spent; a blocked channel creation writes no `creating` row.
+Two rules that the Live Activity and channel commands follow, because "nothing was sent" must also mean "nothing was written": the mode is asked **before** the first database write, so a simulated or blocked start leaves no row in the Live Activity tables and no transition number is spent; a blocked channel creation writes no `creating` row.
 
-`mobile-push:send`'s exit code 3 means "simulated, nothing was sent". It is a deliberate non-zero: a script that checks
-`$? -eq 0` will not mistake a simulated send for a real one. A **mixed** result still gives the highest-priority code:
-unknown outcome 4, then partial 1, then simulated 3.
+`mobile-push:send`'s exit code 3 means "simulated, nothing was sent". It is a deliberate non-zero: a script that checks `$? -eq 0` will not mistake a simulated send for a real one. A **mixed** result still gives the highest-priority code: unknown outcome 4, then partial 1, then simulated 3.
 
 ## Testing code that sends
 
-Your test suite should not depend on the mode at all: use `MobilePush::fake()` (intent) and `MobilePush::fakeTransport()`
-(the bytes). They force a live pipeline against a fake transport, so a test cannot reach Apple or Google. See
-[testing](/sending/testing). The fakes refuse to start outside `APP_ENV=testing` unless `testing.allow_fakes` is true.
+Your test suite should not depend on the mode at all: use `MobilePush::fake()` (intent) and `MobilePush::fakeTransport()` (the bytes). They force a live pipeline against a fake transport, so a test cannot reach Apple or Google. See [testing](/sending/testing). The fakes refuse to start outside `APP_ENV=testing` unless `testing.allow_fakes` is true.
 
 ## Not verified
 
-The guard is covered by unit and scenario tests with a counting mock server (a sandbox command with production-like
-configuration opens **no** connection). It has not been exercised against the real APNs and FCM services from a
-non-production environment: the allowlist logic is local, but whether the providers accept your staging key and
-sandbox tokens is the question `doctor --live` and a canary push answer.
+The guard is covered by unit and scenario tests with a counting mock server (a sandbox command with production-like configuration opens **no** connection). It has not been exercised against the real APNs and FCM services from a non-production environment: the allowlist logic is local, but whether the providers accept your staging key and sandbox tokens is the question `doctor --live` and a canary push answer.
 
 ---
 

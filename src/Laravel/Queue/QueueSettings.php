@@ -38,9 +38,9 @@ final readonly class QueueSettings
         /** Estimated serialized bytes of one light job before encryption (the encrypted payload is about 1.8x). */
         public int $chunkBytes = 98_304,
         /** Job timeout in seconds (the worker kills a job that runs longer). */
-        public int $timeout = 120,
+        public int $timeout = 50,
         /** Wall time in seconds one relay run spends claiming and sending before it stops and hands over. */
-        public int $chunkDeadline = 60,
+        public int $chunkDeadline = 40,
         public bool $afterCommit = true,
         /** Light profile: deferred destinations whose next attempts are this close share one continuation job. */
         public int $followUpBucket = 60,
@@ -91,8 +91,8 @@ final readonly class QueueSettings
             bulkQueue: self::string($config, 'mobile-push.queue.bulk_queue') ?? 'push-bulk',
             chunk: self::int($config, 'mobile-push.queue.chunk', 500),
             chunkBytes: self::int($config, 'mobile-push.queue.chunk_bytes', 98_304),
-            timeout: self::int($config, 'mobile-push.queue.timeout', 120),
-            chunkDeadline: self::int($config, 'mobile-push.queue.chunk_deadline', 60),
+            timeout: self::int($config, 'mobile-push.queue.timeout', 50),
+            chunkDeadline: self::int($config, 'mobile-push.queue.chunk_deadline', 40),
             afterCommit: self::bool($config, 'mobile-push.queue.after_commit', true),
             followUpBucket: self::int($config, 'mobile-push.queue.follow_up_bucket', 60),
             workerTimeout: self::intOrNull($config, 'mobile-push.queue.worker_timeout'),

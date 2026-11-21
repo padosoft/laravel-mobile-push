@@ -24,6 +24,7 @@
 - [Delivery profiles](delivery-profiles.md): light (best effort) versus durable (ledger + outbox), and what each one guarantees.
 - [Retries and limits](retries-and-limits.md): the retry budget, provider delays, rate limits and circuit breakers.
 - [Queues and Horizon](queues-and-horizon.md): queue names, workers, the timeout chain, Horizon supervisors.
+- [Runtimes](runtimes.md): queue workers, PHP-FPM, Horizon, Octane, forks and serverless: what is reused, what was measured and what is not verified.
 - [HTTP/2 transport](transport.md): how the transport works, libcurl's automatic re-sends and why bodies are streamed, the measurements behind each choice.
 
 ## Operations

@@ -5,15 +5,11 @@ description: "Every destination of a send ends with exactly one SendResult. This
 
 # Outcomes: what a result means and what to do about it
 
-Every destination of a send ends with exactly one `SendResult`. This page says what each status means, what it
-does **not** mean, and what your application should do. Read the table once, then keep the rule at the top in mind:
+Every destination of a send ends with exactly one `SendResult`. This page says what each status means, what it does **not** mean, and what your application should do. Read the table once, then keep the rule at the top in mind:
 
-> `Accepted` means **the provider accepted the request**. It never means delivered, displayed or seen.
-> `OutcomeUnknown` means **we do not know**. It is not a failure, and it is never treated as one.
+> `Accepted` means **the provider accepted the request**. It never means delivered, displayed or seen. `OutcomeUnknown` means **we do not know**. It is not a failure, and it is never treated as one.
 
-Related pages: [sending](/sending/sending) (how to send), [retries and limits](/reliability/retries-and-limits) (what happens
-before a final status), [delivery profiles](/reliability/delivery-profiles) (what is stored), [receipts](/modules/receipts) (how an app
-can report that a push really arrived), [troubleshooting](/operations/troubleshooting) (symptom to remedy).
+Related pages: [sending](/sending/sending) (how to send), [retries and limits](/reliability/retries-and-limits) (what happens before a final status), [delivery profiles](/reliability/delivery-profiles) (what is stored), [receipts](/modules/receipts) (how an app can report that a push really arrived), [troubleshooting](/operations/troubleshooting) (symptom to remedy).
 
 ## What a result carries
 
@@ -49,26 +45,18 @@ can report that a push really arrived), [troubleshooting](/operations/troublesho
 | `Simulated` | Simulation mode: **no network was touched**. | Not sent. Not validated. | Nothing, in development. If you see it in production, see [safe mode](/reliability/safe-mode). |
 | `Validated` | FCM `validate_only`: Google checked the request and did not send it. | Not sent to the device. Not a delivery test. | Treat as "the request is well-formed and the credential works". |
 
-Two helpers on the status: `SendStatus::allowsFallback()` is true only for `Rejected`, `Failed` and `Expired` (the
-push is *known* not to have been accepted), and `SendStatus::isTerminal()` is true for everything except `Deferred`.
-**Do not use `isTerminal()` to decide whether to retry**: it is also true for `OutcomeUnknown`.
+Two helpers on the status: `SendStatus::allowsFallback()` is true only for `Rejected`, `Failed` and `Expired` (the push is *known* not to have been accepted), and `SendStatus::isTerminal()` is true for everything except `Deferred`. **Do not use `isTerminal()` to decide whether to retry**: it is also true for `OutcomeUnknown`.
 
 ### How a status is reached (the short version)
 
-1. Before any network call: expiry (`Expired`), execution mode (`Simulated` or `Skipped`), your eligibility check and the
-   device registry (`Skipped`), circuit breakers (`Skipped`), rate limit and throttle gate (`Deferred`).
+1. Before any network call: expiry (`Expired`), execution mode (`Simulated` or `Skipped`), your eligibility check and the device registry (`Skipped`), circuit breakers (`Skipped`), rate limit and throttle gate (`Deferred`).
 2. One request per destination. The answer is classified once, by one classifier, into a `Decision`.
 3. The retry planner decides: stop with the classified status, or `Deferred` with a `nextAttemptAt`.
-4. When a retry budget ends while the provider keeps failing, the status is `Failed` with the reason code
-   `retry_budget_exhausted`, or `Expired` when the next attempt would fall after the logical expiry. **Exception:** if
-   any earlier attempt of that destination had an unknown outcome, the final status is `OutcomeUnknown` instead (see
-   "An unknown outcome contaminates the budget").
+4. When a retry budget ends while the provider keeps failing, the status is `Failed` with the reason code `retry_budget_exhausted`, or `Expired` when the next attempt would fall after the logical expiry. **Exception:** if any earlier attempt of that destination had an unknown outcome, the final status is `OutcomeUnknown` instead (see "An unknown outcome contaminates the budget").
 
 ### Reading a report
 
-A send returns a `SendReport`: a cursor with bounded memory (it keeps counters and the first 1000 results). Read it
-with `each()` or `results()`, then ask for the counters. The report drives the sending, so an unread report sends only
-its first window.
+A send returns a `SendReport`: a cursor with bounded memory (it keeps counters and the first 1000 results). Read it with `each()` or `results()`, then ask for the counters. The report drives the sending, so an unread report sends only its first window.
 
 ```php
 use Padosoft\MobilePush\Core\Identity\Platform;
@@ -96,9 +84,7 @@ $report->each(function (SendResult $result) use (&$toRetryLater): void {
 $accepted = $report->accepted();
 ```
 
-`$report->throw()` is the only method that turns a bad batch into an exception (`SendFailedException`). It throws when
-at least one destination is `Rejected`, `Failed`, `Expired` or `OutcomeUnknown`; it never throws on `Skipped`,
-`Deferred` or `Simulated`, and only when you call it.
+`$report->throw()` is the only method that turns a bad batch into an exception (`SendFailedException`). It throws when at least one destination is `Rejected`, `Failed`, `Expired` or `OutcomeUnknown`; it never throws on `Skipped`, `Deferred` or `Simulated`, and only when you call it.
 
 ```php
 use Padosoft\MobilePush\Core\Exceptions\SendFailedException;
@@ -118,8 +104,7 @@ try {
 }
 ```
 
-`SendReport` is **single-pass**: `counts()`, `count()`, `accepted()` and `retained()` drain what is left. After that,
-iterating gives only the retained results. Iterate first, count afterwards, or ask for counters only.
+`SendReport` is **single-pass**: `counts()`, `count()`, `accepted()` and `retained()` drain what is left. After that, iterating gives only the retained results. Iterate first, count afterwards, or ask for counters only.
 
 ## Reasons
 
@@ -131,21 +116,15 @@ iterating gives only the retained results. Iterate first, count afterwards, or a
 | `rawReason` | The provider's own word (`BadDeviceToken`, `UNREGISTERED`), sanitized: bytes outside printable ASCII become `?`, cut to 120 characters, and run through the redactor (a token that a provider echoes is removed). `null` when the provider gave none. |
 | `hint` | One sentence about what happened and what to do. Safe to show to an operator; not meant for end users. |
 
-For a retry that ended without success, the `code` is `retry_budget_exhausted` or `expired`, and the original cause is
-not lost: `rawReason` holds the cause's provider string (for example `ServiceUnavailable`), or the cause's reason code
-when there is none, and `hint` ends with "Last cause: ...".
+For a retry that ended without success, the `code` is `retry_budget_exhausted` or `expired`, and the original cause is not lost: `rawReason` holds the cause's provider string (for example `ServiceUnavailable`), or the cause's reason code when there is none, and `hint` ends with "Last cause: ...".
 
-The complete list of codes, with every APNs reason and every FCM error the package knows, is in
-[troubleshooting](/operations/troubleshooting#reason-catalog), and `php artisan mobile-push:explain <reason>` prints the same
-text ([commands](/operations/commands#artisan-commands-mobile-pushexplain)). A reason the package does not know becomes `unknown` with the raw
-string in `rawReason`; it is classified by HTTP class (4xx rejected, 5xx failed and retried).
+The complete list of codes, with every APNs reason and every FCM error the package knows, is in [troubleshooting](/operations/troubleshooting#troubleshooting-reason-catalog), and `php artisan mobile-push:explain <reason>` prints the same text ([commands](/operations/commands#artisan-commands-mobile-pushexplain)). A reason the package does not know becomes `unknown` with the raw string in `rawReason`; it is classified by HTTP class (4xx rejected, 5xx failed and retried).
 
 ## The unknown-outcome rule
 
 ### Why it exists
 
-Imagine the worst moment for a network call. The package writes the request to the connection and the connection
-drops before the answer arrives. Did APNs process it? There is no way to know. Two wrong answers are tempting:
+Imagine the worst moment for a network call. The package writes the request to the connection and the connection drops before the answer arrives. Did APNs process it? There is no way to know. Two wrong answers are tempting:
 
 - "It failed, send it again": if APNs *did* process it, the user receives the notification twice.
 - "It failed, send an email instead": the user may receive both.
@@ -158,10 +137,7 @@ So the package says what is true: **the outcome is unknown**. The status is `Out
 
 ### When "not sent" may be claimed
 
-The package calls a failure "not sent" (and retries it safely) only with proof: DNS resolution, the TCP connect or the
-TLS handshake failed **before any byte of the request was written**. In that case the status is not unknown: the
-failure is known, retried inside the budget, and ends as `Failed` if the budget runs out (reason code
-`transport_not_sent`). Everything else that goes wrong after the request may have left is `Unknown`:
+The package calls a failure "not sent" (and retries it safely) only with proof: DNS resolution, the TCP connect or the TLS handshake failed **before any byte of the request was written**. In that case the status is not unknown: the failure is known, retried inside the budget, and ends as `Failed` if the budget runs out (reason code `transport_not_sent`). Everything else that goes wrong after the request may have left is `Unknown`:
 
 | What happened | Evidence | Status |
 |---|---|---|
@@ -177,25 +153,16 @@ An HTTP answer is never "not sent": it proves the provider processed the request
 
 ### libcurl can send a request twice, silently
 
-This is why the transport streams request bodies. libcurl (measured on 8.5) silently re-sends a request on a new
-connection, up to five times, in two situations: the stream was refused (`REFUSED_STREAM`, or a stream above the
-`GOAWAY` last-stream-id), or the connection was a reused one and it dropped before any response byte, even when the
-server **had already processed the request**. PHP then sees a perfectly normal 200: a duplicate push with no trace. The
-transport sends every body through a read callback with no seek callback, so libcurl cannot rewind it, the re-send
-fails (`CURLE_SEND_FAIL_REWIND`, errno 65) and the server receives the request exactly once. The full measurements are
-in [transport](/reference/transport#http2-transport-coretransportcurl-investigation-results-plan-41-13-open-items-libcurl-re-sends-requests-by-itself).
+This is why the transport streams request bodies. libcurl (measured on 8.5) silently re-sends a request on a new connection, up to five times, in two situations: the stream was refused (`REFUSED_STREAM`, or a stream above the `GOAWAY` last-stream-id), or the connection was a reused one and it dropped before any response byte, even when the server **had already processed the request**. PHP then sees a perfectly normal 200: a duplicate push with no trace. The transport sends every body through a read callback with no seek callback, so libcurl cannot rewind it, the re-send fails (`CURLE_SEND_FAIL_REWIND`, errno 65) and the server receives the request exactly once. The full measurements are in [transport](/reference/transport#http2-transport-coretransportcurl-investigation-results-plan-41-13-open-items-libcurl-re-sends-requests-by-itself).
 
 Two honest limits of that protection:
 
-- Requests **without a body** (GET, DELETE) can still be re-sent by libcurl. The package uses them only for idempotent
-  calls (listing and deleting a broadcast channel).
-- `REFUSED_STREAM` and the last streams of a `GOAWAY` are protocol-wise "not processed", but PHP's curl binding does not
-  expose the frame, so the package cannot tell them from "processed, then dropped". They stay `Unknown`.
+- Requests **without a body** (GET, DELETE) can still be re-sent by libcurl. The package uses them only for idempotent calls (listing and deleting a broadcast channel).
+- `REFUSED_STREAM` and the last streams of a `GOAWAY` are protocol-wise "not processed", but PHP's curl binding does not expose the frame, so the package cannot tell them from "processed, then dropped". They stay `Unknown`.
 
 ### Replaceable messages
 
-A message is **replaceable** when a later copy replaces the earlier one on the device, so a duplicate is harmless. Only
-those are retried after an unknown outcome (policy `unknown_outcome.retry = replaceable`, the default):
+A message is **replaceable** when a later copy replaces the earlier one on the device, so a duplicate is harmless. Only those are retried after an unknown outcome (policy `unknown_outcome.retry = replaceable`, the default):
 
 | Replaceable | Not replaceable (never retried after an unknown outcome unless you opt in) |
 |---|---|
@@ -221,27 +188,15 @@ MobilePush::toToken(Platform::Ios, $iosToken)->send($balance)->each(fn () => nul
 MobilePush::toToken(Platform::Ios, $iosToken)->send($otp)->each(fn () => null);
 ```
 
-Setting (`config/mobile-push.php`, key `unknown_outcome.retry`, env `MOBILE_PUSH_UNKNOWN_OUTCOME_RETRY`):
-`never` (no retry after an unknown outcome, whatever the message), `replaceable` (default), `always` (you accept the
-duplicates). See [configuration](/get-started/configuration).
+Setting (`config/mobile-push.php`, key `unknown_outcome.retry`, env `MOBILE_PUSH_UNKNOWN_OUTCOME_RETRY`): `never` (no retry after an unknown outcome, whatever the message), `replaceable` (default), `always` (you accept the duplicates). See [configuration](/get-started/configuration).
 
 ### An unknown outcome contaminates the budget
 
-Suppose a replaceable message was retried after an unknown outcome, and the retries then fail with 503, or run out of
-time. Declaring "failed" or "expired" would be false: the **first** attempt may have been accepted. So the budget
-remembers `unknownOutcomeSeen`, and every later final state of that destination (`Failed`, `Expired`, and in the
-ledger also `Cancelled`) becomes `OutcomeUnknown`. A `Rejected` answer stays `Rejected` (it is about the request
-itself). The durable ledger stores the same flag (`unknown_seen`), so a worker that dies and a worker that takes over
-reach the same conclusion.
+Suppose a replaceable message was retried after an unknown outcome, and the retries then fail with 503, or run out of time. Declaring "failed" or "expired" would be false: the **first** attempt may have been accepted. So the budget remembers `unknownOutcomeSeen`, and every later final state of that destination (`Failed`, `Expired`, and in the ledger also `Cancelled`) becomes `OutcomeUnknown`. A `Rejected` answer stays `Rejected` (it is about the request itself). The durable ledger stores the same flag (`unknown_seen`), so a worker that dies and a worker that takes over reach the same conclusion.
 
 ### Why a fallback never starts from an unknown outcome
 
-A fallback (for example "send an email if the push did not go through") is only sound when the push is **known** not
-to have been accepted. `SendStatus::allowsFallback()` is true only for `Rejected`, `Failed` and `Expired`. The rules of
-the notification fallback add: nothing is sent if any destination is `Accepted`, `Validated`, `OutcomeUnknown`,
-`Deferred` (not decided yet), suppressed on purpose (`Skipped` by consent or frequency cap) or `Simulated`; and never
-for a topic, condition or broadcast (the audience is unknown). See
-[notifications and fallback](/sending/notifications-and-fallback).
+A fallback (for example "send an email if the push did not go through") is only sound when the push is **known** not to have been accepted. `SendStatus::allowsFallback()` is true only for `Rejected`, `Failed` and `Expired`. The rules of the notification fallback add: nothing is sent if any destination is `Accepted`, `Validated`, `OutcomeUnknown`, `Deferred` (not decided yet), suppressed on purpose (`Skipped` by consent or frequency cap) or `Simulated`; and never for a topic, condition or broadcast (the audience is unknown). See [notifications and fallback](/sending/notifications-and-fallback).
 
 ```php
 use Padosoft\MobilePush\Core\Identity\Destination\ApnsDeviceToken;
@@ -266,21 +221,17 @@ $hadUnknown = $report->hasUnknown();   // true: ask for counters only after the 
 
 ## What happens to the destination: actions
 
-The classifier decides, once, what the registration deserves. These actions only act on the **generation that was
-attempted**: a late answer about generation 7 never touches generation 8, even if the raw token is identical.
+The classifier decides, once, what the registration deserves. These actions only act on the **generation that was attempted**: a late answer about generation 7 never touches generation 8, even if the raw token is identical.
 
 | Action | When | Effect on the device registry |
 |---|---|---|
-| `quarantine` | A routing suspicion: APNs `BadDeviceToken` (malformed, or the token belongs to the other environment), APNs `DeviceTokenNotForTopic` (token of another app), FCM `SENDER_ID_MISMATCH` (token of another Firebase project). | The registration is suspended, **not deleted**. The current push is discarded (`Rejected`) and not retried. It is reactivated by a new registration (new generation) or relabelled by the [environment probe](/operations/troubleshooting#environment-probe). |
+| `quarantine` | A routing suspicion: APNs `BadDeviceToken` (malformed, or the token belongs to the other environment), APNs `DeviceTokenNotForTopic` (token of another app), FCM `SENDER_ID_MISMATCH` (token of another Firebase project). | The registration is suspended, **not deleted**. The current push is discarded (`Rejected`) and not retried. It is reactivated by a new registration (new generation) or relabelled by the [environment probe](/operations/troubleshooting#troubleshooting-environment-probe). |
 | `invalidate` | APNs HTTP **410** with `Unregistered` or `ExpiredToken`, only if the provider's timestamp is later than the registration; FCM `UNREGISTERED`. | The registration is marked invalidated and no longer used. A bare 410 without a reason does not invalidate. A 410 whose timestamp is not later than the registration (an old answer) is ignored. |
 | `none` | Everything else, including FCM `INVALID_ARGUMENT` (usually the payload) and FCM `NOT_FOUND` without an FCM detail. | Nothing. |
 
-Actions only apply to individual destinations (device tokens, installations); topics and broadcast channels never get
-one. An `OutcomeUnknown` never causes quarantine or invalidation. See [devices](/modules/devices).
+Actions only apply to individual destinations (device tokens, installations); topics and broadcast channels never get one. An `OutcomeUnknown` never causes quarantine or invalidation. See [devices](/modules/devices).
 
-Why quarantine and not delete? `BadDeviceToken` is ambiguous: the token can be malformed, or perfectly good on the
-*other* APNs environment (a TestFlight/production mix-up). Deleting would destroy a good registration; the package
-suspends it and lets an operator resolve it.
+Why quarantine and not delete? `BadDeviceToken` is ambiguous: the token can be malformed, or perfectly good on the *other* APNs environment (a TestFlight/production mix-up). Deleting would destroy a good registration; the package suspends it and lets an operator resolve it.
 
 ### Credential actions
 

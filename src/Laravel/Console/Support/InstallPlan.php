@@ -41,7 +41,7 @@ final class InstallPlan
             $groups[] = ['label' => 'database log sink', 'tag' => LoggingModule::PUBLISH_TAG, 'suffixes' => self::suffixes([LoggingModule::migrationPath()])];
         }
         if (in_array('campaigns', $modules, true) && self::campaignsTag() !== null) {
-            $groups[] = ['label' => 'campaigns', 'tag' => (string) self::campaignsTag(), 'suffixes' => []];
+            $groups[] = ['label' => 'campaigns', 'tag' => (string) self::campaignsTag(), 'suffixes' => self::campaignsSuffixes()];
         }
 
         return $groups;
@@ -51,6 +51,18 @@ final class InstallPlan
     public static function campaignsAvailable(): bool
     {
         return self::campaignsTag() !== null;
+    }
+
+    /** @return list<string> */
+    private static function campaignsSuffixes(): array
+    {
+        $class = self::$campaignsModule;
+        if (! class_exists($class) || ! method_exists($class, 'migrationPath')) {
+            return [];
+        }
+        $path = $class::migrationPath();
+
+        return is_string($path) ? self::suffixes([$path]) : [];
     }
 
     private static function campaignsTag(): ?string

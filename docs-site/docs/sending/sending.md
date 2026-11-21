@@ -18,8 +18,8 @@ MobilePush::[scope()|connection()] -> to…() -> [options] -> send($message) | q
 - The entry points (`MobilePush::to()`, `toToken()`, `toTokens()`, `toTopic()`, `toCondition()`, `connection()`, `scope()`) return a `Padosoft\MobilePush\Laravel\Sending\PendingSend`.
 - A `PendingSend` is **immutable**: every method returns a modified copy, so you can keep one and reuse it.
 - `send()` sends now and returns a `SendReport`. `queue()` hands the send to a queue worker and returns an effect id (see [Queueing](/sending/sending#sending-queueing)).
-- A failure of one destination is a result in the report, **never an exception**. Exceptions are reserved for input or configuration that is invalid as a whole (an unknown connection, a raw token without a platform, a malformed token, a message that cannot be compiled for the first destination of a connection), and they are thrown before that connection sends anything. A payload over the size limit is a per-destination `Rejected` result with `payload_too_large`, not an exception.
-- A send whose targets span several connections runs them one after the other. If the message is invalid for the second connection only (for example a `subtitle()`, which FCM cannot carry, sent to a user with an iPhone and an Android phone), the first connection has already sent when the exception is thrown. Make a unified message valid for every platform you target (`->lenient()`, or the platform overlays: see [messages.md](/sending/messages)).
+- A failure of one destination is a result in the report, **never an exception**. Exceptions are reserved for input or configuration that is invalid as a whole (an unknown connection, a raw token without a platform, a malformed token, a message that cannot be compiled for any of the connections the send targets), and they are thrown before anything is sent or queued. A payload over the size limit is a per-destination `Rejected` result with `payload_too_large`, not an exception.
+- A send whose targets span several connections is **validated before it starts**: see [Multi-connection sends and the pre-flight](/sending/sending#sending-connections-and-scopes-multi-connection-sends-and-the-pre-flight).
 
 ## Addressing
 
@@ -115,6 +115,63 @@ MobilePush::connection('ios')
 ```
 
 Sending an APNs destination through an FCM connection (or the reverse) is an `InvalidDestinationException` before the network. A send whose targets span several connections (an iPhone and an Android phone) returns one report that streams the results of each connection in turn.
+
+### Multi-connection sends and the pre-flight
+
+When the targets of one `send()` or `queue()` span several connections (an iPhone and an Android phone, or two apps), the package first **compiles the message once per connection**, against the first destination of that connection, with that connection's own compiler. Nothing reaches the network or the queue until every connection has passed. The check builds no request, issues no receipt marker and keeps nothing. What it decides:
+
+| The message is invalid for... | `send()` | `queue()` |
+|---|---|---|
+| none of the connections | sends normally | queues normally |
+| some connections only | the destinations of those connections get a `Rejected` result with reason `PayloadInvalid` and a hint; the other connections send normally; **nothing is thrown** | the refused connections queue nothing and, on the durable profile, write **nothing to the ledger**; their destinations are recorded as `Rejected` now (send log, events) and they contribute no effect id; the others are queued |
+| every connection | throws the validation exception (`InvalidMessageException` or another `ValidationException`) **before any request** | throws before anything is queued or written |
+
+The hint of a refused destination reads `Not sent on the <provider> connection "<name>": <the compiler's message>`. For the usual case, a `subtitle()` (an iOS-only field) sent to a user with an iPhone and an Android phone, the iPhone push is sent and the Android destination ends `Rejected` with `PayloadInvalid` and a hint that names the field and the remedy (`->lenient()` to drop it, or a platform overlay: see [messages.md](/sending/messages)).
+
+```php
+use Padosoft\MobilePush\Core\Message\PushMessage;
+use Padosoft\MobilePush\Core\Outcome\ReasonCode;
+use Padosoft\MobilePush\Core\Outcome\SendStatus;
+use Padosoft\MobilePush\Laravel\Facades\MobilePush;
+
+// A subtitle exists on iOS only: FCM refuses it. $user has an iPhone and an Android phone.
+$report = MobilePush::to($user)->send(PushMessage::make('Order shipped', 'Arrives Friday')->subtitle('Order #42'));
+
+$counts = $report->counts();
+expect($counts[SendStatus::Accepted->value])->toBe(1)    // the iPhone was sent
+    ->and($counts[SendStatus::Rejected->value])->toBe(1); // the Android phone was not, and nothing was thrown
+
+$rejected = collect($report->retained())->first(fn ($result) => $result->status === SendStatus::Rejected);
+expect($rejected->reason->code)->toBe(ReasonCode::PayloadInvalid)
+    ->and($rejected->reason->hint)->toContain('subtitle');
+
+$fake->assertSentTimes(1);
+$fake->assertSentOnConnection('ios');
+```
+
+```php
+use Padosoft\MobilePush\Core\Exceptions\InvalidMessageException;
+use Padosoft\MobilePush\Core\Message\PushMessage;
+use Padosoft\MobilePush\Laravel\Facades\MobilePush;
+
+// A negative badge is invalid for every provider: the whole send is refused, with no request.
+try {
+    MobilePush::to($user)->send(PushMessage::make('Hi', 'There')->badge(-1));
+    $thrown = false;
+} catch (InvalidMessageException) {
+    $thrown = true;
+}
+
+expect($thrown)->toBeTrue();
+$fake->assertNothingSent();
+```
+
+Limits of the check:
+
+- It validates the **message** against one sample destination per connection. Problems that belong to one destination (a malformed token, a payload that is too large for that destination) are not pre-flight errors: they are reported per destination by the send itself, as `Rejected` results.
+- A group whose destinations arrive as a **lazy stream** (a named connection fed by a generator, see [`to()`](/sending/sending#sending-addressing-to-typed-destinations-notifiables-iterables)) is **not sampled**, because the stream must not be consumed in advance. Its own send still raises a message-level error before its first request. If every checked connection is refused but a lazily streamed group remains, the send does not throw: the refused connections are reported as `Rejected` and the streamed group reports for itself.
+- `validateOnly()` is part of the check: a validate-only send through an APNs connection fails it (`UnsupportedCapabilityException`), so in a send that also targets an Android phone the iPhone destinations are the ones refused, as `Rejected` / `PayloadInvalid`.
+- Under `MobilePush::fake()` the same check runs with the real compilers, see [testing.md](/sending/testing#testing-your-application-the-intent-fake-mobilepushfake).
 
 A **scope** is a tenant boundary (default `default`, `MOBILE_PUSH_SCOPE`). Connections, provider tokens, breakers, rate limits, device rows and ledger rows are all kept per scope. Set it per send with `->scope('acme')` (or `MobilePush::scope('acme')`), or globally with `MobilePush::scopeUsing(fn () => ...)`. It is never read from client payload. Runtime connections (`MobilePush::register()`) and on-demand resolution (`MobilePush::resolveConnectionUsing()`) are covered in [multi-tenancy.md](/operations/multi-tenancy).
 
@@ -306,7 +363,7 @@ $effectId = MobilePush::to($user)
 $fake->assertQueued();
 ```
 
-- `queue()` returns the effect id (several ids joined by `,` when the targets span several connections). There is no report: results are known only when a worker runs the job; read them through events, the send log or `mobile-push:health`.
+- `queue()` returns the effect id (several ids joined by `,` when the targets span several connections). There is no report: results are known only when a worker runs the job (a connection refused by the [pre-flight](/sending/sending#sending-connections-and-scopes-multi-connection-sends-and-the-pre-flight) is the exception: its `Rejected` results are recorded at once and it contributes no id); read them through events, the send log or `mobile-push:health`.
 - Set the queue options **before** `queue()`. Defaults: `queue.connection` (null = the app's default queue connection), `queue.queue` (`push`), `queue.bulk_queue` (`push-bulk`) for `bulk()` traffic, `afterCommit(true)`.
 - The **light profile** (default) dispatches jobs carrying the encrypted message and the destinations: best effort, no tables; a crashed worker can lose or duplicate pushes. The **durable profile** (`MOBILE_PUSH_DELIVERY_PROFILE=durable`) records the intent in a ledger (inside your database transaction when it runs on the ledger connection) and a relay sends it, recording each outcome before acknowledging. `send()` never writes the ledger in either profile. Details and worker setup: [delivery-profiles.md](/reliability/delivery-profiles) and [queues-and-horizon.md](/reliability/queues-and-horizon).
 

@@ -14,6 +14,7 @@ use Padosoft\MobilePush\Core\Message\PushMessage;
 use Padosoft\MobilePush\Core\Outcome\SendStatus;
 use Padosoft\MobilePush\Laravel\Facades\MobilePush;
 use Padosoft\MobilePush\Laravel\Integration\ManagerCredentialsSource;
+use Padosoft\MobilePush\Laravel\Sending\ConnectionFactory;
 use Padosoft\MobilePush\Laravel\Sending\PushManager;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Sending\SendingWorld as W;
 
@@ -78,7 +79,7 @@ it('signs the APNs token with the container signer: the JWT verifies against the
         ->and(strlen($decode($signature)))->toBe(64)
         ->and(openssl_verify($header.'.'.$claims, DerSignature::fromJose($decode($signature)), $public, OPENSSL_ALGO_SHA256))->toBe(1)
         ->and($signer->signatures)->toBe(1)
-        ->and(MobilePush::binding('ios')->generation)->toBe(\Padosoft\MobilePush\Laravel\Sending\ConnectionFactory::generation('token:'.W::TEAM.':KMSKEY1234', ''));
+        ->and(MobilePush::binding('ios')->generation)->toBe(ConnectionFactory::generation('token:'.W::TEAM.':KMSKEY1234', ''));
 });
 
 it('accepts a key_id that equals the signer\'s and refuses one that differs, before any request', function () {

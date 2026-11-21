@@ -37,8 +37,9 @@ description: "Defines what a result means for the caller: the status of each des
 
 - Proven: DNS, connect or TLS failed before the request was written. The transport reports `TransportFailure` with `evidence = NotSent` and `requestWritten = false`.
 - Not proven: a generic HTTP/2 error, a timeout or a reset after the write, an unparseable response. These are `Unknown`.
-- Plan §4.1 lists "an explicit HTTP response" as a second proof. The code does not model this (see Plan vs code).
-- Plan §4.1 says `REFUSED_STREAM` and the last stream of `GOAWAY` become proof only if M1 measurements show the binding distinguishes them reliably. Not decided yet.
+- An explicit HTTP response is **not** `NotSent`: it proves the provider processed the request and gives a known outcome (orchestrator's resolution, `README.md`).
+- `REFUSED_STREAM` and the streams above the last `GOAWAY` id **stay `Unknown`**: the M1 measurements (`docs/transport.md`) showed the curl binding cannot tell them apart from a connection that died after processing (`CurlErrorClassifier` claims `NotSent` only for the resolve, connect and TLS phases, when nothing of the request was written).
+- What follows a proven `NotSent`: the classifier returns a retryable decision with `ReasonCode::TransportNotSent` (`ApnsOutcomeClassifier`, `FcmOutcomeClassifier`); the retry planner then defers it, or ends it as `Failed` when no attempt is left. It is never reported as `OutcomeUnknown`.
 
 ## Types
 
@@ -52,12 +53,12 @@ description: "Defines what a result means for the caller: the status of each des
 **A. Response lost.**
 - Situation: the request was written, then the connection reset before any response arrived.
 - The package: the transport yields a failure with `Unknown` evidence. No proof of non-processing exists, so nothing else follows (no fallback, no invalidation).
-- The caller sees: `OutcomeUnknown` for that destination, counted by `hasUnknown()`. A replaceable message may be retried by the planned policy; an alert is not retried unless opted in. The `ReasonCode` is a transport code (`TransportUnknown`); the exact mapping belongs to the classifier, which is not written yet.
+- The caller sees: `OutcomeUnknown` for that destination, counted by `hasUnknown()`. A replaceable message may be retried by the planned policy; an alert is not retried unless opted in. The `ReasonCode` is `TransportUnknown` (the two classifiers above produce it for any failure without proof of non-processing, a timeout after the write included).
 
 **B. DNS failure before connect.**
 - Situation: the host does not resolve.
 - The package: proven `NotSent`, because no request byte was written.
-- The caller sees: a result that is not `OutcomeUnknown`. The public status for this proof is not stated in the plan (see Open points).
+- The caller sees: a result that is not `OutcomeUnknown`: `Deferred` with `TransportNotSent` while attempts remain (retrying is safe), `Failed` with `RetryBudgetExhausted` once they are spent.
 
 **C. Batch of three, two definitive and one unknown.**
 - Situation: two destinations are refused, one has an unknown outcome.
@@ -75,17 +76,15 @@ description: "Defines what a result means for the caller: the status of each des
 
 ## Plan vs code
 
-- `Failed` is in the code (`SendStatus::Failed`) and in `AGENTS.md`, but plan §4.1 does not list it. This document follows the code.
-- `TransportEvidence::NotSent` docblock lists only DNS, connect and TLS. Plan §4.1 also allows "an explicit HTTP response". `Response`'s docblock says a received response is proof that the provider processed the request. These three statements do not fit together yet.
-- `SendStatus::isTerminal()` returns true for everything except `Deferred`, so it returns true for `OutcomeUnknown`. Plan §4.1 allows replaceable unknown outcomes to be retried. Do not use `isTerminal()` to decide retries.
+- `Failed` is in the code (`SendStatus::Failed`) and in `AGENTS.md`, but plan §4.1 does not list it. This document follows the code (`Rejected` = refused by the provider, `Failed` = known not accepted and no attempt left).
+- `TransportEvidence::NotSent` docblock lists only DNS, connect and TLS; the plan's "an explicit HTTP response" proof was dropped on purpose (see above).
+- `SendStatus::isTerminal()` returns true for everything except `Deferred`, so it is true for `OutcomeUnknown`: a result with that status is final. When the unknown-outcome policy allows another attempt, the result of that pass is `Deferred`. Do not use `isTerminal()` to decide retries; use the planner.
 - The plan does not say how many results a `SendReport` retains. The code default is 1000.
 
 ## Open points
 
-- The public status produced by a proven `NotSent` (plan silent).
-- Whether an explicit HTTP response can serve as `NotSent` proof (plan §4.1 and code disagree).
-- Whether `REFUSED_STREAM` and the last `GOAWAY` stream become proof (plan §4.1, pending M1).
-- The `ReasonCode` set for a timeout after the write (only `TransportUnknown` exists in the enum).
+- **Real-provider verification.** Which transport failures after the write really leave the provider's state unchanged was measured only against the local HTTP/2 mock server (`docs/transport.md`), never against Apple or Google; that is why they all stay `Unknown`.
+- The `ReasonCode` set for a timeout after the write is the single `TransportUnknown`; whether a finer split (timeout, reset, protocol error) would help operators is a product question, not a contract one.
 
 ---
 

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
 use Padosoft\MobilePush\Core\Identity\BindingRef;
 use Padosoft\MobilePush\Core\Identity\Destination\FcmTopic;
@@ -15,6 +16,7 @@ use Padosoft\MobilePush\Laravel\Contracts\QueuedSender;
 use Padosoft\MobilePush\Laravel\Contracts\QueueOptions;
 use Padosoft\MobilePush\Laravel\Devices\DeviceRegistrar;
 use Padosoft\MobilePush\Laravel\Queue\RelayDeliveriesJob;
+use Padosoft\MobilePush\Laravel\Sending\Events\BindingMismatchDetected;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Devices\DeviceWorld;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Queue\QueueWorld;
 use Padosoft\MobilePush\Tests\Scenario\Send\SendKit;
@@ -107,11 +109,20 @@ it('a relay for a connection that was re-assigned to another app records Binding
     $stale = new BindingRef('default', 'ios', Provider::Apns, 'com.previous.app', Environment::Production);
     ($this->queue)(QueueWorld::tokens(2), binding: $stale);
 
+    Event::fake([BindingMismatchDetected::class]);
+    $sink = QueueWorld::recordingSinks();
     $this->w->run(($this->firstRelay)());
 
     expect($this->w->transport->sentCount())->toBe(0)
         ->and(QueueWorld::deliveryStates())->toBe(['skipped' => 2])
-        ->and(DB::table('mobile_push_deliveries')->pluck('reason_code')->unique()->values()->all())->toBe(['binding_mismatch']);
+        ->and(DB::table('mobile_push_deliveries')->pluck('reason_code')->unique()->values()->all())->toBe(['binding_mismatch'])
+        ->and(DB::table('mobile_push_deliveries')->pluck('attempts')->unique()->values()->all())->toBe([0])
+        // the same rule as a direct send: one event per run, one log record per destination
+        ->and(array_map(static fn ($r): string => $r->status->value.'/'.$r->reasonCode->value.'/'.$r->attempts, $sink->records))
+        ->toBe(['skipped/binding_mismatch/0', 'skipped/binding_mismatch/0']);
+    Event::assertDispatchedTimes(BindingMismatchDetected::class, 1);
+    Event::assertDispatched(BindingMismatchDetected::class, static fn (BindingMismatchDetected $e): bool => $e->connection === 'ios'
+        && $e->expected?->appId === 'com.previous.app' && $e->current !== null && $e->current->appId !== 'com.previous.app');
 });
 
 it('with receipts on, the relay embeds the mp_r marker for an installation and never for a topic', function (): void {

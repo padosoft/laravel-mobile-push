@@ -75,7 +75,7 @@ final class SendPushJob implements ShouldBeEncrypted, ShouldQueue
         $this->timeout = $timeout;
     }
 
-    public function handle(PushDispatcher $dispatcher, SendJobDispatcher $jobs, ClockInterface $clock, QueueSettings $settings, LoggerInterface $logger): void
+    public function handle(PushDispatcher $dispatcher, SendJobDispatcher $jobs, ClockInterface $clock, QueueSettings $settings, LoggerInterface $logger, ?BindingMismatches $mismatches = null): void
     {
         $binding = BindingRef::fromArray($this->binding);
         $message = unserialize($this->message);
@@ -87,8 +87,18 @@ final class SendPushJob implements ShouldBeEncrypted, ShouldQueue
 
         try {
             $options = $dispatcher->defaultOptions($binding);
-        } catch (UnknownConnectionException) {
-            $logger->warning('mobile-push: the connection of a queued send no longer exists; nothing was sent.', $this->context());
+        } catch (UnknownConnectionException $e) {
+            // The binding rule of a direct send: every destination Skipped(BindingMismatch), no attempt, the event once
+            // per job run, the results in the log sinks when they are enabled; the job ends cleanly (no retry).
+            $logger->warning('mobile-push: the connection of a queued send no longer resolves to its binding; nothing was sent.', $this->context());
+            if ($mismatches !== null) {
+                $reason = $mismatches->detected($dispatcher, $binding, $e);
+                $mismatches->log($binding, (function () use ($reason): \Generator {
+                    foreach ($this->items() as $item) {
+                        yield new SendResult($item->destination, SendStatus::Skipped, $reason, 0, deliveryId: $item->deliveryId);
+                    }
+                })(), ['operation' => $this->validateOnly ? 'validate' : 'send', 'traffic_class' => $this->trafficClass, 'effect_id' => $this->effectId]);
+            }
 
             return;
         }

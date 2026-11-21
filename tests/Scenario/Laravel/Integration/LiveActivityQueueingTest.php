@@ -90,6 +90,7 @@ it('the scheduler flushes pending Live Activity transitions every minute when th
 it('schedules nothing for Live Activities or alerts while those modules are off', function () {
     config()->set('mobile-push.live_activities.enabled', false);
     config()->set('mobile-push.alerts.enabled', false);
+    config()->set('mobile-push.maintenance.schedule', false);   // the daily maintenance has its own scenarios
     $schedule = new Schedule;
     IntegrationModule::schedule(app(), $schedule);
 

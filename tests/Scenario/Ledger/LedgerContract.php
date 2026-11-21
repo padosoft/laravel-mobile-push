@@ -651,4 +651,90 @@ function clientReceiptLedgerContract(Closure $make): void
             ->and($funnel->acceptedWithoutMarker())->toBe(2)
             ->and($funnel->markerCoverage())->toBe(0.0);
     });
+
+    it('a phone re-registered between two writes of the same intent keeps ONE delivery, planned for the old holder and skipped at send time', function () use ($make): void {
+        /** @var H $h */
+        $h = $make();
+        $first = $h->ledger->recordIntent(H::intent(H::alert(), 'slice-1'), [H::device(7, 1, '1'), H::device(8, 1, '2')]);
+        // The slice runs again after device 7 changed hands (generation 2, owner 3): no second row for the device.
+        $again = $h->ledger->recordIntent(H::intent(H::alert(), 'slice-1'), [H::device(7, 2, '3'), H::device(8, 1, '2')]);
+
+        $rows = array_values(array_filter($h->rows()['deliveries'], static fn (array $r): bool => $r['device_id'] === '7'));
+        expect($first->added)->toBe(2)
+            ->and($again->added)->toBe(0)->and($again->existing)->toBe(2)
+            ->and($h->ledger->counts('default', $first->effect->id)->total())->toBe(2)
+            ->and($rows)->toHaveCount(1)
+            ->and($rows[0]['logical_key'])->toBe('dev:apns_device_token:7')
+            // the generation planned is kept: the relay compares it with the registry right before the network
+            ->and((int) $rows[0]['device_generation'])->toBe(1)
+            ->and($rows[0]['owner_id'])->toBe('1');
+    });
+
+    it('rows written before the logical key lost its generation still deduplicate a replay', function () use ($make): void {
+        /** @var H $h */
+        $h = $make();
+        $effect = $h->ledger->recordIntent(H::intent(H::alert(), 'legacy'), [H::device(9)])->effect;
+        $h->rewriteLogicalKeys($effect->id, static fn (string $key): string => $key.':1');   // the pre-W5-P format
+
+        $replay = $h->ledger->recordIntent(H::intent(H::alert(), 'legacy'), [H::device(9), H::device(10)]);
+        expect($replay->added)->toBe(1)->and($replay->existing)->toBe(1)
+            ->and($h->ledger->counts('default', $effect->id)->total())->toBe(2);
+    });
+
+    it('batched worker writes follow exactly the one-row rules: lost leases are not started, stale and final rows are not overwritten', function () use ($make): void {
+        /** @var H $h */
+        $h = $make();
+        $effect = $h->ledger->recordIntent(H::intent(H::alert()), H::tokens(4))->effect;
+        $claimed = $h->ledger->claimDue('default', 'worker-a', 10);
+        expect($claimed)->toHaveCount(4);
+        [$a, $b, $c, $d] = $claimed;
+
+        $h->ledger->cancelEffect('default', $effect->id);                  // leased rows are cancelled: their leases die
+        $stale = $h->ledger->recordIntent(H::intent(H::alert(), 'other'), [H::token(99)])->effect;
+        expect($h->ledger->markAttemptsStarted([$a->lease, $b->lease]))->toBe([]);
+
+        $e = $h->ledger->recordIntent(H::intent(H::alert(), 'second'), H::tokens(3, 10))->effect;
+        $fresh = $h->ledger->claimDue('default', 'worker-b', 10, $e->id);
+        $started = $h->ledger->markAttemptsStarted(array_map(static fn ($x) => $x->lease, $fresh));
+        sort($started);
+        $ids = array_map(static fn ($x): string => $x->id(), $fresh);
+        sort($ids);
+        expect($started)->toBe($ids);
+
+        $out = $h->ledger->recordMany([
+            [$fresh[0]->lease, $h->accepted($fresh[0]), $h->budgetAfterOneAttempt()],
+            [$fresh[1]->lease, $h->deferred($fresh[1], 30), $h->budgetAfterOneAttempt()],
+            [$c->lease, $h->accepted($c), null],                                // cancelled meanwhile: final, untouched
+        ]);
+        expect($out[$fresh[0]->id()])->toBe(Recording::Recorded)
+            ->and($out[$fresh[1]->id()])->toBe(Recording::Recorded)
+            ->and($out[$c->id()])->toBe(Recording::IgnoredFinal)
+            ->and($h->ledger->delivery('default', $fresh[0]->id())?->state)->toBe(DeliveryState::Accepted)
+            ->and($h->ledger->delivery('default', $fresh[1]->id())?->state)->toBe(DeliveryState::Deferred)
+            ->and($h->ledger->delivery('default', $c->id())?->state)->toBe(DeliveryState::Cancelled)
+            ->and($h->ledger->delivery('default', $fresh[2]->id())?->state)->toBe(DeliveryState::Sending)
+            // a second write of the same outcome is ignored: the lease was consumed
+            ->and($h->ledger->recordMany([[$fresh[0]->lease, $h->accepted($fresh[0]), null]])[$fresh[0]->id()])->toBe(Recording::IgnoredFinal)
+            ->and($stale->id)->not->toBe($effect->id)
+            ->and($d->id())->not->toBe('');
+    });
+
+    it('the settlement probe says whether anything of an effect or a campaign is still open', function () use ($make): void {
+        /** @var H $h */
+        $h = $make();
+        $effect = $h->ledger->recordIntent(H::intent(H::alert(), 'probe', campaign: 'camp-9'), H::tokens(2))->effect;
+        expect($h->ledger->hasOpenDeliveries('default', $effect->id))->toBeTrue()
+            ->and($h->ledger->campaignHasOpenDeliveries('default', 'camp-9'))->toBeTrue()
+            ->and($h->ledger->hasOpenDeliveries('tenant-b', $effect->id))->toBeFalse()
+            ->and($h->ledger->hasOpenDeliveries('default', 'missing'))->toBeFalse();
+
+        $claimed = $h->ledger->claimDue('default', 'w', 10);
+        expect($h->ledger->hasOpenDeliveries('default', $effect->id))->toBeTrue();   // leased is open
+        foreach ($claimed as $c) {
+            $h->ledger->markAttemptStarted($c->lease);
+            $h->ledger->record($c->lease, $h->accepted($c), $h->budgetAfterOneAttempt());
+        }
+        expect($h->ledger->hasOpenDeliveries('default', $effect->id))->toBeFalse()
+            ->and($h->ledger->campaignHasOpenDeliveries('default', 'camp-9'))->toBeFalse();
+    });
 }

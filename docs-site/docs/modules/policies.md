@@ -5,8 +5,7 @@ description: "Two optional behaviours that decide how often and with what number
 
 # Policies: frequency caps and the server-side badge
 
-Two optional behaviours that decide *how often* and *with what number* a person is pushed. Both are about the **person**,
-not the device or the retry.
+Two optional behaviours that decide *how often* and *with what number* a person is pushed. Both are about the **person**, not the device or the retry.
 
 | | Frequency cap | Server-side badge counter |
 |---|---|---|
@@ -14,11 +13,9 @@ not the device or the retry.
 | Migrations | none | none |
 | Storage | the package cache store (`mobile-push.cache.store`): it needs a **shared, lock-capable store** (redis, memcached, database, dynamodb) to be correct across workers. `array` works inside one process only | same |
 
-Related pages: [messages](/sending/messages), [sending](/sending/sending), [notifications and fallback](/sending/notifications-and-fallback),
-[devices](/modules/devices), [configuration](/get-started/configuration), [outcomes](/reliability/outcomes).
+Related pages: [messages](/sending/messages), [sending](/sending/sending), [notifications and fallback](/sending/notifications-and-fallback), [devices](/modules/devices), [configuration](/get-started/configuration), [outcomes](/reliability/outcomes).
 
-What was not verified: both are covered by scenario and unit tests against the in-memory store and the `array` cache.
-Behaviour on Redis, Memcached or a database cache under real concurrency was not exercised.
+What was not verified: both are covered by scenario and unit tests against the in-memory store and the `array` cache. Behaviour on Redis, Memcached or a database cache under real concurrency was not exercised.
 
 ## `policy` is not `actionCategory`
 
@@ -49,32 +46,18 @@ $fake->assertSentTimes(2);
 
 ### What it does
 
-- **Subject = the person.** The destinations of one send are grouped by subject: a registry device with an owner counts as
-  that owner (type + id), so the three phones of one user are **one subject**; a destination without an owner (a raw
-  token) is its own subject, identified by its keyed index, never by the raw token.
-- **Once per logical effect.** One decision is taken per subject for `(scope, effect key, bucket)`: all devices of a user
-  are allowed together or capped together. A retry or a continuation of the same effect gets the **stored decision** and
-  consumes nothing, even if the window would now have room (or no longer has).
-- **Without an effect key** there is no stable identity: every call is its own effect. `PendingSend::send()` generates one
-  per call, so the decision is still once per send; a retry of a send that carried no key of its own can consume again.
-- **Buckets.** A message picks its bucket with `->policy('marketing')`. A message without a policy (or a message that is not a
-  `PushMessage`) uses `frequency.no_policy_bucket` (default `default`); `null` or an empty value means *not capped*.
-- **Rolling windows.** Limits are `per_hour` (3600 s) and/or `per_day` (86400 s): "at most N effects in the last 3600
-  seconds". An effect is recorded only when every window had room; a capped effect consumes nothing.
-- **Never applied** to topics, conditions, broadcast channels, or Live Activity transitions: they are not one person.
-  Registry eligibility and the policy gates only look at installation destinations (APNs and VoIP device tokens, FCM
-  tokens and FIDs).
-- **Order.** The cap runs *after* registry eligibility and your consent check, so a destination that is not eligible (or that
-  opted out) never consumes a unit of the cap.
-- A capped destination is a `Skipped` result with reason `PolicyFrequencyCapped` and a hint such as `Frequency cap for
-  policy "marketing": at most 2 per day.`. It is never an error and never retried. Per the [fallback rules](/sending/notifications-and-fallback),
-  a capped push never triggers a fallback channel.
+- **Subject = the person.** The destinations of one send are grouped by subject: a registry device with an owner counts as that owner (type + id), so the three phones of one user are **one subject**; a destination without an owner (a raw token) is its own subject, identified by its keyed index, never by the raw token.
+- **Once per logical effect.** One decision is taken per subject for `(scope, effect key, bucket)`: all devices of a user are allowed together or capped together. A retry or a continuation of the same effect gets the **stored decision** and consumes nothing, even if the window would now have room (or no longer has).
+- **Without an effect key** there is no stable identity: every call is its own effect. `PendingSend::send()` generates one per call, so the decision is still once per send; a retry of a send that carried no key of its own can consume again.
+- **Buckets.** A message picks its bucket with `->policy('marketing')`. A message without a policy (or a message that is not a `PushMessage`) uses `frequency.no_policy_bucket` (default `default`); `null` or an empty value means *not capped*.
+- **Rolling windows.** Limits are `per_hour` (3600 s) and/or `per_day` (86400 s): "at most N effects in the last 3600 seconds". An effect is recorded only when every window had room; a capped effect consumes nothing.
+- **Never applied** to topics, conditions, broadcast channels, or Live Activity transitions: they are not one person. Registry eligibility and the policy gates only look at installation destinations (APNs and VoIP device tokens, FCM tokens and FIDs).
+- **Order.** The cap runs *after* registry eligibility and your consent check, so a destination that is not eligible (or that opted out) never consumes a unit of the cap.
+- A capped destination is a `Skipped` result with reason `PolicyFrequencyCapped` and a hint such as `Frequency cap for policy "marketing": at most 2 per day.`. It is never an error and never retried. Per the [fallback rules](/sending/notifications-and-fallback), a capped push never triggers a fallback channel.
 
 ### Bypass versus consent
 
-`->bypassFrequencyCap()` on a `PushMessage` skips the cap (for example a security alert). It has **nothing to do with
-consent**: the registry eligibility gate and your `MobilePush::eligibleUsing()` callback still run, and an opted-out user
-still receives nothing. A cap is a courtesy limit; consent is a rule.
+`->bypassFrequencyCap()` on a `PushMessage` skips the cap (for example a security alert). It has **nothing to do with consent**: the registry eligibility gate and your `MobilePush::eligibleUsing()` callback still run, and an opted-out user still receives nothing. A cap is a courtesy limit; consent is a rule.
 
 ### Configuration
 
@@ -99,25 +82,20 @@ still receives nothing. A cap is a courtesy limit; consent is a rule.
 | `frequency.no_policy_bucket` | `MOBILE_PUSH_FREQUENCY_NO_POLICY_BUCKET` | `default` | |
 | `frequency.on_store_failure` | `MOBILE_PUSH_FREQUENCY_ON_STORE_FAILURE` | `allow` | what to do when the counters cannot be read or written |
 
-The table and `on_store_failure` are validated only while the cap is enabled; a wrong value then throws a
-`ConfigurationException` at the first send that names the wrong key.
+The table and `on_store_failure` are validated only while the cap is enabled; a wrong value then throws a `ConfigurationException` at the first send that names the wrong key.
 
 ### Store failure policy
 
-The gate never throws. If the counter store is unavailable (the counter retries its compare-and-set several times, then
-gives up):
+The gate never throws. If the counter store is unavailable (the counter retries its compare-and-set several times, then gives up):
 
 - `allow` (default) **fails open**: the destinations proceed. A cache outage never silences notifications.
-- `deny` **fails closed**: the destinations are skipped with `PolicyFrequencyCapped` and the hint `Frequency counters
-  unavailable; failing closed.` A cache outage never causes a flood.
+- `deny` **fails closed**: the destinations are skipped with `PolicyFrequencyCapped` and the hint `Frequency counters unavailable; failing closed.` A cache outage never causes a flood.
 
-Note that the package's cache adapter swallows some cache errors and behaves like an empty store; the two policies apply
-when the counter itself reports that it could not be updated.
+Note that the package's cache adapter swallows some cache errors and behaves like an empty store; the two policies apply when the counter itself reports that it could not be updated.
 
 ### Seeing it work
 
-The counter and the table are plain classes. This example (in-memory store, no application needed) shows the rolling
-window and the once-per-effect rule:
+The counter and the table are plain classes. This example (in-memory store, no application needed) shows the rolling window and the once-per-effect rule:
 
 ```php
 use Padosoft\MobilePush\Core\Clock\SystemClock;
@@ -149,24 +127,15 @@ expect($first->allowed)->toBeTrue()
 
 ## The server-side badge counter
 
-The iOS badge is a number on the icon. If your server computes it, every device of a person must show the **same** number,
-and a retry must not add one more.
+The iOS badge is a number on the icon. If your server computes it, every device of a person must show the **same** number, and a retry must not add one more.
 
-- Ask for it on the message: `->incrementBadge()`. The counter is per **(scope, owner)**: one counter for the person, not for
-  each phone. Set `badge.per_binding = true` for one counter per connection.
-- It is incremented **once per effect**: the value each effect received is remembered with the counter, so every device of
-  the owner and every retry or continuation of the same effect gets the **same number**; two workers incrementing at once
-  are serialised by a compare-and-set (no lost update).
+- Ask for it on the message: `->incrementBadge()`. The counter is per **(scope, owner)**: one counter for the person, not for each phone. Set `badge.per_binding = true` for one counter per connection.
+- It is incremented **once per effect**: the value each effect received is remembered with the counter, so every device of the owner and every retry or continuation of the same effect gets the **same number**; two workers incrementing at once are serialised by a compare-and-set (no lost update).
 - An explicit `->badge(n)` wins and never touches the counter.
 - Only registry devices with an owner take part. Destinations without an owner (raw tokens) keep the message exactly as it is.
-- The increment happens when the message is resolved for the owner, **before** the gates run: a device later skipped (not
-  eligible, capped) has still moved the counter. The counter is the server's idea of "unread", not a count of delivered
-  pushes.
-- If the counter store is unavailable the message is sent **unchanged** (no badge change on the device is better than a
-  wrong number).
-- The markers that make the increment idempotent expire after 3 days and only the newest 256 per owner are kept: a retry
-  later than that, or after more than 256 other effects of the same owner, would increment again. Retries happen within
-  minutes, so this is the documented trade-off.
+- The increment happens when the message is resolved for the owner, **before** the gates run: a device later skipped (not eligible, capped) has still moved the counter. The counter is the server's idea of "unread", not a count of delivered pushes.
+- If the counter store is unavailable the message is sent **unchanged** (no badge change on the device is better than a wrong number).
+- The markers that make the increment idempotent expire after 3 days and only the newest 256 per owner are kept: a retry later than that, or after more than 256 other effects of the same owner, would increment again. Retries happen within minutes, so this is the documented trade-off.
 - The counter itself is forgotten after `badge.ttl_days` (default 90) without an increment or a set.
 
 | Key | Env | Default |
@@ -201,8 +170,7 @@ expect($one->badge)->toBe(1)
 
 ### Reset when the app opens
 
-The package cannot know when the person opened the app. Write one endpoint and call it from the app at launch and
-whenever it comes to the foreground, and set the icon badge to 0 on the device at the same time:
+The package cannot know when the person opened the app. Write one endpoint and call it from the app at launch and whenever it comes to the foreground, and set the icon badge to 0 on the device at the same time:
 
 ```php
 // routes/api.php
@@ -218,10 +186,7 @@ Route::post('/push/badge/reset', function (Request $request) {
 })->middleware('auth:sanctum');
 ```
 
-`MobilePush::currentBadge($owner, ?$connection, ?$scope)` returns the stored number (0 when there is none). `resetBadge()`
-and `currentBadge()` take an Eloquent owner (other objects throw a `ConfigurationException`) and the current scope unless
-you pass one. After a reset the counters remembered per effect are kept, so a retry of an effect that already counted still
-reports the number it was given.
+`MobilePush::currentBadge($owner, ?$connection, ?$scope)` returns the stored number (0 when there is none). `resetBadge()` and `currentBadge()` take an Eloquent owner (other objects throw a `ConfigurationException`) and the current scope unless you pass one. After a reset the counters remembered per effect are kept, so a retry of an effect that already counted still reports the number it was given.
 
 ---
 

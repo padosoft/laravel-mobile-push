@@ -56,6 +56,8 @@ final readonly class DeliveryRelay
         private QueueSettings $settings,
         /** Receipts module: issues the `mp_r` marker per individual destination (null when the module is absent). */
         private ?ReceiptMarkerIssuer $receipts = null,
+        /** The binding-mismatch event and log records (null: only the ledger records the skip). */
+        private ?BindingMismatches $mismatches = null,
     ) {}
 
     public function run(string $scope, ?string $effectId = null, ?string $owner = null): RelayReport
@@ -68,6 +70,8 @@ final readonly class DeliveryRelay
         $deadlineReached = false;
         /** @var array<string, Effect|null> $effects */
         $effects = [];
+        /** @var array<string, Reason> $mismatched effect id => binding-mismatch reason (event dispatched once per run) */
+        $mismatched = [];
 
         while (true) {
             $now = LedgerTime::ms($this->clock->now());
@@ -91,7 +95,7 @@ final readonly class DeliveryRelay
             foreach ($byEffect as $id => $group) {
                 $id = (string) $id;
                 $effects[$id] ??= $this->ledger->effect($scope, $id);
-                [$h, $l] = $this->relayEffect($scope, $effects[$id], $group, $recorder);
+                [$h, $l] = $this->relayEffect($scope, $effects[$id], $group, $recorder, $mismatched);
                 $handed += $h;
                 $lost += $l;
                 if ($recorder->hasFailures()) {
@@ -122,9 +126,10 @@ final readonly class DeliveryRelay
 
     /**
      * @param  list<ClaimedDelivery>  $claimed  deliveries of one effect
+     * @param  array<string, Reason>  $mismatched
      * @return array{0: int, 1: int} [handed over, leases lost]
      */
-    private function relayEffect(string $scope, ?Effect $effect, array $claimed, RelayRecorder $recorder): array
+    private function relayEffect(string $scope, ?Effect $effect, array $claimed, RelayRecorder $recorder, array &$mismatched): array
     {
         $message = $effect === null || ! $effect->hasMessage ? null : $this->message($scope, $effect->id);
         if ($effect === null || $message === null) {
@@ -135,8 +140,17 @@ final readonly class DeliveryRelay
 
         try {
             $options = $this->dispatcher->defaultOptions($effect->binding);
-        } catch (UnknownConnectionException) {
-            $this->skipAll($claimed, Reason::of(ReasonCode::BindingMismatch, null, 'The connection of this effect no longer resolves: nothing was sent, no fallback to another connection.'), $recorder);
+        } catch (UnknownConnectionException $e) {
+            // Same rule as a direct send: Skipped(BindingMismatch) for every destination, no attempt, the event once
+            // per run (later chunks of the same effect in this run reuse the reason).
+            $reason = $mismatched[$effect->id] ??= $this->mismatches?->detected($this->dispatcher, $effect->binding, $e)
+                ?? Reason::of(ReasonCode::BindingMismatch, null, 'The connection of this effect no longer resolves: nothing was sent, no fallback to another connection.');
+            $results = array_map(static fn (ClaimedDelivery $c): SendResult => self::result($c, SendStatus::Skipped, $reason), $claimed);
+            foreach ($claimed as $i => $c) {
+                $recorder->expect($c->id(), $c->effectId(), $c->lease);
+                $recorder->save($c->id(), $results[$i]);
+            }
+            $this->mismatches?->log($effect->binding, $results, ['operation' => $effect->operation->value, 'traffic_class' => $effect->trafficClass->value, 'effect_id' => $effect->id]);
 
             return [0, 0];
         }

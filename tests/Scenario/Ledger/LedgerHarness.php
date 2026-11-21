@@ -68,6 +68,36 @@ final class LedgerHarness
         return [new TokenIndex(new KeyRing([1 => random_bytes(32)])), new TokenCipher(new KeyRing([1 => random_bytes(32)]))];
     }
 
+    /**
+     * Test hook: rewrite the stored logical keys of an effect's deliveries (to stage rows in an older key format).
+     *
+     * @param  \Closure(string): string  $rewrite
+     */
+    public function rewriteLogicalKeys(string $effectId, \Closure $rewrite): void
+    {
+        if ($this->ledger instanceof \Padosoft\MobilePush\Laravel\Ledger\DatabaseLedger) {
+            $table = $this->ledger->connection()->table('mobile_push_deliveries');
+            foreach ((clone $table)->where('effect_id', $effectId)->get(['id', 'logical_key']) as $row) {
+                (clone $table)->where('id', $row->id)->update(['logical_key' => $rewrite((string) $row->logical_key)]);
+            }
+
+            return;
+        }
+        $deliveries = new \ReflectionProperty($this->ledger, 'deliveries');
+        $keys = new \ReflectionProperty($this->ledger, 'deliveryKeys');
+        $rows = $deliveries->getValue($this->ledger);
+        $index = $keys->getValue($this->ledger);
+        foreach ($rows as $id => $row) {
+            if ($row['effect_id'] === $effectId) {
+                unset($index[$effectId.'|'.$row['logical_key']]);
+                $rows[$id]['logical_key'] = $rewrite((string) $row['logical_key']);
+                $index[$effectId.'|'.$rows[$id]['logical_key']] = $id;
+            }
+        }
+        $deliveries->setValue($this->ledger, $rows);
+        $keys->setValue($this->ledger, $index);
+    }
+
     /** @return array{effects: list<array<string, mixed>>, deliveries: list<array<string, mixed>>} */
     public function rows(): array
     {
