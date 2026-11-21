@@ -109,3 +109,81 @@ it('two relay jobs for the same effect at once: every delivery is sent exactly o
         ->and(array_values(array_unique($perToken)))->toBe([1])
         ->and(QueueWorld::deliveryStates())->toBe(['accepted' => 10]);
 });
+
+/*
+ * W5-P: the attempt is marked started when the Sender hands the requests to the transport, not when an item enters
+ * its window. Windows of 5 here.
+ */
+
+/**
+ * Make the worker die right before the `$nth` SQL statement matching `$pattern` (the statement does not run) and
+ * stay dead: every later statement of the process fails too, until the returned closure revives the database for
+ * the next worker.
+ */
+function dieOnStatement(string $pattern, int $nth): Closure
+{
+    $state = new ArrayObject(['seen' => 0, 'dead' => false, 'over' => false]);
+    Illuminate\Support\Facades\DB::connection()->beforeExecuting(static function (string $sql) use ($pattern, $nth, $state): void {
+        if ($state['over']) {
+            return;
+        }
+        if ($state['dead'] || (preg_match($pattern, $sql) === 1 && ++$state['seen'] === $nth)) {
+            $state['dead'] = true;
+
+            throw new WorkerDied('the worker died at: '.$pattern);
+        }
+    });
+
+    return static function () use ($state): void {
+        $state['over'] = true;
+    };
+}
+
+it('a worker killed while a window fills: the items not yet handed to the transport are simply due again, no attempt, no unknown outcome', function (): void {
+    $this->w->dispatcher->window = 5;
+    ($this->queue)(PushMessage::make('Order', 'Shipped'));
+    // The second window is full and about to be handed over: the process dies before its start is written.
+    $revive = dieOnStatement('/^update "mobile_push_deliveries" set "state" = \?, "attempt_started_at"/', 2);
+
+    expect(fn () => $this->w->run(Queue::pushed(RelayDeliveriesJob::class)->first()))->toThrow(WorkerDied::class);
+    $revive();
+    $before = QueueWorld::deliveryStates();
+    $this->w->advance(61);
+    $sweep = $this->w->sweeper()->sweep();
+    foreach (Queue::pushed(RelayDeliveriesJob::class)->slice(1) as $job) {
+        $this->w->run($job);
+    }
+
+    $perToken = $this->w->apnsRequestsPerToken();
+    expect($before)->toBe(['accepted' => 5, 'leased' => 5])          // nothing "sending": they never left
+        ->and($sweep->requeued)->toBe(5)
+        ->and($sweep->endedUnknown + $sweep->retriedAfterUnknown)->toBe(0)
+        ->and(QueueWorld::deliveryStates())->toBe(['accepted' => 10])
+        ->and($perToken)->toHaveCount(10)
+        ->and(array_values(array_unique($perToken)))->toBe([1])
+        // the requeued deliveries had no attempt counted before their real one
+        ->and(Illuminate\Support\Facades\DB::table('mobile_push_deliveries')->pluck('attempts')->unique()->values()->all())->toBe([1]);
+});
+
+it('a worker killed after a window was handed to the transport: every request of it follows the unknown-outcome rule', function (): void {
+    $this->w->dispatcher->window = 5;
+    ($this->queue)(PushMessage::make('Order', 'Shipped'));
+    // The second window went out; the process dies while writing its outcomes (the 6th outcome written).
+    $revive = dieOnStatement('/^update "mobile_push_deliveries" set "state" = \?, "attempts"/', 6);
+
+    expect(fn () => $this->w->run(Queue::pushed(RelayDeliveriesJob::class)->first()))->toThrow(WorkerDied::class);
+    $revive();
+    $before = QueueWorld::deliveryStates();
+    $this->w->advance(61);
+    $sweep = $this->w->sweeper()->sweep();
+    foreach (Queue::pushed(RelayDeliveriesJob::class)->slice(1) as $job) {
+        $this->w->run($job);
+    }
+
+    // The whole second window was handed to the transport: none of it can be proven unsent, so an alert is never
+    // sent again and ends unknown (never failed). The window's outcomes are written together: none of them stuck.
+    expect($before)->toBe(['accepted' => 5, 'sending' => 5])
+        ->and($sweep->endedUnknown)->toBe(5)
+        ->and(QueueWorld::deliveryStates())->toBe(['accepted' => 5, 'outcome_unknown' => 5])
+        ->and($this->w->transport->sentCount())->toBe(10);
+});

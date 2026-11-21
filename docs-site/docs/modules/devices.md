@@ -186,7 +186,7 @@ Every row has a `generation`, starting at 1. A job, a ledger row or a queued pus
 | The row was `quarantined` or `invalidated` and the app registers it again | generation + 1, state `active`, `registered_at` = now |
 | A **different owner** registers the same token (logout then login of another user, shared phone) | generation + 1, owner replaced, `registered_at` = now |
 | `unregister($binding, $destination, $owner)` (logout of one phone) | owner cleared, generation + 1; the row is kept. If a *different* current owner holds it, nothing changes (a late logout of user A must not detach user B) |
-| `DeviceRegistrar::forgetOwner($owner, $scope = null)` | clears the owner on every device of that owner (one statement) and bumps each generation. **This is a detach, not an erasure**: the encrypted token stays in the row. To erase, use `mobile-push:forget` (see [commands](/operations/commands)) |
+| `DeviceRegistrar::detachOwner($owner, $scope = null)` | clears the owner on every device of that owner (one statement) and bumps each generation. **This is a detach, not an erasure**: the encrypted token stays in the row. To erase, use `mobile-push:forget` (see [commands](/operations/commands)) |
 
 Two writers racing on the same destination are serialised by a unique key on `(binding_identity, kind, token_index)` and a row lock; the loser re-reads and treats its call as a re-registration.
 

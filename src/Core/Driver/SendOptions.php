@@ -104,6 +104,12 @@ final readonly class SendOptions
         return $this->copy(['validateOnly' => $validateOnly]);
     }
 
+    /** The same options with other live-sending settings (the non-production allow-list of the binding). */
+    public function withLive(LiveSettings $live): self
+    {
+        return $this->copy(['live' => $live]);
+    }
+
     public function withWindow(?int $window): self
     {
         return $this->copy(['window' => $window]);
@@ -129,8 +135,9 @@ final readonly class SendOptions
      */
     private function copy(array $changes): self
     {
-        /** @var array{trafficClass: TrafficClass, validateOnly: bool, effectKey: ?string, expiresAt: ?\DateTimeImmutable, window: ?int, retryPolicy: ?RetryPolicy, receiptMarker: (callable(Destination, string): ?string)|null, gates: list<DestinationGate>, observers: list<SendObserver>} $v */
+        /** @var array{live: LiveSettings, trafficClass: TrafficClass, validateOnly: bool, effectKey: ?string, expiresAt: ?\DateTimeImmutable, window: ?int, retryPolicy: ?RetryPolicy, receiptMarker: (callable(Destination, string): ?string)|null, gates: list<DestinationGate>, observers: list<SendObserver>} $v */
         $v = array_replace([
+            'live' => $this->live,
             'trafficClass' => $this->trafficClass,
             'validateOnly' => $this->validateOnly,
             'effectKey' => $this->effectKey,
@@ -149,7 +156,7 @@ final readonly class SendOptions
             $this->applicationEnvironment,
             $this->configuredMode,
             $this->effectiveMode,
-            $this->live,
+            $v['live'],
             $v['retryPolicy'],
             $v['receiptMarker'],
             $v['gates'],

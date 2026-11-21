@@ -209,7 +209,7 @@ What it **cannot reach**, printed with every report (and in the `export` notes):
 Also true, and not hidden by the report: deliveries to **raw tokens** (`toToken()`) carry no owner and cannot be found by
 owner (only the effects that originate from a notifiable can); the `effect_key` is not erased; and a message snapshot is
 erased for a whole effect, so a single effect that also addressed other recipients loses its snapshot for them too. The
-registry method `DeviceRegistrar::forgetOwner()` only **detaches** a device from its owner (a "logout"); it is not
+registry method `DeviceRegistrar::detachOwner()` only **detaches** a device from its owner (a "logout"); it is not
 erasure.
 
 ```bash

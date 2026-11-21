@@ -161,3 +161,17 @@ it('a failed campaign is resumable, so prune keeps it; the prune count is exactl
         ->and($w->campaigns()->find('default', $failing->id))->not->toBeNull()
         ->and($w->campaigns()->countPrunable())->toBe(0);
 });
+
+it('completes as soon as its last relay run ends, without waiting for the sweep, and announces its effect once with the final counts', function (): void {
+    Event::fake([CampaignCompleted::class, Padosoft\MobilePush\Laravel\Integration\EffectSettled::class]);
+    $w = CampaignWorld::boot();
+    CampaignWorld::seedDevices(2500);
+    $campaign = $w->dispatch(DeviceAudience::all());
+    $w->drain();   // planner slices and relays only: no sweep, nobody reads progress()
+
+    expect(CampaignWorld::row($campaign->id)->status)->toBe('completed');
+    Event::assertDispatchedTimes(CampaignCompleted::class, 1);
+    Event::assertDispatchedTimes(Padosoft\MobilePush\Laravel\Integration\EffectSettled::class, 1);
+    Event::assertDispatched(Padosoft\MobilePush\Laravel\Integration\EffectSettled::class, static fn ($e): bool => $e->effectId === $campaign->effectId
+        && $e->counts->of(Padosoft\MobilePush\Core\Ledger\DeliveryState::Accepted) === 2500 && $e->counts->total() === 2500);
+});

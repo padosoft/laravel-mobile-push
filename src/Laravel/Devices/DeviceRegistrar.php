@@ -131,7 +131,7 @@ final readonly class DeviceRegistrar
      * Detach an owner from every device (all scopes unless one is given) and bump each generation, in one
      * statement. Returns the number of devices detached.
      */
-    public function forgetOwner(Model $owner, ?string $scope = null): int
+    public function detachOwner(Model $owner, ?string $scope = null): int
     {
         $model = $this->newModel();
         $query = $model->newQuery()

@@ -210,7 +210,7 @@ it('two tenants with the same token and the same local ids stay fully independen
         ->and(app(DeviceEligibility::class)->check($betaRef, $beta)->eligible)->toBeTrue();
 
     // Logout in acme leaves beta alone.
-    expect(($this->registrar)()->forgetOwner($user, 'acme'))->toBe(1)
+    expect(($this->registrar)()->detachOwner($user, 'acme'))->toBe(1)
         ->and($user->pushDestinations($beta))->toHaveCount(1);
 });
 
@@ -257,7 +257,7 @@ it('index key rotation: a device registered under key 1 is found and re-indexed 
         ->and(PushDevice::query()->first()->destination()->value())->toBe($token->value());
 });
 
-it('logout: forgetOwner empties the destinations and kills old refs; unregister by the wrong owner does nothing', function (): void {
+it('logout: detachOwner empties the destinations and kills old refs; unregister by the wrong owner does nothing', function (): void {
     $binding = DeviceWorld::apnsBinding();
     $phone = DeviceWorld::apnsToken('p1');
     $tablet = DeviceWorld::apnsToken('p2');
@@ -272,7 +272,7 @@ it('logout: forgetOwner empties the destinations and kills old refs; unregister 
     expect(($this->registrar)()->unregister($binding, $phone, DeviceWorld::user(99)))->toBeFalse()
         ->and($user->pushDestinations($binding))->toHaveCount(2);
 
-    expect(($this->registrar)()->forgetOwner($user))->toBe(2)
+    expect(($this->registrar)()->detachOwner($user))->toBe(2)
         ->and($user->pushDestinations($binding))->toBe([]);
 
     $verdicts = app(DeviceEligibility::class)->checkMany($refs);

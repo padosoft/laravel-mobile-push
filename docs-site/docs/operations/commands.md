@@ -125,7 +125,7 @@ Queue timeouts
 Result: failures found, fix them before sending (exit 2).
 ```
 
-**`--live`** adds one **real** request per connection, announced before it is sent: for APNs, one push to an obviously invalid device token (APNs is expected to answer `BadDeviceToken`, which proves the credential works; APNs counts that request); for FCM, one `validate_only` call (validated by Google, never delivered). `--live` is **refused** when the effective mode is `simulate` (it would prove nothing).
+**`--live`** adds one **real** request per connection, announced before it is sent: for APNs, one push to an obviously invalid device token (APNs is expected to answer `BadDeviceToken`, which proves the credential works; APNs counts that request); for FCM, one `validate_only` call (validated by Google, never delivered). `--live` is **refused** when the effective mode is `simulate` (it would prove nothing). Outside production it probes only the connections with `live.allow = true`; the probe's own destination needs no entry in `live.only_to`, because it cannot reach a device. A connection without `live.allow` gets a warning ("blocked before the network") instead of a probe.
 
 | Exit | Meaning |
 |---|---|

@@ -98,7 +98,7 @@ it('forget me with jobs pending: after forgetOwner the relay sends nothing for t
     ($this->queue)([$phone->destination(), $tablet->destination()]);
 
     $this->w->ledger()->forgetOwner('default', $alice->getMorphClass(), '7');
-    $registrar->forgetOwner($alice);
+    $registrar->detachOwner($alice);
     $this->w->run(($this->firstRelay)());
 
     expect($this->w->transport->sentCount())->toBe(0)

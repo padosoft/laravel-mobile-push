@@ -172,7 +172,7 @@ documentation names both. That is why `broadcast_host` is a choice and not a gue
 |---|---|---|
 | `mobile-push:send` | Prints a banner `SIMULATED: NOTHING WAS SENT`, the results as `simulated`, **exit code 3** | Results `skipped` / `policy_safe_mode`, exit code 1 |
 | `mobile-push:send --validate-only` | `simulated` (nothing sent), exit 3 | `skipped`, exit 1 |
-| `mobile-push:doctor --live` | **Refused, exit 2**: "the effective mode is simulate ... the probe would prove nothing". Plain `doctor` always works: it sends nothing. | The probe reports "was blocked before the network" as a warning |
+| `mobile-push:doctor --live` | **Refused, exit 2**: "the effective mode is simulate ... the probe would prove nothing". Plain `doctor` always works: it sends nothing. | With `live.allow = true` on the connection the probe is sent (its destination cannot reach a device, so it needs no entry in `live.only_to`); without it the probe reports "was blocked before the network" as a warning |
 | `mobile-push:preview`, `mobile-push:simulator`, `mobile-push:explain` | Always local; never send; unaffected by the mode | - |
 | `mobile-push:devices:probe-environment` | Rows `not_sent`; no request | Rows `blocked` |
 | `mobile-push:fcm:topic-subscription` | Reported as simulated, exit 0 | Failed rows, exit 1 |

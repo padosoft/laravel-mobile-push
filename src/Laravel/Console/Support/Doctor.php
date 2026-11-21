@@ -16,8 +16,10 @@ use Padosoft\MobilePush\Core\Outcome\ReasonCode;
 use Padosoft\MobilePush\Core\Outcome\SendResult;
 use Padosoft\MobilePush\Core\Outcome\SendStatus;
 use Padosoft\MobilePush\Core\Policy\ExecutionMode;
+use Padosoft\MobilePush\Core\Policy\LiveSettings;
 use Padosoft\MobilePush\Core\Policy\ModeResolver;
 use Padosoft\MobilePush\Core\Privacy\Redactor;
+use Padosoft\MobilePush\Core\Privacy\TokenIndex;
 use Padosoft\MobilePush\Core\Transport\Curl\CurlCapabilities;
 use Padosoft\MobilePush\Laravel\Devices\DevicesModule;
 use Padosoft\MobilePush\Laravel\Integration\ModuleMigrations;
@@ -371,6 +373,18 @@ final class Doctor
                     $message = PushMessage::make('mobile-push doctor', 'connectivity probe');
                     $options = $options->withValidateOnly(true);
                 }
+                if ($options->live->allow) {
+                    // Outside production the operator allowed live sends from this connection: the probe's own
+                    // destination joins the allow-list for this one request. It cannot reach a device (an invalid
+                    // APNs token; a validate_only call for FCM). Without live.allow the probe stays blocked.
+                    $options = $options->withLive(new LiveSettings(
+                        true,
+                        [...$options->live->onlyTo, $this->app->make(TokenIndex::class)->index($destination, $binding->scope)],
+                        $options->live->allowTopics,
+                        $options->live->allowBroadcast,
+                        $options->live->allowChannelManagement,
+                    ));
+                }
                 $result = $this->firstResult($this->manager->send($binding, $message, [$destination], $options)->results());
             } catch (PushException $e) {
                 $checks[] = DoctorCheck::failed($s, $this->redactor->string($e->getMessage()));
@@ -408,7 +422,7 @@ final class Doctor
             $result->status === SendStatus::Validated => DoctorCheck::ok($section, $kind.' was validated: authentication works.'),
             $authFailure => DoctorCheck::failed($section, $kind.' was refused for authentication reasons: '.$code->value.$raw.'.', $result->reason->hint),
             $result->status === SendStatus::Rejected && $result->httpStatus !== null && $result->httpStatus < 500 => DoctorCheck::ok($section, sprintf('%s answered %s%s with HTTP %d: the provider authenticated the request (this is the expected answer for an invalid token).', $provider === Provider::Apns ? 'APNs' : 'FCM', $code->value, $raw, $result->httpStatus)),
-            $result->status === SendStatus::Skipped => DoctorCheck::warning($section, 'The probe was blocked before the network: '.($result->reason->hint ?? $code->value), 'Outside production a live probe needs the connection\'s live.allow and its destination in live.only_to; run the doctor from production, or accept that this check is skipped.'),
+            $result->status === SendStatus::Skipped => DoctorCheck::warning($section, 'The probe was blocked before the network: '.($result->reason->hint ?? $code->value), 'Outside production a live probe needs live.allow = true on the connection (the probe cannot reach a device, so it does not need an entry in live.only_to); or run the doctor from production.'),
             $result->status === SendStatus::Simulated => DoctorCheck::warning($section, 'The probe was simulated: no request was sent.', 'Set MOBILE_PUSH_MODE=live.'),
             $result->status === SendStatus::OutcomeUnknown => DoctorCheck::failed($section, $kind.' ended with an unknown outcome: the connection failed after the request was written.', 'Check outbound HTTPS/HTTP2 access to the provider (firewall, proxy) and run the probe again.'),
             default => DoctorCheck::failed($section, sprintf('%s ended as %s (%s)%s.', $kind, $result->status->value, $code->value, $raw), $result->reason->hint),

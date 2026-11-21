@@ -163,3 +163,29 @@ it('prints a JSON document with --json', function () {
 
     expect($code)->toBe(0)->and($data['exit_code'])->toBe(0)->and($data['checks'])->not->toBeEmpty();
 });
+
+it('on staging, --live probes a connection that allows live sends without asking for the probe token in live.only_to', function () {
+    $world = W::install(['connections' => [
+        'ios' => W::apns(extra: ['live' => ['allow' => true, 'only_to' => []]]),
+        'android' => W::fcm(extra: ['live' => ['allow' => true, 'only_to' => []]]),
+    ]], environment: 'staging');
+    C::sharedCache();
+
+    [, $out] = C::run('mobile-push:doctor', ['--live' => true]);
+
+    expect($world->requestsTo('api.push.apple.com'))->toHaveCount(1)
+        ->and($world->requestsTo('fcm.googleapis.com'))->toHaveCount(1)
+        ->and($out)->toContain('authentication works')
+        ->and($out)->not->toContain('blocked before the network');
+});
+
+it('on staging, --live stays blocked for a connection that does not allow live sends, and says which key to set', function () {
+    $world = W::install(['connections' => ['ios' => W::apns(extra: ['live' => ['allow' => false]])]], environment: 'staging');
+    C::sharedCache();
+
+    [, $out] = C::run('mobile-push:doctor', ['--live' => true]);
+
+    expect($world->pushRequests())->toHaveCount(0)
+        ->and($out)->toContain('blocked before the network')
+        ->toContain('live.allow = true');
+});
