@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Padosoft\MobilePush\Laravel\Pulse;
 
-use Illuminate\Contracts\Config\Repository;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Pulse\Pulse;
@@ -104,7 +103,10 @@ final class PulseModule implements Module
 
         $app->afterResolving('livewire', $register);
         if ($app->resolved('livewire')) {
-            $register($app->make('livewire'));
+            $livewire = $app->make('livewire');
+            if (is_object($livewire)) {
+                $register($livewire);
+            }
         }
     }
 

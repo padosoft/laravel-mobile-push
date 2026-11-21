@@ -127,7 +127,7 @@ final class MobilePushRecorder
         $environment = $event->binding->environment->value;
 
         foreach ($event->counts as $status => $count) {
-            if (! is_int($count) || $count <= 0 || SendStatus::tryFrom((string) $status) === null) {
+            if ($count <= 0 || SendStatus::tryFrom((string) $status) === null) {
                 continue;
             }
             $this->pulse->record(self::OUTCOME, KeyNormalizer::key([$provider, $connection, $environment, (string) $status]), $count)->sum();
