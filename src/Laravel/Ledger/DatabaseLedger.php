@@ -15,6 +15,7 @@ use Padosoft\MobilePush\Core\Ledger\ClientEvent;
 use Padosoft\MobilePush\Core\Ledger\ClientEventRecording;
 use Padosoft\MobilePush\Core\Ledger\ClientReceiptStore;
 use Padosoft\MobilePush\Core\Ledger\Delivery;
+use Padosoft\MobilePush\Core\Ledger\DeliveryBatches;
 use Padosoft\MobilePush\Core\Ledger\DeliveryCounts;
 use Padosoft\MobilePush\Core\Ledger\DeliveryEvent;
 use Padosoft\MobilePush\Core\Ledger\DeliveryState;
@@ -34,6 +35,7 @@ use Padosoft\MobilePush\Core\Ledger\ReceiptFunnel;
 use Padosoft\MobilePush\Core\Ledger\ReclaimReport;
 use Padosoft\MobilePush\Core\Ledger\Recording;
 use Padosoft\MobilePush\Core\Ledger\Row;
+use Padosoft\MobilePush\Core\Ledger\SettlementProbe;
 use Padosoft\MobilePush\Core\Ledger\Ulid;
 use Padosoft\MobilePush\Core\Message\Message;
 use Padosoft\MobilePush\Core\Outcome\SendResult;
@@ -52,7 +54,7 @@ use Psr\Clock\ClockInterface;
  * rules, one statement per source state. No method keeps a transaction open after it returns; claimDue() uses
  * one short transaction only for the SKIP LOCKED strategy.
  */
-final class DatabaseLedger implements ClientReceiptStore, Ledger
+final class DatabaseLedger implements ClientReceiptStore, DeliveryBatches, Ledger, SettlementProbe
 {
     /** Bound parameters per INSERT statement stay below every driver's limit (SQLite 32766, PostgreSQL 65535). */
     private const MAX_BINDINGS = 30_000;
@@ -102,7 +104,8 @@ final class DatabaseLedger implements ClientReceiptStore, Ledger
     {
         $now = $this->nowMs();
         $scope = LedgerRules::scope($intent->binding->scope);
-        $effect = $intent->effectKey === null ? null : $this->activeEffect($intent, $scope, $now);
+        $previous = null;
+        $effect = $intent->effectKey === null ? null : $this->activeEffect($intent, $scope, $now, $previous);
         $created = false;
 
         if ($effect === null) {
@@ -112,23 +115,27 @@ final class DatabaseLedger implements ClientReceiptStore, Ledger
                 $created = true;
             } else {
                 // A concurrent call with the same key won the unique index: behave as the replay we are.
-                $effect = $this->activeEffect($intent, $scope, $now)
+                $effect = $this->activeEffect($intent, $scope, $now, $previous)
                     ?? throw new \RuntimeException('The effect could not be recorded and no concurrent effect was found.');
+                $previous = null;
             }
         }
 
-        [$added, $existing] = $this->insertDeliveries($effect, $destinations, $now);
+        // A new effect cannot hold rows written before W5-P (dev:<kind>:<id>:<generation>): only a replay checks them.
+        [$added, $existing] = $this->insertDeliveries($effect, $destinations, $now, ! $created);
 
-        return new IntentResult(Effect::fromRow($effect), $created, $added, $existing);
+        return new IntentResult(Effect::fromRow($effect), $created, $added, $existing, $created ? $previous : null);
     }
 
     /**
      * The effect currently owning (scope, binding identity, key), or null. An effect past its dedupe window releases
-     * its key (dedupe_key = NULL; NULLs never collide in a unique index) so a new effect can take it.
+     * its key (dedupe_key = NULL; NULLs never collide in a unique index) so a new effect can take it, and its id is
+     * reported in `$previous`. A key is never released while its effect still has an open delivery (waiting or in
+     * flight): until it settled, a replay is still deduplicated, whatever the window (see docs/contracts/ledger.md).
      *
      * @return array<string, mixed>|null
      */
-    private function activeEffect(EffectIntent $intent, string $scope, int $now): ?array
+    private function activeEffect(EffectIntent $intent, string $scope, int $now, ?string &$previous = null): ?array
     {
         $key = LedgerRules::dedupeKey($intent->effectKey ?? '');
         $found = $this->effects()
@@ -141,8 +148,9 @@ final class DatabaseLedger implements ClientReceiptStore, Ledger
         }
         $found = Row::of($found);
 
-        if (Row::int($found, 'dedupe_until') <= $now) {
+        if (Row::int($found, 'dedupe_until') <= $now && ! $this->hasOpenDeliveries($scope, Row::str($found, 'id'))) {
             $this->effects()->where('id', Row::str($found, 'id'))->update(['dedupe_key' => null, 'updated_at' => $now]);
+            $previous = Row::str($found, 'id');
 
             return null;
         }
@@ -159,12 +167,12 @@ final class DatabaseLedger implements ClientReceiptStore, Ledger
      * @param  iterable<Destination>  $destinations
      * @return array{0: int, 1: int}
      */
-    private function insertDeliveries(array $effect, iterable $destinations, int $now): array
+    private function insertDeliveries(array $effect, iterable $destinations, int $now, bool $replay): array
     {
         $scope = Row::str($effect, 'scope');
         $chunkSize = $this->rules->settings->chunkSize;
         $added = $seen = 0;
-        $chunk = [];
+        $chunk = $legacy = [];
 
         foreach ($destinations as $destination) {
             $seen++;
@@ -173,15 +181,40 @@ final class DatabaseLedger implements ClientReceiptStore, Ledger
                 continue;
             }
             $chunk[$key] = $this->rules->deliveryRow($effect, $destination, $key, $now);
+            $old = $replay ? LedgerRules::legacyDeviceKey($destination) : null;
+            if ($old !== null) {
+                $legacy[$old] = $key;
+            }
             if (count($chunk) >= $chunkSize) {
-                $added += $this->flushDeliveries($chunk);
-                $chunk = [];
+                $added += $this->flushDeliveries($this->withoutLegacy(Row::str($effect, 'id'), $chunk, $legacy));
+                $chunk = $legacy = [];
             }
         }
-        $added += $this->flushDeliveries($chunk);
+        $added += $this->flushDeliveries($this->withoutLegacy(Row::str($effect, 'id'), $chunk, $legacy));
 
         // Rows the unique index refused were already there (earlier call, or an earlier chunk of this one).
         return [$added, $seen - $added];
+    }
+
+    /**
+     * Drop from a chunk the registry destinations the effect already holds under their pre-W5-P key (one indexed
+     * query per chunk, on the unique (effect_id, logical_key) index; only for a replay of an existing effect).
+     *
+     * @param  array<string, array<string, mixed>>  $chunk
+     * @param  array<string, string>  $legacy  old key => new key
+     * @return array<string, array<string, mixed>>
+     */
+    private function withoutLegacy(string $effectId, array $chunk, array $legacy): array
+    {
+        if ($legacy === []) {
+            return $chunk;
+        }
+        $found = $this->deliveries()->where('effect_id', $effectId)->whereIn('logical_key', array_keys($legacy))->pluck('logical_key')->all();
+        foreach (self::strings($found) as $old) {
+            unset($chunk[$legacy[$old]]);
+        }
+
+        return $chunk;
     }
 
     /**
@@ -307,11 +340,19 @@ final class DatabaseLedger implements ClientReceiptStore, Ledger
             return [];
         }
 
-        $claimed = [];
-        $rows = $this->deliveries()->whereIn('id', $ids)->where('scope', $scope)->where('lease_owner', $owner)
-            ->where('state', DeliveryState::Leased->value)->orderBy('next_attempt_at')->orderBy('id')->get();
-        foreach ($rows as $row) {
+        // Read back by primary key only and keep the rows this owner holds: a condition on scope/state here lets the
+        // planner pick a (scope, state) index and walk every leased row of the scope.
+        $rows = [];
+        foreach ($this->deliveries()->whereIn('id', $ids)->get() as $row) {
             $row = Row::of($row);
+            if (Row::str($row, 'scope') === $scope && Row::strOrNull($row, 'lease_owner') === $owner && Row::str($row, 'state') === DeliveryState::Leased->value) {
+                $rows[] = $row;
+            }
+        }
+        usort($rows, static fn (array $a, array $b): int => [Row::int($a, 'next_attempt_at'), Row::str($a, 'id')] <=> [Row::int($b, 'next_attempt_at'), Row::str($b, 'id')]);
+
+        $claimed = [];
+        foreach ($rows as $row) {
             $delivery = Delivery::fromRow($row);
             try {
                 $destination = $this->rules->destinationOf($delivery, Row::strOrNull($row, 'destination'));
@@ -331,24 +372,44 @@ final class DatabaseLedger implements ClientReceiptStore, Ledger
         return $claimed;
     }
 
-    private function dueQuery(string $scope, ?string $effectId, int $now): Builder
+    /**
+     * The first `$limit` due candidates in (next_attempt_at, id) order: one query PER claimable state, each read in
+     * index order (mp_deliveries_claim_idx, or mp_deliveries_effect_claim_idx for one effect) and stopped at the limit,
+     * then merged. A single `state IN (...)` query cannot be served in that order by any index and made SQLite sort
+     * every due row of the scope on every claim (W5-P).
+     *
+     * @return list<array{id: string, version: int}>
+     */
+    private function candidates(string $scope, ?string $effectId, int $now, int $limit, bool $lock = false): array
     {
-        return $this->deliveries()
-            ->where('scope', $scope)
-            ->whereIn('state', DeliveryState::values(...DeliveryStateMachine::sourcesOf(DeliveryEvent::Claim)))
-            ->where('next_attempt_at', '<=', $now)
-            ->where(static fn (Builder $q): Builder => $q->whereNull('expires_at')->orWhere('expires_at', '>', $now))
-            ->when($effectId !== null, static fn (Builder $q): Builder => $q->where('effect_id', $effectId))
-            ->orderBy('next_attempt_at')
-            ->orderBy('id');
+        $found = [];
+        foreach (DeliveryStateMachine::sourcesOf(DeliveryEvent::Claim) as $state) {
+            $query = ($effectId === null ? $this->deliveries() : $this->deliveries()->where('effect_id', $effectId))
+                ->where('scope', $scope)
+                ->where('state', $state->value)
+                ->where('next_attempt_at', '<=', $now)
+                ->where(static fn (Builder $q): Builder => $q->whereNull('expires_at')->orWhere('expires_at', '>', $now))
+                ->orderBy('next_attempt_at')
+                ->orderBy('id')
+                ->limit($limit);
+            if ($lock) {
+                $query->lock('for update skip locked');
+            }
+            foreach ($query->get(['id', 'version', 'next_attempt_at']) as $row) {
+                $row = Row::of($row);
+                $found[] = ['id' => Row::str($row, 'id'), 'version' => Row::int($row, 'version'), 'at' => Row::int($row, 'next_attempt_at')];
+            }
+        }
+        usort($found, static fn (array $a, array $b): int => [$a['at'], $a['id']] <=> [$b['at'], $b['id']]);
+
+        return array_map(static fn (array $c): array => ['id' => $c['id'], 'version' => $c['version']], array_slice($found, 0, $limit));
     }
 
     /** @return list<string> */
     private function claimSkipLocked(string $scope, string $owner, int $limit, ?string $effectId, int $now, int $lease): array
     {
         return $this->connection()->transaction(function () use ($scope, $owner, $limit, $effectId, $now, $lease): array {
-            $ids = self::strings($this->dueQuery($scope, $effectId, $now)
-                ->limit($limit)->lock('for update skip locked')->pluck('id')->all());
+            $ids = array_column($this->candidates($scope, $effectId, $now, $limit, true), 'id');
             if ($ids === []) {
                 return [];
             }
@@ -363,30 +424,37 @@ final class DatabaseLedger implements ClientReceiptStore, Ledger
         });
     }
 
-    /** @return list<string> */
+    /**
+     * Optimistic claim, set-based: the candidates are grouped by version and each group is taken with ONE guarded
+     * UPDATE (id IN ..., version = v, still claimable); a row another worker took in between simply does not match.
+     * The rows really won are the ones read back with this owner (claimDue()). Returns every id attempted.
+     *
+     * @return list<string>
+     */
     private function claimOptimistic(string $scope, string $owner, int $limit, ?string $effectId, int $now, int $lease): array
     {
-        $claimed = [];
-        for ($round = 0; $round < 3 && count($claimed) < $limit; $round++) {
-            $candidates = $this->dueQuery($scope, $effectId, $now)->limit($limit - count($claimed))->get(['id', 'version']);
-            if ($candidates->isEmpty()) {
+        $attempted = [];
+        $won = 0;
+        for ($round = 0; $round < 3 && $won < $limit; $round++) {
+            $candidates = $this->candidates($scope, $effectId, $now, $limit - $won);
+            if ($candidates === []) {
                 break;
             }
+            $byVersion = [];
             foreach ($candidates as $candidate) {
-                $candidate = Row::of($candidate);
-                $version = Row::int($candidate, 'version');
-                $won = $this->deliveries()
-                    ->where('id', Row::str($candidate, 'id'))
+                $byVersion[$candidate['version']][] = $candidate['id'];
+                $attempted[] = $candidate['id'];
+            }
+            foreach ($byVersion as $version => $ids) {
+                $won += $this->deliveries()
+                    ->whereIn('id', $ids)
                     ->where('version', $version)
                     ->whereIn('state', DeliveryState::values(...DeliveryStateMachine::sourcesOf(DeliveryEvent::Claim)))
                     ->update(LedgerRules::claimChanges($owner, $version, $now, $lease));
-                if ($won === 1) {
-                    $claimed[] = Row::str($candidate, 'id');
-                }
             }
         }
 
-        return $claimed;
+        return $attempted;
     }
 
     public function markAttemptStarted(Lease $lease): bool
@@ -401,6 +469,97 @@ final class DatabaseLedger implements ClientReceiptStore, Ledger
             ->where('lease_expires_at', '>', $now)
             ->whereIn('state', DeliveryState::values(...DeliveryStateMachine::sourcesOf(DeliveryEvent::StartAttempt)))
             ->update(['state' => DeliveryState::Sending->value, 'attempt_started_at' => $now, 'updated_at' => $now]) === 1;
+    }
+
+    public function markAttemptsStarted(array $leases): array
+    {
+        if ($leases === []) {
+            return [];
+        }
+        $now = $this->nowMs();
+        $groups = [];
+        foreach ($leases as $lease) {
+            $groups[LedgerRules::scope($lease->scope)."\0".$lease->owner."\0".$lease->version][] = $lease;
+        }
+
+        $started = [];
+        foreach ($groups as $group) {
+            $first = $group[0];
+            $ids = array_map(static fn (Lease $l): string => $l->deliveryId, $group);
+            $guard = fn (): Builder => $this->deliveries()
+                ->whereIn('id', $ids)
+                ->where('scope', LedgerRules::scope($first->scope))
+                ->where('lease_owner', $first->owner)
+                ->where('version', $first->version);
+            $updated = $guard()
+                ->where('lease_expires_at', '>', $now)
+                ->whereIn('state', DeliveryState::values(...DeliveryStateMachine::sourcesOf(DeliveryEvent::StartAttempt)))
+                ->update(['state' => DeliveryState::Sending->value, 'attempt_started_at' => $now, 'updated_at' => $now]);
+            if ($updated === count($ids)) {
+                array_push($started, ...$ids);
+
+                continue;
+            }
+            // Some leases were lost: the rows this call marked are the ones holding this lease, sending, started now.
+            array_push($started, ...self::strings($guard()->where('state', DeliveryState::Sending->value)->where('attempt_started_at', $now)->pluck('id')->all()));
+        }
+
+        return $started;
+    }
+
+    /**
+     * One read by primary key for the whole batch, then the guarded UPDATEs in one short transaction (no network
+     * inside it: the relay calls this between two windows). A row whose guard no longer matches (a cancel flipped
+     * its flag meanwhile) goes through record(), which reads it again.
+     */
+    public function recordMany(array $records): array
+    {
+        if ($records === []) {
+            return [];
+        }
+        $now = $this->nowMs();
+        $rows = [];
+        foreach ($this->deliveries()->whereIn('id', array_map(static fn (array $r): string => $r[0]->deliveryId, $records))->get() as $row) {
+            $row = Row::of($row);
+            $rows[Row::str($row, 'id')] = $row;
+        }
+
+        $out = [];
+        $again = [];
+        $this->connection()->transaction(function () use ($records, $rows, $now, &$out, &$again): void {
+            foreach ($records as $i => [$lease, $result, $budget]) {
+                $row = $rows[$lease->deliveryId] ?? null;
+                if ($row === null || Row::str($row, 'scope') !== LedgerRules::scope($lease->scope)) {
+                    $out[$lease->deliveryId] = Recording::NotFound;
+
+                    continue;
+                }
+                $verdict = self::verdict($row, $lease);
+                $changes = $verdict === null ? LedgerRules::recordChanges($row, $result, $budget, $now, $this->rules->settings->markerIssued) : null;
+                if ($verdict !== null || $changes === null) {
+                    $out[$lease->deliveryId] = $verdict ?? Recording::IgnoredStaleLease;
+
+                    continue;
+                }
+                $updated = $this->deliveries()
+                    ->where('id', $lease->deliveryId)
+                    ->where('lease_owner', $lease->owner)
+                    ->where('version', $lease->version)
+                    ->where('cancel_requested', Row::bool($row, 'cancel_requested'))
+                    ->update($changes);
+                if ($updated === 1) {
+                    $out[$lease->deliveryId] = Recording::Recorded;
+                } else {
+                    $again[] = $i;
+                }
+            }
+        });
+        foreach ($again as $i) {
+            [$lease, $result, $budget] = $records[$i];
+            $out[$lease->deliveryId] = $this->record($lease, $result, $budget);
+        }
+
+        return $out;
     }
 
     public function record(Lease $lease, SendResult $result, ?RetryBudget $budget = null): Recording
@@ -530,6 +689,26 @@ final class DatabaseLedger implements ClientReceiptStore, Ledger
         return $this->countWhere($scope, static fn (Builder $q): Builder => $q->where('campaign_id', $campaignId));
     }
 
+    public function hasOpenDeliveries(string $scope, string $effectId): bool
+    {
+        // mp_deliveries_effect_claim_idx (effect_id, scope, state, ...): four index seeks, no row of a final state read.
+        return $this->deliveries()->where('effect_id', $effectId)->where('scope', LedgerRules::scope($scope))
+            ->whereIn('state', self::openStates())->exists();
+    }
+
+    public function campaignHasOpenDeliveries(string $scope, string $campaignId): bool
+    {
+        // mp_deliveries_campaign_state_idx (scope, campaign_id, state).
+        return $this->deliveries()->where('scope', LedgerRules::scope($scope))->where('campaign_id', $campaignId)
+            ->whereIn('state', self::openStates())->exists();
+    }
+
+    /** @return list<string> */
+    private static function openStates(): array
+    {
+        return DeliveryState::values(DeliveryState::Pending, DeliveryState::Deferred, DeliveryState::Leased, DeliveryState::Sending);
+    }
+
     public function results(string $scope, string $effectId): \Generator
     {
         $scope = LedgerRules::scope($scope);
@@ -580,15 +759,25 @@ final class DatabaseLedger implements ClientReceiptStore, Ledger
         );
     }
 
+    /**
+     * One query per state, each reading only the rows of that state that need a worker (due, or lease expired):
+     * mp_deliveries_work_idx (state, next_attempt_at, scope) for the waiting states, the (state, ...) prune index for
+     * the in-flight ones (few rows: at most the chunks being worked on). Terminal rows are never read, however many.
+     * The single OR query this replaces scanned the whole table on SQLite.
+     */
     public function scopesWithWork(int $limit = 100): array
     {
         $now = $this->nowMs();
+        $scopes = [];
+        foreach ([[DeliveryState::Pending, 'next_attempt_at'], [DeliveryState::Deferred, 'next_attempt_at'], [DeliveryState::Leased, 'lease_expires_at'], [DeliveryState::Sending, 'lease_expires_at']] as [$state, $column]) {
+            foreach (self::strings($this->deliveries()->where('state', $state->value)->where($column, '<=', $now)->distinct()->pluck('scope')->all()) as $scope) {
+                $scopes[$scope] = true;
+            }
+        }
+        $scopes = array_map('strval', array_keys($scopes));
+        sort($scopes, SORT_STRING);
 
-        return self::strings($this->deliveries()
-            ->where(static fn (Builder $q): Builder => $q
-                ->where(static fn (Builder $q): Builder => $q->whereIn('state', DeliveryState::values(DeliveryState::Pending, DeliveryState::Deferred))->where('next_attempt_at', '<=', $now))
-                ->orWhere(static fn (Builder $q): Builder => $q->whereIn('state', DeliveryState::values(DeliveryState::Leased, DeliveryState::Sending))->where('lease_expires_at', '<=', $now)))
-            ->distinct()->orderBy('scope')->limit($limit)->pluck('scope')->all());
+        return array_slice($scopes, 0, $limit);
     }
 
     // ---------------------------------------------------------------- helpers
