@@ -18,9 +18,11 @@ Related pages: [delivery profiles](delivery-profiles.md), [queues and Horizon](q
 audiences, controls, sending rules, tenants, workers killed at exact points, query plans and scaling runs). The larger
 runs are in the `slow` test group. Everything was developed on SQLite with a fake transport; the same scenarios also run
 on **MySQL 8.4 and PostgreSQL 17 in CI** (the query plans of every hot query are asserted on SQLite; on the server engines the claim's plan is
-asserted and every other hot query is checked to have an index that can serve it; the scaling runs were made on SQLite, plus one on
-PostgreSQL 16). Nothing was sent to a real provider, and no campaign was
-run on a Redis or SQS queue, or under Horizon.
+asserted and every other hot query is checked to have an index that can serve it; the scaling runs were made on SQLite, PostgreSQL
+and MySQL, see below), and since 2026-11-21 on MariaDB 11.4. Nothing was sent to a real provider. On a real queue backend one
+small campaign is run in CI on a freshly created application: 250 registered devices planned in slices of 100, on a **Redis**
+queue and on an **SQS** queue (ElasticMQ emulator), ending `completed` with one delivery per device. No large campaign was run on
+those backends, and none under Horizon.
 
 The entry point is `MobilePush::campaign($message)`: the manager forwards to the campaigns module and returns the
 `CampaignBuilder` described below. Building it checks nothing and writes nothing. The module's checks run when the campaign

@@ -110,6 +110,18 @@ jobs:
           php artisan tinker --execute="$(cat ../package/tests/Support/FreshApp/verify.php)" | tee verify.txt
           ! grep -q 'FRESH-APP SMOKE FAILED' verify.txt
           test "$(grep -c '^ok: ' verify.txt)" = 4
+      - name: A campaign of 250 devices, planned in slices of 100, on the SQS queue
+        working-directory: app
+        run: |
+          sed -i "s/'slice' => 1000/'slice' => 100/" config/mobile-push.php
+          grep -q "'slice' => 100," config/mobile-push.php
+          php artisan tinker --execute="$(cat ../package/tests/Support/FreshApp/campaign.php)" | tee campaign.txt
+          ! grep -q 'FRESH-APP SMOKE FAILED' campaign.txt
+          grep -q 'queue driver: sqs' campaign.txt
+          php artisan queue:work sqs --queue=push,push-bulk --stop-when-empty --tries=1 --timeout=55
+          php artisan tinker --execute="$(cat ../package/tests/Support/FreshApp/verify-campaign.php)" | tee verify-campaign.txt
+          ! grep -q 'FRESH-APP SMOKE FAILED' verify-campaign.txt
+          test "$(grep -c '^ok: ' verify-campaign.txt)" = 4
       - name: The same with DynamoDB as cache store
         working-directory: app
         run: |

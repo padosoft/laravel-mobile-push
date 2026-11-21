@@ -284,7 +284,8 @@ Be precise about these; they are the reason the word "exactly once" does not app
 
 - **MySQL and PostgreSQL under load.** What was run: the database-backed scenarios (ledger contract in both claim
   strategies, relay, crash recovery, campaigns, devices, Live Activities, receipts, install) pass on **MySQL 8.4 and
-  PostgreSQL 17 in CI**, and the whole suite passed once on a local PostgreSQL 16. One scenario uses two real
+  PostgreSQL 17 in CI** (and, since 2026-11-21, on **MariaDB 11.4**, concurrency and query-plan scenarios included;
+  the scaling guards and mutation testing were not run there), and the whole suite passed once on a local PostgreSQL 16. One scenario uses two real
   connections: a second worker claims while the first one is inside its `FOR UPDATE SKIP LOCKED` transaction, and every
   delivery is claimed exactly once. On MySQL that scenario first failed with a lock wait timeout: at InnoDB's default
   REPEATABLE READ a locking read also locks index gaps, and the other claimer's `UPDATE` waited for them; the claim
@@ -298,7 +299,7 @@ Be precise about these; they are the reason the word "exactly once" does not app
   open transaction while a second connection commits a change to the same row, on both engines; a re-read after a
   lost write is a locking read, and a write a unique index may refuse runs in a savepoint (on PostgreSQL it would
   otherwise abort your whole transaction). What was **not**
-  run: many worker processes at production volume, MariaDB, and MySQL with `binlog_format=STATEMENT` (which does not
+  run: many worker processes at production volume, and MySQL with `binlog_format=STATEMENT` (which does not
   allow READ COMMITTED writes on InnoDB).
 - **Scaling on the server engines** was measured on GitHub-hosted runners (the `scaling` workflow, weekly; noisy
   machines, so read orders of magnitude). One effect of 200,000 destinations against one of 25,000: PostgreSQL 17 went

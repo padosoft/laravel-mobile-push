@@ -13,7 +13,7 @@ Related pages: [messages](messages.md), [sending](sending.md), [notifications an
 [devices](devices.md), [configuration](configuration.md), [outcomes](outcomes.md).
 
 What was not verified: both are covered by scenario and unit tests against the in-memory store and the `array` cache.
-Behaviour on Redis, Memcached or a database cache under real concurrency was not exercised.
+Behaviour on Redis, Memcached or a database cache under real concurrency was not exercised for these two features (the cache layer they sit on was: eight processes on Redis, memcached, DynamoDB Local, a database and a file store; see [runtimes](runtimes.md)).
 
 ## `policy` is not `actionCategory`
 
