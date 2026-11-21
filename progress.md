@@ -6,7 +6,7 @@
 ## Dove siamo
 
 - **Porta corrente:** Contratto → Alpha (invio diretto)
-- **Milestone corrente:** ondate 1 e 2 concluse; ondata 3 in corso (W3-A manager/facade/eventi, W3-L Live Activities, W3-FIX correzioni)
+- **Milestone corrente:** ondate 1–3 concluse; ondata 4 quasi conclusa (restano W4-C campagne e W4-I integrazione); ondata 5 in corso (documentazione, README, benchmark, runtime longevi)
 - **Prossimo passo concreto:** vedi "Ondata in corso"
 - **Piano:** `docs/PLAN.md` (v2 approvata il 2026-11-20)
 - **Repository remoto:** `https://github.com/padosoft/laravel-mobile-push` (privato), branch `main`. Push dopo ogni ondata integrata.
@@ -66,6 +66,22 @@
 
 **Da lanciare quando rientra W3-A** (dipendono dall'API del manager): canali Notification + ripiego su altro canale; `PushFake` e `fakeTransport`; comandi Artisan (install, doctor, send, preview, explain, simulator, connections, circuit, relay, prune, health, credentials:check, forget, export, live-activity:*, channels:*, fcm:topic-subscription); modulo Policies (limite di frequenza, contatore badge); Pulse e Telescope; integrazione finale (config del ledger/health/receipts/queue, cablaggio metriche e avvisi).
 **Poi:** campagne (M8), test sui runtime longevi, benchmark, `ConfigSchema` + docs generate, README (M9).
+
+**Ondata 4** (2026-11-21) — rientrati: W4-P policies, W4-N canali Notification + ripiego, W4-O Pulse/Telescope, W4-K1 comandi base, W4-K2 comandi operativi + cancellazione, W4-K3 comandi Live Activities/canali, W4-T fake. In corso: W4-C (Opus, campagne), W4-I (Opus, integrazione: config completa + `ConfigSchema` + `docs/configuration.md`, cablaggio metriche/avvisi/ricevute/policies, lacune del manager).
+
+**Ondata 5** (lanciata 2026-11-21):
+
+| Id | Modello | File | Contenuto |
+|---|---|---|---|
+| W5-D1 | Opus | `README.md`, `docs/{getting-started,credentials-apns,credentials-fcm,sending,messages,testing,comparison,index}.md` | README e guide principali, confronto ancorato a commit |
+| W5-D2 | Sonnet | `docs/{outcomes,retries-and-limits,delivery-profiles,queues-and-horizon,multi-tenancy,safe-mode,security-and-privacy,troubleshooting,commands,upgrading}.md` | Guide operative |
+| W5-D3 | Sonnet | `docs/{devices,live-activities,receipts,campaigns,notifications-and-fallback,policies,observability,topics,migrating-*}.md` | Guide dei moduli e migrazione |
+| W5-B | Sonnet | `benchmarks/**` | Harness e risultati riproducibili, confronto con pushok sul mock |
+| W5-R | Opus | `tests/Scenario/Runtime`, `tests/Scenario/Laravel/Runtime`, `docs/runtimes.md` | Worker longevi, fork, 200 tenant, richieste sovrapposte, matrice dei runtime |
+
+Gli esempi PHP marcati con `<!-- example: id -->` in README e `docs/*.md` sono eseguiti da `tests/Scenario/Laravel/Docs/DocExamplesTest.php`.
+
+**Dopo le ondate 4 e 5:** seam ufficiali nel manager per i fake (via reflection e ambiente `production` oggi); comandi campagne; job CI con MySQL/PostgreSQL/Redis; riconciliazione finale docs ↔ codice; `composer check` completo; aggiornamento CHANGELOG.
 
 **Dopo l'ondata 1 (orchestratore):** integrare, `composer check`, commit locale, aggiornare questa tabella.
 **Ondata 2 prevista:** interfaccia `Driver`, `ApnsDriver`, `FcmDriver`, `Sender` (compila → guardia di modalità → trasporto → classifica → pianifica retry → report), client canali APNs, client iscrizioni topic FCM, scenari end-to-end sul server mock.

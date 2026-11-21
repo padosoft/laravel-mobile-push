@@ -12,6 +12,7 @@ use Padosoft\MobilePush\Core\Driver\Sender;
 use Padosoft\MobilePush\Core\Exceptions\ConfigurationException;
 use Padosoft\MobilePush\Core\Guard\Guards;
 use Padosoft\MobilePush\Core\Guard\GuardStore;
+use Padosoft\MobilePush\Core\Policy\EndpointCatalog;
 use Padosoft\MobilePush\Core\Policy\SafeModeGuard;
 use Padosoft\MobilePush\Core\Privacy\Redactor;
 use Padosoft\MobilePush\Core\Privacy\TokenIndex;
@@ -36,7 +37,11 @@ use Psr\Log\LoggerInterface;
  *  - SafeModeGuard, RetryPolicy (from `mobile-push.retry` / `unknown_outcome`), SendingSettings;
  *  - Sender: a framework-free sender with those guards, for modules that bypass the manager (the manager attaches
  *    its observer per call with Sender::withObserver());
- *  - ConnectionFactory, Senders, PushManager (+ PushDispatcher).
+ *  - ConnectionFactory, Senders, PushManager (+ PushDispatcher);
+ *  - EndpointCatalog for the application environment (bindIf, singleton).
+ *
+ * Per call the manager attaches two observers: SendingObserver (registry, send log, events) and OperationsObserver
+ * (metrics and operational alerts of the health module, when it is installed).
  */
 final class SendingModule implements Module
 {
@@ -49,6 +54,10 @@ final class SendingModule implements Module
         });
 
         $app->singleton(Transport::class, static fn (): Transport => new CurlTransport);
+
+        // The official endpoints for the application environment (overrides only outside production). Used by modules
+        // that build their own clients on the driver's profiles (Live Activities channel management).
+        $app->bindIf(EndpointCatalog::class, static fn (Application $app): EndpointCatalog => new EndpointCatalog((string) $app->environment()), true);
 
         $app->singleton(SafeModeGuard::class, static fn (Application $app): SafeModeGuard => new SafeModeGuard($app->make(TokenIndex::class)));
 

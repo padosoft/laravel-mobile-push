@@ -22,6 +22,10 @@
 | Light (default) | Nothing | In-process | Best effort | No crash safety; duplicates or omissions possible, including `queueMany()` |
 | Durable | Effects, deliveries, outbox | Unique key in the database | Each destination's outcome is recorded before ack; intent committed with business data when inside a transaction | Does not make the provider's processing exactly-once; an unknown outcome stays unknown |
 
+**Only `queue()` uses the ledger** (decision, W4-I). `PendingSend::send()` is the synchronous path in both profiles: it sends now, returns the report, and writes no effect, no delivery and no outbox row; it never carries a receipt marker (a marker is issued only for a destination that has a ledger delivery id). Use `queue()` when the push must survive a crash, be deduplicated by its effect key across processes, or report client receipts. No `durably()` option exists: a durable synchronous send would need the relay's lease protocol in the caller's process, which is what `queue()` on the `sync` queue connection already gives.
+
+**Payload fingerprint** (decision, W4-I). The effect row stores `v2:k<key version>:<hex>`: HMAC-SHA256 of the canonical message, keyed with a key derived (HKDF, own label) from the encryption key ring (`TokenCipher::digest()`) and bound to the scope, so a short message (an OTP) cannot be confirmed offline from a database dump. Same message, same scope, same key version = same value. Rows written before this change hold the unkeyed `v1:<sha256>` and still match. A keyed value is verified with the key version it names; once that version is removed from the ring the value cannot be verified and a replay of that effect key is a conflict.
+
 ## Delivery states and the write order
 
 | Step | Written | Source |
