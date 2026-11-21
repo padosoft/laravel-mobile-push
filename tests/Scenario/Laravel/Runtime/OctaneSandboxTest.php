@@ -165,6 +165,7 @@ it('flushes the log records of a sandboxed request when that sandbox terminates'
 
 it('KNOWN LIMITATION: with the "array" cache store resolved per request, every sandboxed request mints a new APNs token', function (): void {
     $world = W::install(['connections' => ['ios' => W::apns()]]);
+    config()->set('cache.default', 'array');   // the limitation is about this store, whatever the run's default is
     app()->forgetInstance('cache');
     app()->forgetInstance('cache.store');
 

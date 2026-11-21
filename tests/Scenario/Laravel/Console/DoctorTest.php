@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Padosoft\MobilePush\Core\Transport\Response;
+use Padosoft\MobilePush\Laravel\Console\Support\Doctor;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Console\ConsoleWorld as C;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Sending\SendingWorld as W;
 
@@ -72,6 +73,25 @@ it('warns when live sending is enabled outside production', function () {
 
     expect($code)->toBe(1)->and($out)->toContain('LIVE sending is enabled outside production');
 });
+
+it('warns when Octane\'s Swoole options turn on the curl coroutine hook, and only then', function (mixed $flags, bool $warns) {
+    config()->set('octane.swoole.options.hook_flags', $flags);
+
+    $warnings = array_values(array_filter(app(Doctor::class)->run(), static fn ($check): bool => $check->section === 'Runtime'));
+
+    expect(count($warnings))->toBe($warns ? 1 : 0);
+    if ($warns) {
+        expect($warnings[0]->status->value)->toBe('warning')
+            ->and($warnings[0]->label)->toContain('curl coroutine hook')
+            ->and($warnings[0]->remedy)->toContain('queue workers');
+    }
+})->with([
+    'no Octane config' => [null, false],
+    'every hook (SWOOLE_HOOK_ALL as Swoole 6 defines it)' => [2143287295, true],
+    'the native curl hook alone' => [4096, true],
+    'the older curl hook alone' => [2048, true],
+    'every hook but the two curl ones' => [2143287295 & ~(2048 | 4096), false],
+]);
 
 it('never reports queue timeouts as ok when they cannot be verified', function () {
     W::install(C::both());

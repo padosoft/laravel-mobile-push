@@ -25,4 +25,15 @@ $campaign = MobilePush::campaign(PushMessage::make('Black Friday', '-40% today')
     ->name('smoke-campaign')->via('ios')->audience(DeviceAudience::all())->dispatch();
 file_put_contents(storage_path('campaign-id'), $campaign->id);
 $must($campaign->status->value === 'planning', 'the campaign is planning (queue driver: '.config('queue.default').')');
-$must(Queue::size('push-bulk') + Queue::size('push') >= 1, 'a planner job is waiting for the worker');
+$waiting = 0;
+foreach (['push-bulk', 'push'] as $queue) {
+    try {
+        $waiting += Queue::size($queue);
+    } catch (Throwable $e) {
+        // beanstalkd: a tube that never held a job does not exist, and asking for its size throws
+        if (! str_contains($e::class, 'TubeNotFound')) {
+            throw $e;
+        }
+    }
+}
+$must($waiting >= 1, 'a planner job is waiting for the worker');

@@ -33,10 +33,8 @@ final class MobilePushCard extends Card
 
     public function render(): Renderable
     {
-        [$data, $time, $runAt] = $this->remember(fn (): CardData => $this->collect(), 'data');
-        if (! $data instanceof CardData) {
-            $data = new CardData;
-        }
+        [$cached, $time, $runAt] = $this->remember(fn (): array => $this->collect()->toArray(), 'data');
+        $data = CardData::fromArray($cached);
 
         $rate = PulseSettings::fromConfig(app(Repository::class))->sampleRate;
 

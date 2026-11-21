@@ -40,6 +40,13 @@ jobs:
       - name: Slow tests (large batches)
         if: matrix.php == '8.3' && matrix.laravel == '13.*' && matrix.stability == 'prefer-stable'
         run: vendor/bin/pest --group=slow
+      # What a freshly created Laravel 13 application has: a cache store that serialises and rebuilds no object
+      # (cache.serializable_classes = false). See tests/TestCase.php.
+      - name: Laravel tests on a strict, serialising cache store
+        if: matrix.php == '8.4' && matrix.laravel == '13.*' && matrix.stability == 'prefer-stable'
+        env:
+          MOBILE_PUSH_TEST_STRICT_CACHE: '1'
+        run: vendor/bin/pest tests/Unit/Laravel tests/Scenario/Laravel
 
   # EXPERIMENTAL. The suite is developed on SQLite; these jobs run the database-backed scenarios on MySQL and
   # PostgreSQL (row locks, SKIP LOCKED claims, unique constraints, keyset pagination). tests/TestCase.php empties the

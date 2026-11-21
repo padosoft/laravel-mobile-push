@@ -9,7 +9,8 @@ use Padosoft\MobilePush\Laravel\Cache\CacheGuardStore;
 use Padosoft\MobilePush\Laravel\Cache\CacheTokenStore;
 
 it('binds the cache stores as singletons and prefixes every key', function () {
-    config(['mobile-push.cache.prefix' => 'tenant-push']);
+    // The keys are read out of the array store, whatever the default store of the run is.
+    config(['cache.default' => 'array', 'mobile-push.cache.prefix' => 'tenant-push']);
 
     expect($this->app->make(TokenStore::class))->toBeInstanceOf(CacheTokenStore::class)
         ->toBe($this->app->make(TokenStore::class))
@@ -27,7 +28,7 @@ it('binds the cache stores as singletons and prefixes every key', function () {
 });
 
 it('uses the cache store named in the config', function () {
-    config(['cache.stores.other' => ['driver' => 'array'], 'mobile-push.cache.store' => 'other']);
+    config(['cache.default' => 'array', 'cache.stores.other' => ['driver' => 'array'], 'mobile-push.cache.store' => 'other']);
 
     $this->app->make(GuardStore::class)->put('g', '1', 60);
 

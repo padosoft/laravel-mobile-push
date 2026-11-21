@@ -247,6 +247,32 @@ it('can be dropped into a dashboard view with the documented tag', function () {
     expect($html)->toContain('Mobile push')->toContain('apns / ios-main')->toContain('col-span-6');
 });
 
+it('shows the same numbers on the second poll, read back from a cache store that refuses to rebuild objects', function () {
+    // What a freshly created Laravel 13 application has: a store that really serialises, and no class allowed back.
+    $dir = sys_get_temp_dir().'/mp-pulse-cache-'.bin2hex(random_bytes(5));
+    config()->set('cache.serializable_classes', false);
+    config()->set('cache.stores.strict-file', ['driver' => 'file', 'path' => $dir, 'lock_path' => $dir]);
+    config()->set('cache.default', 'strict-file');
+    app('cache')->forgetDriver('strict-file');
+    event(Kit::batch(Kit::binding('ios-main'), ['accepted' => 4]));
+    Pulse::ingest();
+
+    try {
+        $first = Livewire::withoutLazyLoading()->test(MobilePushCard::class)->html();
+        $files = iterator_to_array(new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS)), false);
+        $second = Livewire::withoutLazyLoading()->test(MobilePushCard::class)->html();   // within the cache lifetime: answered by the store
+    } finally {
+        foreach (array_reverse(iterator_to_array(new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST), false)) as $item) {
+            $item->isDir() ? @rmdir($item->getPathname()) : @unlink($item->getPathname());
+        }
+        @rmdir($dir);
+    }
+
+    expect($files)->not->toBeEmpty()   // the card data really went through the store
+        ->and($first)->toContain('apns / ios-main')
+        ->and($second)->toContain('apns / ios-main');
+});
+
 it('publishes its view under the mobile-push-views tag', function () {
     $paths = ServiceProvider::pathsToPublish(null, PulseModule::PUBLISH_TAG);
 

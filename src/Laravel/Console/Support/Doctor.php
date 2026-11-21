@@ -57,7 +57,7 @@ final class Doctor
      */
     public function run(?string $only = null): array
     {
-        $checks = [...$this->php(), ...$this->configuration()];
+        $checks = [...$this->php(), ...$this->runtime(), ...$this->configuration()];
 
         try {
             $mode = $this->mode();
@@ -107,6 +107,31 @@ final class Doctor
             : DoctorCheck::warning($s, 'libcurl cannot take client certificates in memory (needs 7.71 or newer): certificate-based APNs will not work.', 'Use a .p8 key (token authentication), or upgrade libcurl.');
 
         return $checks;
+    }
+
+    // ------------------------------------------------------------------------------------------ runtime
+
+    /**
+     * Octane on Swoole with the curl coroutine hook: read from the application's Octane config, because the doctor
+     * runs in a console process where the hook is never on. With the hook, a second request can enter the transport's
+     * connection pool while the first one waits inside curl; measured with eight requests at a time, most of them
+     * failed and the workers were restarted (docs/runtimes.md).
+     *
+     * @return list<DoctorCheck>
+     */
+    private function runtime(): array
+    {
+        $flags = config('octane.swoole.options.hook_flags');
+        // SWOOLE_HOOK_CURL and SWOOLE_HOOK_NATIVE_CURL, by value: the extension is not loaded in every console.
+        if (! is_int($flags) || ($flags & (2048 | 4096)) === 0) {
+            return [];
+        }
+
+        return [DoctorCheck::warning(
+            'Runtime',
+            'Octane\'s Swoole options turn on the curl coroutine hook (octane.swoole.options.hook_flags): pushes sent from HTTP workers are not safe under concurrent requests.',
+            'Send from queue workers, or take SWOOLE_HOOK_CURL and SWOOLE_HOOK_NATIVE_CURL out of hook_flags (for example SWOOLE_HOOK_ALL & ~(SWOOLE_HOOK_CURL | SWOOLE_HOOK_NATIVE_CURL)).',
+        )];
     }
 
     // ------------------------------------------------------------------------------------------ configuration

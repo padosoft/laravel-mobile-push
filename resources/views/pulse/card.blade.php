@@ -13,12 +13,28 @@
         </x-slot:icon>
     </x-pulse::card-header>
 
+    {{--
+        Pulse ships a precompiled stylesheet: only the utility classes its own cards use exist in it. The few rules this
+        card needs beyond those (a table that scrolls sideways on a narrow card, a grid that wraps, the two alert colours)
+        are declared here, so the card renders the same without any build step in the application.
+    --}}
+    <style>
+        .mobile-push-card-table { overflow-x: auto; }
+        .mobile-push-card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 1.5rem; }
+        .mobile-push-card-heading { margin-bottom: 0.5rem; }
+        .mobile-push-card-open { color: #dc2626; }
+        .dark .mobile-push-card-open { color: #f87171; }
+        .mobile-push-card-throttled { color: #d97706; }
+        .dark .mobile-push-card-throttled { color: #fbbf24; }
+    </style>
+
     <x-pulse::scroll :expand="$expand" wire:poll.5s="">
         @if (count($connections) === 0 && count($reasons) === 0 && count($openCircuits) === 0 && count($throttled) === 0)
             <x-pulse::no-results />
         @else
             <div class="flex flex-col gap-6">
                 @if (count($connections) > 0)
+                    <div class="mobile-push-card-table">
                     <x-pulse::table>
                         <colgroup>
                             <col width="100%" />
@@ -64,11 +80,12 @@
                             @endforeach
                         </tbody>
                     </x-pulse::table>
+                    </div>
                 @endif
 
-                <div class="grid grid-cols-1 @lg:grid-cols-3 gap-6">
+                <div class="mobile-push-card-grid">
                     <div>
-                        <h3 class="text-xs uppercase font-bold text-gray-500 dark:text-gray-400 mb-2">Top reason codes</h3>
+                        <h3 class="mobile-push-card-heading text-xs uppercase font-bold text-gray-500 dark:text-gray-400">Top reason codes</h3>
                         @forelse ($reasons as $reason)
                             <div class="flex justify-between text-sm text-gray-700 dark:text-gray-300">
                                 <code class="text-xs truncate">{{ $reason['reason'] }}</code>
@@ -79,18 +96,18 @@
                         @endforelse
                     </div>
                     <div>
-                        <h3 class="text-xs uppercase font-bold text-gray-500 dark:text-gray-400 mb-2">Open circuits</h3>
+                        <h3 class="mobile-push-card-heading text-xs uppercase font-bold text-gray-500 dark:text-gray-400">Open circuits</h3>
                         @forelse ($openCircuits as $circuit)
-                            <p class="text-sm text-red-600 dark:text-red-400"><code class="text-xs">{{ $circuit }}</code></p>
+                            <p class="mobile-push-card-open text-sm"><code class="text-xs">{{ $circuit }}</code></p>
                         @empty
                             <p class="text-sm text-gray-400 dark:text-gray-600">None</p>
                         @endforelse
                         <p class="mt-1 text-xs text-gray-400 dark:text-gray-600">{{ number_format($circuitTransitions) }} transitions in period</p>
                     </div>
                     <div>
-                        <h3 class="text-xs uppercase font-bold text-gray-500 dark:text-gray-400 mb-2">Throttled providers</h3>
+                        <h3 class="mobile-push-card-heading text-xs uppercase font-bold text-gray-500 dark:text-gray-400">Throttled providers</h3>
                         @forelse ($throttled as $provider)
-                            <p class="text-sm text-amber-600 dark:text-amber-400"><code class="text-xs">{{ $provider }}</code></p>
+                            <p class="mobile-push-card-throttled text-sm"><code class="text-xs">{{ $provider }}</code></p>
                         @empty
                             <p class="text-sm text-gray-400 dark:text-gray-600">None</p>
                         @endforelse

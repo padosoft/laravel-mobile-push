@@ -219,12 +219,12 @@ jobs:
           php artisan tinker --execute='echo "logs: ".DB::table("mobile_push_logs")->count()."\n";' | tee logs.txt
           grep -q '^logs: 60$' logs.txt
 
-  # An observation, not a gate: Swoole with its coroutine hooks on (curl included), and requests arriving eight at a
-  # time. The transport blocks in curl_multi and keeps one pool per process; with the hooks a second request can
-  # enter the same pool while the first one waits. The step prints what happened; docs/runtimes.md reports it.
+  # Swoole with its coroutine hooks on (curl included), and requests arriving eight at a time. The transport keeps one
+  # pool per process; with the hooks a second request enters the same pool while the first one waits inside curl.
+  # Observed on 2026-11-21: sequential requests all succeed, concurrent ones mostly fail and the workers restart.
+  # The package does not support this configuration; the doctor warns about it and docs/runtimes.md reports it.
   swoole-coroutine-hooks:
     runs-on: ubuntu-latest
-    continue-on-error: true
     name: Octane on Swoole with coroutine hooks (observation)
     steps:
       - uses: actions/checkout@v4
@@ -275,8 +275,13 @@ jobs:
           tail -30 octane.log
           echo "--- application log (errors)"
           grep -hE 'ERROR|Fatal|Exception' storage/logs/*.log 2>/dev/null | cut -c1-400 | sort | uniq -c | sort -rn | head -10 || true
+          echo "--- the first errors of the workers"
+          grep -m 6 -E 'Uncaught|Fatal error|cannot be operated|Swoole.Error' octane.log | cut -c1-400 || true
+          # What is asserted: one request at a time works with the hooks on, and the doctor says the configuration is
+          # not safe. The concurrent series is printed, not asserted: it is the documented failure (docs/runtimes.md).
           test "$(grep -c '"status":200,"http":"2"' wire.txt)" = 60
-          test "$(grep -c '"status":200,"http":"2"' wire-concurrent.txt)" = 60
+          php artisan mobile-push:doctor | tee doctor.txt || true
+          grep -q 'curl coroutine hook' doctor.txt
 
   beanstalkd:
     runs-on: ubuntu-latest
