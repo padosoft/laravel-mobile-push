@@ -5,29 +5,37 @@
 
 ## Dove siamo
 
-- **Porta corrente:** Contratto → Alpha (invio diretto)
-- **Milestone corrente:** ondate 1–3 concluse; ondata 4 quasi conclusa (restano W4-C campagne e W4-I integrazione); ondata 5 in corso (documentazione, README, benchmark, runtime longevi)
-- **Prossimo passo concreto:** vedi "Ondata in corso"
-- **Piano:** `docs/PLAN.md` (v2 approvata il 2026-11-20)
-- **Repository remoto:** `https://github.com/padosoft/laravel-mobile-push` (privato), branch `main`. Push dopo ogni ondata integrata.
+- **Stato:** tutte le ondate di implementazione (1–8) sono rientrate tranne **W5-P** (scalabilità di ledger, relay e campagne). Il codice di ogni milestone è scritto e testato su mock e fixture; **niente è stato provato contro APNs/FCM reali né su un dispositivo**.
+- **Porta corrente:** candidata 1.0 in attesa della verifica sui provider reali (vedi "Non verificato" nel README e `docs/runtimes.md`).
+- **Prossimo passo concreto:** integrare W5-P al rientro → `composer check` completo (Pint, PHPStan max, suite + gruppo `slow`) → risincronizzare `docs-site/` (`node scripts/sync-docs.mjs && npm run build && npm run verify`) → push.
+- **Decisioni in attesa del proprietario:** (1) force push per togliere dalla storia git i 114 MB di `docs-site/node_modules` committati per errore in `72b6f37` (già rimossi dall'albero in `c7473fd`); (2) dominio del sito (ipotesi: `https://doc.laravel-mobile-push.padosoft.com`, impostato in entrambi i `docmd.config.json`).
+- **Piano:** `docs/PLAN.md` (v2 approvata il 2026-11-20). Lista di lavoro residua: `docs/internal/integration-todo.md`.
+- **Repository remoto:** `https://github.com/padosoft/laravel-mobile-push` (privato), branch `main`. Push dopo ogni passo integrato.
+- **Verifica rapida:** `COMPOSER_ALLOW_SUPERUSER=1 composer check`; sito: `cd docs-site && npm ci && npm run check && npm run build && npm run verify`.
 
 ## Stato per milestone
 
 | Milestone | Stato | Note |
 |---|---|---|
-| M0 Contratto e scheletro | fatto (salvo `docs/contracts`, in W1-H) | Scheletro, dipendenze, contratti `src/Core`, AGENTS.md, CI |
-| M1 Trasporto HTTP/2 + mock | fatto | `CurlTransport`, pool per chiave, server mock Node; 89 test. Vedi `docs/transport.md` |
-| M2 APNs | in corso | Fatti auth, messaggi, compiler, classificatore, client canali. Manca il driver (W2-A) |
-| M3 FCM | in corso | Fatti auth, messaggi, compiler, classificatore, client topic. Manca il driver (W2-A) |
-| M4 Strato Laravel (profilo leggero) → 0.1 alpha | da fare | |
-| M5 Invio durevole → 0.5 beta | in corso | Fatti: registro dispositivi (W2-P2), adattatori cache (W2-P1). In corso: ledger (W2-P4). Mancano relay, eleggibilità come gate, runtime longevi |
-| M6 Live Activities → RC1 | da fare | |
-| M7 Osservabilità, health, credenziali | da fare | |
-| M8 Campagne, cap, badge, ripiego, ricevute → RC2 | da fare | |
-| M9 Benchmark, README, docs → 1.0 | in corso | Ondata 5: README e guide, benchmark, runtime longevi |
-| M10 Sito docmd `docs-site/` + banner | in corso | Richiesto il 2026-11-21: modello `padosoft/laravel-flow` (cartella `docs-site/`, `@docmd/core`), pubblicazione su Cloudflare Pages; banner in testa a README e sito |
+| M0 Contratto e scheletro | fatto | Contratti `src/Core`, `docs/contracts/` riscritti sul codice (W6-F), AGENTS.md, CI |
+| M1 Trasporto HTTP/2 + mock | fatto | `CurlTransport`, pool per chiave, corpo in streaming contro i re-invii di libcurl; `docs/transport.md` |
+| M2 APNs | fatto | Auth `.p8`/certificato/signer esterno, messaggi, compiler, classificatore, driver, canali broadcast |
+| M3 FCM | fatto | Service account e `google/auth`, messaggi, compiler, classificatore, driver, iscrizioni ai topic |
+| M4 Strato Laravel (profilo leggero) | fatto | Manager, facade, helper, safe mode, fake (intento e byte), comandi |
+| M5 Invio durevole | fatto, **W5-P in corso** | Ledger, outbox, relay, sweeper, dispositivi, eleggibilità, riservatezza, runtime longevi. In corso: scalabilità e rilievi sul ledger |
+| M6 Live Activities | fatto | Token tipizzati, transizioni serializzate, scadenza locale, canali, 11 comandi |
+| M7 Osservabilità, health, credenziali | fatto | Sink log/database/otel, metriche, Prometheus, health, avvisi, Pulse, Telescope |
+| M8 Campagne, cap, badge, ripiego, ricevute | fatto, **W5-P in corso** | Campagne (pianificatore riavviabile), cap di frequenza, badge, ripiego (anche durevole), ricevute |
+| M9 Benchmark, README, docs | fatto | `benchmarks/RESULTS.md`, README, 30 guide in `docs/`, esempi eseguiti da `DocExamplesTest`, `docs/configuration.md` generato |
+| M10 Sito docmd `docs-site/` + banner | fatto, da pubblicare | 42 pagine generate da `docs/` (`sync-docs.mjs`), build e verifica dei link ok; impostazioni Cloudflare Pages in `docs-site/README.md`; banner in `resources/` |
 
-## Ondata in corso
+**Mai verificato (resta scritto nella documentazione):** APNs/FCM/dispositivi reali; `SKIP LOCKED` su MySQL/PostgreSQL e lock su Redis (job CI sperimentali aggiunti, mai eseguiti); Redis/SQS/Horizon; Octane/Swoole/RoadRunner/FrankenPHP/Vapor; ADC su Google Cloud; KMS reale; estensioni dei certificati Apple; `xcrun`; Pulse/Telescope in un browser; host di pubblicazione broadcast; regola di conteggio dei byte FCM; ricerca semantica del sito.
+
+## Storico delle ondate
+
+Le sezioni che seguono descrivono le ondate come sono state lanciate (riferimento storico; lo stato corrente è quello qui sopra e nel Registro in fondo).
+
+### Dettaglio delle ondate
 
 **Ondata 1** (lanciata 2026-11-20, otto subagenti in parallelo su cartelle disgiunte):
 
