@@ -39,7 +39,7 @@ dataset('apns reasons', [
     'BadRequestParams' => [400, 'BadRequestParams', S::Rejected, Code::PayloadInvalid, false, Dest::None, Cred::None, false, null],
     'BadRequestPayload' => [400, 'BadRequestPayload', S::Rejected, Code::PayloadInvalid, false, Dest::None, Cred::None, false, null],
     'MissingPushType' => [400, 'MissingPushType', S::Rejected, Code::RequestInvalid, false, Dest::None, Cred::None, false, null],
-    'CannotCreateChannelConfig' => [400, 'CannotCreateChannelConfig', S::Rejected, Code::QuotaExceeded, false, Dest::None, Cred::None, false, null],
+    'CannotCreateChannelConfig' => [400, 'CannotCreateChannelConfig', S::Rejected, Code::ChannelLimitReached, false, Dest::None, Cred::None, false, null],
     'BadCertificate' => [403, 'BadCertificate', S::Failed, Code::AuthCertificateInvalid, false, Dest::None, Cred::ReportAuthFailure, false, null],
     'BadCertificateEnvironment' => [403, 'BadCertificateEnvironment', S::Failed, Code::AuthCertificateInvalid, false, Dest::None, Cred::ReportAuthFailure, false, null],
     'ExpiredProviderToken' => [403, 'ExpiredProviderToken', S::Failed, Code::AuthTokenExpired, true, Dest::None, Cred::RefreshToken, false, null],

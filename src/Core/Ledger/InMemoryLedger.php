@@ -55,7 +55,7 @@ final class InMemoryLedger implements ClientReceiptStore, Ledger
             $existingId = $this->effectKeys[$slot] ?? null;
             if ($existingId !== null && Row::int($this->effects[$existingId], 'dedupe_until') > $now) {
                 $effect = $this->effects[$existingId];
-                if (! PayloadFingerprint::equals(Row::str($effect, 'fingerprint'), PayloadFingerprint::of($intent->message))) {
+                if (! $this->rules->sameMessage(Row::str($effect, 'fingerprint'), $intent->message, $scope)) {
                     throw new IdempotencyConflictException('The effect key was already used with a different message.');
                 }
             } elseif ($existingId !== null) {

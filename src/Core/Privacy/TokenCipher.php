@@ -81,6 +81,34 @@ final readonly class TokenCipher
         return preg_match('/^v([1-9][0-9]{0,3}):/', $envelope, $m) === 1 && (int) $m[1] !== $this->keys->current;
     }
 
+    /**
+     * A keyed, one-way digest of `$data` bound to the scope and a context: `k<version>:<hex HMAC-SHA256>`. The HMAC key
+     * is derived (HKDF, own label) from the same versioned key ring as the encryption, so nothing that sees only the
+     * stored digest can confirm a guess of the data offline.
+     *
+     * @param  int|null  $version  key version to use; null = the current one
+     *
+     * @throws PrivacyException when the version is not in the key ring
+     */
+    public function digest(#[\SensitiveParameter] string $data, string $scope, string $context = '', ?int $version = null): string
+    {
+        $version ??= $this->keys->current;
+        $key = $this->keys->key($version) ?? throw new PrivacyException("Unknown cipher key version {$version}.");
+        $macKey = hash_hkdf('sha256', $key, 32, 'padosoft/mobile-push keyed-digest v1');
+
+        return 'k'.$version.':'.hash_hmac('sha256', $this->aad($version, $scope, $context)."\n".$data, $macKey);
+    }
+
+    /** Constant-time check of a digest() value, with the key version the value names (false for an unknown version). */
+    public function digestMatches(string $digest, #[\SensitiveParameter] string $data, string $scope, string $context = ''): bool
+    {
+        if (preg_match('/^k([1-9][0-9]{0,3}):[0-9a-f]{64}$/', $digest, $m) !== 1 || $this->keys->key((int) $m[1]) === null) {
+            return false;
+        }
+
+        return hash_equals($this->digest($data, $scope, $context, (int) $m[1]), $digest);
+    }
+
     private function derive(int $version): string
     {
         $key = $this->keys->key($version) ?? throw new PrivacyException("Unknown cipher key version {$version}.");

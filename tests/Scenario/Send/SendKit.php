@@ -192,9 +192,10 @@ final class SendKit
         ), $this->clock);
     }
 
+    /** A distinct 64-hex token for every integer (zero-padded hex: 10 and 170 no longer collide). */
     public static function apnsToken(int $i): ApnsDeviceToken
     {
-        return ApnsDeviceToken::of(str_pad(dechex($i), 64, 'a', STR_PAD_LEFT));
+        return ApnsDeviceToken::of(sprintf('%064x', $i));
     }
 
     /** @return \Generator<int, ApnsDeviceToken> */

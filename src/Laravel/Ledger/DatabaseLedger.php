@@ -29,7 +29,6 @@ use Padosoft\MobilePush\Core\Ledger\LedgerRules;
 use Padosoft\MobilePush\Core\Ledger\LedgerSettings;
 use Padosoft\MobilePush\Core\Ledger\LedgerTime;
 use Padosoft\MobilePush\Core\Ledger\MessageVault;
-use Padosoft\MobilePush\Core\Ledger\PayloadFingerprint;
 use Padosoft\MobilePush\Core\Ledger\PruneResult;
 use Padosoft\MobilePush\Core\Ledger\ReceiptFunnel;
 use Padosoft\MobilePush\Core\Ledger\ReclaimReport;
@@ -148,7 +147,7 @@ final class DatabaseLedger implements ClientReceiptStore, Ledger
             return null;
         }
 
-        if (! PayloadFingerprint::equals(Row::str($found, 'fingerprint'), PayloadFingerprint::of($intent->message))) {
+        if (! $this->rules->sameMessage(Row::str($found, 'fingerprint'), $intent->message, $scope)) {
             throw new IdempotencyConflictException('The effect key was already used with a different message.');
         }
 

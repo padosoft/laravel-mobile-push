@@ -9,6 +9,7 @@ use Illuminate\Support\ServiceProvider;
 use Padosoft\MobilePush\Core\Privacy\TokenCipher;
 use Padosoft\MobilePush\Core\Privacy\TokenIndex;
 use Padosoft\MobilePush\Laravel\Contracts\PushDispatcher;
+use Padosoft\MobilePush\Laravel\LiveActivities\Console\ConsoleCommands;
 use Padosoft\MobilePush\Laravel\LiveActivities\Transition\Rows;
 use Padosoft\MobilePush\Laravel\Module;
 use Psr\Clock\ClockInterface;
@@ -70,6 +71,10 @@ final class LiveActivitiesModule implements Module
             foreach ($paths as $path) {
                 $app->make('migrator')->path($path);
             }
+        }
+
+        if ($app->runningInConsole() && (bool) config('mobile-push.live_activities.enabled', false)) {
+            ConsoleCommands::register();
         }
 
         if ($app->runningInConsole()) {
