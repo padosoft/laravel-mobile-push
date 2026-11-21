@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Padosoft\MobilePush\Tests\Scenario\Policy\Frequency;
 
-use Padosoft\MobilePush\Core\Driver\SendOptions;
 use Padosoft\MobilePush\Core\Guard\GuardStore;
 use Padosoft\MobilePush\Core\Guard\InMemoryGuardStore;
 use Padosoft\MobilePush\Core\Guard\TrafficClass;

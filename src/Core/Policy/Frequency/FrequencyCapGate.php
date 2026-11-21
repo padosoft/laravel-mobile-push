@@ -7,6 +7,7 @@ namespace Padosoft\MobilePush\Core\Policy\Frequency;
 use Padosoft\MobilePush\Core\Driver\DestinationGate;
 use Padosoft\MobilePush\Core\Driver\GateContext;
 use Padosoft\MobilePush\Core\Driver\GateDenial;
+use Padosoft\MobilePush\Core\Driver\SendItem;
 use Padosoft\MobilePush\Core\Message\PushMessage;
 use Padosoft\MobilePush\Core\Outcome\ReasonCode;
 use Padosoft\MobilePush\Core\Privacy\TokenIndex;
@@ -47,7 +48,7 @@ final readonly class FrequencyCapGate implements DestinationGate
     }
 
     /**
-     * @param  list<\Padosoft\MobilePush\Core\Driver\SendItem>  $items
+     * @param  list<SendItem>  $items
      * @return array<int, GateDenial>
      */
     private function evaluate(GateContext $context, array $items): array
@@ -116,7 +117,7 @@ final readonly class FrequencyCapGate implements DestinationGate
     }
 
     /**
-     * @param  list<\Padosoft\MobilePush\Core\Driver\SendItem>  $items
+     * @param  list<SendItem>  $items
      * @return array<int, GateDenial>
      */
     private function failure(array $items): array
