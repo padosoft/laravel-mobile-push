@@ -93,3 +93,12 @@ Decision: the ledger assigns each delivery a random UUIDv4 `message_id` at inser
 The queue module reads `transport.timeout_ms` and `connections.*.timeout_ms` (names guessed): align with W3-A's real transport keys.
 
 Queue follow-ups: `SendPushJob::failed()` logs to the default logger, not to the log sinks; `DeviceEligibility::checkMany()` does not return rows so `RegistryResolver` duplicates its rules (add a `resolveMany()` on the devices side); the ledger has no "effects with due work" query (the sweeper dispatches scope-wide relays); `tests/Scenario/Send/SendKit::apnsToken()` pads with 'a' so token 10 equals token 170.
+
+### Live Activities (W3-L) — passed to W4-I as section D
+- Device-only gates (eligibility, frequency cap) must ignore Live Activity destination kinds: their `DestinationRef` ids are rows of the Live Activities tables.
+- `ApnsDriver::connectionProfile()` must support `EndpointRole::ApnsChannelManagement`.
+- Bind `EndpointCatalog` in the container.
+- Config keys under `mobile-push.live_activities.*` (enabled, binding, connection, tables, models, types, default_priority, high_priority.max_per_hour, local_expiry, max_update_retries, prune, channels).
+- Schedule `ActivityManager::flushDue()`; queued job carrying `ActivityTicket`.
+- Commands still to write (later task): `live-activity:{start,update,end,prune}`, `channels:{list,create,delete,sync}`, `campaign:{status,pause,resume,cancel}`.
+- Client contract for the docs is in the W3-L report (progress.md) and must be turned into `docs/live-activities.md`.
