@@ -68,8 +68,20 @@ jobs:
         with:
           node-version: 22
       - run: composer update --prefer-dist --no-interaction
+      # The mysql image starts InnoDB with a 128 MB buffer pool. 200,000 delivery rows and their indexes do not fit in
+      # it, and the guards then measure the runner's disk: with the default the per-destination cost doubled between
+      # 25,000 and 200,000 destinations (run of 2026-11-21). A server sized for its data is what the guards are about.
+      - name: Size the InnoDB buffer pool for the test data
+        if: matrix.db == 'mysql'
+        run: |
+          mysql -h 127.0.0.1 -uroot -e "SET GLOBAL innodb_buffer_pool_size = 2147483648"
+          sleep 5
+          mysql -h 127.0.0.1 -uroot -e "SELECT @@innodb_buffer_pool_size, @@transaction_isolation, @@version"
       - name: Campaign scaling guard (25,000 against 200,000 devices)
         run: vendor/bin/pest --group=slow tests/Scenario/Laravel/Campaigns/CampaignScalingTest.php
       - name: Durable profile scaling guards
         if: always()
         run: vendor/bin/pest --group=slow tests/Scenario/Laravel/Queue/DurableScalingTest.php
+      - name: InnoDB buffer pool after the runs
+        if: always() && matrix.db == 'mysql'
+        run: mysql -h 127.0.0.1 -uroot -e "SHOW GLOBAL STATUS WHERE Variable_name IN ('Innodb_buffer_pool_reads','Innodb_buffer_pool_read_requests','Innodb_buffer_pool_pages_data','Innodb_buffer_pool_pages_total','Innodb_buffer_pool_wait_free')"
