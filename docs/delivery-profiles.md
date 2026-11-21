@@ -338,8 +338,11 @@ below).
   reading the whole table, and the lease update never walks a state index. For the other hot queries (sweeps, health
   and settlement reads, start and record, audience slice, device lookup) the test asserts that an index **can** serve
   each statement (PostgreSQL is asked with sequential scans disabled, MySQL through `possible_keys`), not which plan
-  the planner picks: on a table of a few thousand rows a planner may still choose to read it whole, so the chosen plan
-  at production size was not observed on those engines.
+  the planner picks: on a table of a few thousand rows a planner may still choose to read it whole. The plan the
+  planner **chooses** is checked at size instead, in the `scaling` workflow: next to 1.2 million final rows, with
+  fresh statistics, none of the 14 statements issued by the health reads, the settlement probes, the counts, the
+  funnel and a claim with its sweeps reads the whole deliveries table, on PostgreSQL 17 and on MySQL 8.4 (run of
+  2026-11-21). The audience and device-lookup reads were not explained at that size.
 - Behaviour with a database that has a very high write latency, or read replicas for the ledger connection.
 - The fingerprint hashing cost on very large messages.
 
