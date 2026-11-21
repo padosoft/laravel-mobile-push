@@ -115,7 +115,7 @@ Apple's wording, recorded in the classifier from the JSON form of the page "Hand
 | Provider signal | What the package does |
 |---|---|
 | APNs 2xx / FCM 2xx | `Accepted` (or `Validated` for FCM `validate_only`). |
-| APNs `ExpiredProviderToken` (403), FCM `UNAUTHENTICATED` (401) | One coordinated refresh of that credential's token (workers reuse the new one), then **one immediate retry**. A second expiry in the same budget uses normal backoff. If the server clock is wrong this repeats: fix the clock. |
+| APNs `ExpiredProviderToken` (403), FCM `UNAUTHENTICATED` (401) | One coordinated refresh of that credential's token (workers reuse the new one), then **one immediate retry**. A second expiry in the same budget uses normal backoff. When no other token can be obtained (Apple does not allow a new provider token within 20 minutes of the last one; or the refresh at Google fails) the refused token is **not sent again**: the destinations come back `deferred` / `auth_token_expired` after one attempt. If the server clock is wrong this repeats: fix the clock. |
 | APNs `TooManyProviderTokenUpdates` (429) | Slows token renewals. Retried with normal backoff. **Never** switches to the secondary credential. |
 | APNs `InvalidProviderToken`, `Forbidden`, `MissingProviderToken`, bad certificate, `BadEnvironmentKey*InToken`; FCM `PERMISSION_DENIED` | No retry. Feeds the authentication breaker. |
 | APNs 5xx | `Deferred` after at least 15 minutes. `ServiceUnavailable` (503) also **pauses the whole Apple team** (throttle gate) for that long. Past the deadline: `Failed` / `Expired`. |

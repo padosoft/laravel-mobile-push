@@ -292,7 +292,7 @@ The same decision may also ask something of the credential:
 
 | Action | When | What the package does |
 |---|---|---|
-| `refresh_token` | APNs `ExpiredProviderToken`; FCM `UNAUTHENTICATED` | One coordinated refresh of the provider token for that credential generation (other workers reuse the new one), then one more attempt. A second expiry in the same budget falls back to normal backoff, so it cannot loop. |
+| `refresh_token` | APNs `ExpiredProviderToken`; FCM `UNAUTHENTICATED` | One coordinated refresh of the provider token for that credential generation (other workers reuse the new one), then one more attempt. A second expiry in the same budget falls back to normal backoff, so it cannot loop. If the refresh yields no other token, nothing is sent again and the result is `deferred`. |
 | `slow_token_refresh` | APNs `TooManyProviderTokenUpdates` | Token renewals slow down. **Never** switches to the secondary credential for this. |
 | `report_auth_failure` | A refused credential: `InvalidProviderToken`, `Forbidden`, bad certificate, FCM `PERMISSION_DENIED`, ... | Feeds the authentication circuit breaker. After repeated failures it fails over to the secondary credential once, or opens. See [retries and limits](retries-and-limits.md#the-three-circuit-breakers). |
 

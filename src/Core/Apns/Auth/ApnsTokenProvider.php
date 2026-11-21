@@ -127,11 +127,8 @@ final class ApnsTokenProvider implements AccessTokenProvider
             return $this->remember($current);
         }
 
-        if ($current !== null && $current->ageSeconds($this->clock->now()) < self::MIN_MINT_INTERVAL_SECONDS) {
-            // Apple forbids minting more often than every 20 minutes: keep the one we have.
-            return $this->remember($current);
-        }
-
+        // mint() keeps the token we have when it is younger than Apple's 20-minute floor (the one place that rule
+        // lives): the caller then gets the rejected token back and knows that nothing new could be had.
         return $this->mint($stored?->generation(), $current);
     }
 
@@ -155,6 +152,7 @@ final class ApnsTokenProvider implements AccessTokenProvider
     {
         $now = $this->clock->now();
 
+        // Apple forbids minting more often than every 20 minutes: keep the one we have.
         if ($known !== null && $known->ageSeconds($now) < self::MIN_MINT_INTERVAL_SECONDS) {
             return $this->remember($known);
         }
