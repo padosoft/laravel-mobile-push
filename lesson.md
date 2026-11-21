@@ -534,3 +534,8 @@ Modello di voce:
 - **Contesto:** aggiunta di `scope = ?` all'UPDATE a lotti di `markAttemptsStarted()` (difetto trovato da M9: lo scope del lease non era controllato).
 - **Scoperta:** con `id IN (...) AND scope = ?` SQLite abbandona la chiave primaria e percorre `mp_deliveries_claim_idx (scope=?)`; `ScalingQueryPlansTest` lo ha rilevato subito. PostgreSQL restava sulla chiave primaria.
 - **Regola:** quando serve un controllo che non deve guidare il planner, scriverlo come espressione non indicizzabile e portabile (`coalesce(scope, '') = ?`) e lasciare che il test dei piani lo confermi. `whereRaw()` vuole una stringa letterale (PHPStan `literal-string`): niente concatenazioni con `wrap()`.
+
+### 2026-11-21 — MySQL REPEATABLE READ: dopo un INSERT perso, la rilettura semplice non vede il vincitore
+- **Contesto:** `DatabaseLedger::recordIntent()` con due chiamate concorrenti sulla stessa effect key, MySQL 8.4 (CI).
+- **Scoperta:** `INSERT IGNORE` vede la riga committata dall'altro (ritorna 0), ma la `SELECT` successiva nella stessa transazione legge dallo snapshot preso alla prima lettura e non la trova. PostgreSQL (READ COMMITTED di default) e SQLite non mostrano il problema: solo il job MySQL lo ha rilevato.
+- **Regola:** dopo un insert-or-ignore perso, rileggere con una lettura bloccante (`sharedLock()` / `lockForUpdate()`): restituisce l'ultima versione committata a qualunque livello di isolamento. Ogni scenario di concorrenza va fatto girare anche su MySQL, non solo su PostgreSQL.
