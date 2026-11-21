@@ -114,9 +114,10 @@ final class Doctor
     /**
      * Octane on Swoole with the curl coroutine hook: read from the application's Octane config, because the doctor
      * runs in a console process where the hook is never on. With the hook, a second request can enter a worker while
-     * the first one waits inside curl. Sharing one connection pool between them was measured to crash the workers
-     * (eight requests at a time, most failed); with `transport.reuse = auto` such sends get their own pool and all of
-     * them succeeded, at the price of one handshake per send (docs/runtimes.md).
+     * the first one waits inside curl. Measured in CI with eight requests at a time (docs/runtimes.md): with one
+     * connection pool shared per worker the workers crashed inside curl; with `transport.reuse = auto` (a pool per
+     * send) the transport no longer fails, but some requests still do, because Octane's application container is
+     * shared between the coroutines of a worker. So it is a warning either way.
      *
      * @return list<DoctorCheck>
      */
@@ -128,19 +129,16 @@ final class Doctor
             return [];
         }
         $reuse = config('mobile-push.transport.reuse', 'auto');
-        $remedy = 'Send from queue workers, or take SWOOLE_HOOK_CURL and SWOOLE_HOOK_NATIVE_CURL out of hook_flags (for example SWOOLE_HOOK_ALL & ~(SWOOLE_HOOK_CURL | SWOOLE_HOOK_NATIVE_CURL)).';
+        $forcedOn = is_string($reuse) && strtolower(trim($reuse)) === 'on';
 
-        if (is_string($reuse) && strtolower(trim($reuse)) === 'on') {
-            return [DoctorCheck::warning(
-                'Runtime',
-                'Octane\'s Swoole options turn on the curl coroutine hook (octane.swoole.options.hook_flags) and mobile-push.transport.reuse is "on": concurrent requests in one worker would drive the same connection pool, which crashes the worker.',
-                'Set mobile-push.transport.reuse to "auto" (or "off"). '.$remedy,
-            )];
-        }
-
-        return [DoctorCheck::info(
+        return [DoctorCheck::warning(
             'Runtime',
-            'Octane\'s Swoole options turn on the curl coroutine hook (octane.swoole.options.hook_flags): pushes sent from those HTTP workers do not reuse connections (every send opens its own, one TCP and TLS handshake each). To keep connection reuse: '.lcfirst($remedy),
+            'Octane\'s Swoole options turn on the curl coroutine hook (octane.swoole.options.hook_flags): pushes sent from HTTP workers are not safe under concurrent requests. '
+                .($forcedOn
+                    ? 'With mobile-push.transport.reuse "on", two requests of one worker drive the same connection pool, which crashes the worker.'
+                    : 'The transport gives each such send its own connection (no reuse), but Octane\'s application state is still shared between the requests a worker interleaves.'),
+            ($forcedOn ? 'Set mobile-push.transport.reuse back to "auto". ' : '')
+                .'Send from queue workers, or take SWOOLE_HOOK_CURL and SWOOLE_HOOK_NATIVE_CURL out of hook_flags (for example SWOOLE_HOOK_ALL & ~(SWOOLE_HOOK_CURL | SWOOLE_HOOK_NATIVE_CURL)).',
         )];
     }
 

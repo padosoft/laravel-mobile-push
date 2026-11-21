@@ -74,28 +74,25 @@ it('warns when live sending is enabled outside production', function () {
     expect($code)->toBe(1)->and($out)->toContain('LIVE sending is enabled outside production');
 });
 
-it('says what Octane\'s Swoole curl coroutine hook means for sending: no reuse by default, a warning when reuse is forced on', function (mixed $flags, string $reuse, ?string $status) {
+it('warns when Octane\'s Swoole options turn on the curl coroutine hook, and says what the reuse setting changes', function (mixed $flags, string $reuse, ?string $says) {
     config()->set('octane.swoole.options.hook_flags', $flags);
     config()->set('mobile-push.transport.reuse', $reuse);
 
     $lines = array_values(array_filter(app(Doctor::class)->run(), static fn ($check): bool => $check->section === 'Runtime'));
 
-    expect(count($lines))->toBe($status === null ? 0 : 1);
-    if ($status === 'info') {
-        expect($lines[0]->status->value)->toBe('info')
-            ->and($lines[0]->label)->toContain('curl coroutine hook')->toContain('do not reuse connections')->toContain('queue workers');
-    }
-    if ($status === 'warning') {
+    expect(count($lines))->toBe($says === null ? 0 : 1);
+    if ($says !== null) {
         expect($lines[0]->status->value)->toBe('warning')
-            ->and($lines[0]->label)->toContain('crashes the worker')
-            ->and($lines[0]->remedy)->toContain('"auto"')->toContain('queue workers');
+            ->and($lines[0]->label)->toContain('curl coroutine hook')->toContain('not safe under concurrent requests')->toContain($says)
+            ->and($lines[0]->remedy)->toContain('queue workers');
+        expect(str_contains((string) $lines[0]->remedy, '"auto"'))->toBe($reuse === 'on');
     }
 })->with([
     'no Octane config' => [null, 'auto', null],
-    'every hook (SWOOLE_HOOK_ALL as Swoole 6 defines it), reuse auto' => [2143287295, 'auto', 'info'],
-    'the native curl hook alone, reuse off' => [4096, 'off', 'info'],
-    'the older curl hook alone, reuse auto' => [2048, 'auto', 'info'],
-    'every hook, reuse forced on' => [2143287295, 'on', 'warning'],
+    'every hook (SWOOLE_HOOK_ALL as Swoole 6 defines it), reuse auto' => [2143287295, 'auto', 'its own connection (no reuse)'],
+    'the native curl hook alone, reuse off' => [4096, 'off', 'its own connection (no reuse)'],
+    'the older curl hook alone, reuse auto' => [2048, 'auto', 'its own connection (no reuse)'],
+    'every hook, reuse forced on' => [2143287295, 'on', 'crashes the worker'],
     'every hook but the two curl ones, reuse on' => [2143287295 & ~(2048 | 4096), 'on', null],
 ]);
 
