@@ -30,7 +30,7 @@ beforeEach(function (): void {
             ->and($report->ledger)->toBe(CampaignWorld::deliveries($this->campaign->id))
             ->and($report->stray())->toBe(0);
     };
-    $this->drainChecked = fn (): int => $this->w->drain(before: fn () => ($this->invariant)());
+    $this->drainChecked = fn (?int $jobs = null): int => $this->w->drain($jobs, fn () => ($this->invariant)());
 
     $this->finalChecks = function (): void {
         $id = $this->campaign->id;
@@ -62,7 +62,7 @@ it('dies after writing a slice but before advancing the cursor: the rerun insert
 
     // The queue redelivers the job: while the lease is valid it does nothing; once expired it recovers.
     $this->w->rerun($killed);
-    expect(CampaignWorld::row($this->campaign->id)->slices)->toBe('3');
+    expect((int) CampaignWorld::row($this->campaign->id)->slices)->toBe(3);
     $this->w->queue->advance(151);
     $this->w->rerun($killed);
 
@@ -90,7 +90,7 @@ it('dies after advancing the cursor but before queueing the next slice: the reru
 
     ($this->drainChecked)();
     ($this->finalChecks)();
-    expect(Queue::pushed(PlanCampaignJob::class))->toHaveCount(10 + 0);   // one per slice: nothing planned twice
+    expect(Queue::pushed(PlanCampaignJob::class))->toHaveCount(10);   // one per slice: nothing planned twice
 });
 
 it('dies after advancing and the job is lost for good: the sweeper restarts the planner from the cursor', function (): void {
@@ -109,7 +109,7 @@ it('dies after advancing and the job is lost for good: the sweeper restarts the 
     expect($this->w->requestHistogram(DEVICES))->toBe([0 => 0, 1 => DEVICES, 'many' => 0]);
 });
 
-it('a relay dies in the middle of a chunk: nothing is sent twice, the request in flight ends unknown, the rest is sent after the lease', function (): void {
+it('a relay dies in the middle of a chunk: nothing is sent twice, what was about to leave ends unknown, the rest is sent after the lease', function (): void {
     // Plan everything first (the planner queues one relay per slice), then kill the first relay at its 150th start.
     while ($this->w->pending(PlanCampaignJob::class) !== []) {
         $this->w->rerun($job = $this->w->pending(PlanCampaignJob::class)[0]);
@@ -121,8 +121,9 @@ it('a relay dies in the middle of a chunk: nothing is sent twice, the request in
     expect($killed)->toBeInstanceOf(RelayDeliveriesJob::class);
     ($this->invariant)();
 
-    $states = CampaignWorld::states($this->campaign->id);
-    expect($states['sending'] ?? 0)->toBeLessThanOrEqual(1)
+    // Rows marked "about to leave" whose outcome was never recorded: the package cannot prove they were not sent.
+    $inFlight = CampaignWorld::states($this->campaign->id)['sending'] ?? 0;
+    expect($inFlight)->toBeGreaterThan(0)
         ->and($this->w->requestHistogram(DEVICES)['many'])->toBe(0);
 
     // Other relays of the same effect run now: the dead worker's leased rows are not handed out before expiry.
@@ -136,6 +137,6 @@ it('a relay dies in the middle of a chunk: nothing is sent twice, the request in
     ($this->finalChecks)();
     $final = CampaignWorld::states($this->campaign->id);
     expect($final['accepted'] + ($final['outcome_unknown'] ?? 0))->toBe(DEVICES)
-        ->and($final['outcome_unknown'] ?? 0)->toBeLessThanOrEqual(1)
-        ->and($this->w->requestHistogram(DEVICES)[0])->toBe($final['outcome_unknown'] ?? 0);
+        ->and($final['outcome_unknown'] ?? 0)->toBe($inFlight)                      // unknown, never failed, never re-sent
+        ->and($this->w->requestHistogram(DEVICES)[0])->toBeLessThanOrEqual($inFlight);
 });
