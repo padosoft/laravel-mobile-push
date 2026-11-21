@@ -32,6 +32,7 @@ final class MobilePushServiceProvider extends ServiceProvider
         'Padosoft\MobilePush\Laravel\Health\HealthModule',
         'Padosoft\MobilePush\Laravel\Pulse\PulseModule',
         'Padosoft\MobilePush\Laravel\Telescope\TelescopeModule',
+        'Padosoft\MobilePush\Laravel\Integration\IntegrationModule',
         'Padosoft\MobilePush\Laravel\Testing\TestingModule',
         'Padosoft\MobilePush\Laravel\Console\ConsoleModule',
     ];

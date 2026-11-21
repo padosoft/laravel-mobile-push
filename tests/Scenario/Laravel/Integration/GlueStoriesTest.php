@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Padosoft\MobilePush\Core\Identity\Destination\ApnsDeviceToken;
 use Padosoft\MobilePush\Core\Identity\Destination\FcmToken;
@@ -12,6 +13,7 @@ use Padosoft\MobilePush\Laravel\Facades\MobilePush;
 use Padosoft\MobilePush\Laravel\Health\HealthInspector;
 use Padosoft\MobilePush\Laravel\Health\HealthStatus;
 use Padosoft\MobilePush\Laravel\Integration\EffectSettled;
+use Padosoft\MobilePush\Laravel\Integration\EffectSettlement;
 use Padosoft\MobilePush\Laravel\Queue\QueuedDestination;
 use Padosoft\MobilePush\Laravel\Queue\SendPushJob;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Integration\IntegrationWorld;
@@ -57,7 +59,7 @@ it('announces once that a durable effect settled, with its origin and counts', f
         ->and($settled[0]->effectId)->toBe($effectId)
         ->and($settled[0]->counts->total())->toBe(2)
         ->and($settled[0]->counts->terminal())->toBe(2)
-        ->and(app(Padosoft\MobilePush\Laravel\Integration\EffectSettlement::class)->check('default', $effectId))->toBeNull();
+        ->and(app(EffectSettlement::class)->check('default', $effectId))->toBeNull();
 });
 
 it('reports a connection whose key cannot be read as failed in readiness, naming the key, never its value', function () {
@@ -85,7 +87,7 @@ it('resolves eligibility and rows of registry devices in one query', function ()
     $world->send->register(MobilePush::binding('ios'), ApnsDeviceToken::of(W::apnsToken('p')), Customer::withId(2));   // the phone changed hands
 
     $queries = 0;
-    Illuminate\Support\Facades\DB::listen(static function () use (&$queries): void {
+    DB::listen(static function () use (&$queries): void {
         $queries++;
     });
     $resolved = app(DeviceEligibility::class)->resolveMany($refs);

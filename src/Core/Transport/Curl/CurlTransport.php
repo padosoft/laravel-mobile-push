@@ -115,7 +115,7 @@ final class CurlTransport implements Transport
                 // 2. Drive the multi handle and collect what finished for us.
                 $done = $pool->takeCompleted($owner);
                 if ($done === []) {
-                    $pool->perform(0.5);
+                    $pool->perform(0.5, $owner);
                     $done = $pool->takeCompleted($owner);
                 }
 

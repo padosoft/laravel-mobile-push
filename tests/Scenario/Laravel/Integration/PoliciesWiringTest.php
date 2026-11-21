@@ -7,7 +7,6 @@ use Padosoft\MobilePush\Core\Identity\Destination\FcmToken;
 use Padosoft\MobilePush\Core\Message\PushMessage;
 use Padosoft\MobilePush\Core\Outcome\ReasonCode;
 use Padosoft\MobilePush\Core\Outcome\SendStatus;
-use Padosoft\MobilePush\Core\Transport\Request;
 use Padosoft\MobilePush\Laravel\Facades\MobilePush;
 use Padosoft\MobilePush\Laravel\Sending\PushManager;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Integration\IntegrationWorld;
