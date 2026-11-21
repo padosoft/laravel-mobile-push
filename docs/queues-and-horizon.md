@@ -42,11 +42,18 @@ A job goes to the queue named by `onQueue()` when given, otherwise to the queue 
 queues on **separate worker pools** so a large campaign cannot delay a login code. Follow-up jobs created inside a
 worker (continuations, relay follow-ups) inherit the queue of their traffic class.
 
+**Relay follow-ups are folded.** On the durable profile, when many effects of one scope are deferred at once (a provider
+throttle answered to thousands of small effects), at most **20** precise follow-up relay jobs are queued per scope,
+queue and `queue.follow_up_bucket` (seconds, default 60, aligned to the clock); the rest share **one scope-wide relay**
+at the end of the bucket. A delay is never shorter than the provider asked for and at most one bucket longer.
+`queue.follow_up_bucket = 0` disables the folding. Verified with a fake transport and the queue fake (10,000 deferred
+effects made 21 relay jobs), not on Redis, SQS or Horizon.
+
 ## The jobs
 
 | Job | Profile | What it does | Retried by the queue? |
 |---|---|---|---|
-| `SendPushJob` | light | Sends one small chunk of destinations (`queue.chunk` 500, `queue.chunk_bytes` 98304), then dispatches a **new** job for the `Deferred` ones. Encrypted payload (`ShouldBeEncrypted`). | **No**: `tries = 1`, never `release()`d |
+| `SendPushJob` | light | Sends one small chunk of destinations (`queue.chunk` 500, `queue.chunk_bytes` 98304), then dispatches a **new** job for the `Deferred` ones. Encrypted payload (`ShouldBeEncrypted`). If its connection no longer matches the binding it was queued for, it sends nothing, dispatches `BindingMismatchDetected` once, records `Skipped` / `binding_mismatch` for each destination (to the log sinks when enabled) and ends cleanly, like the durable relay. | **No**: `tries = 1`, never `release()`d |
 | `RelayDeliveriesJob` | durable | Claims due deliveries of one effect (or of a whole scope), sends them, records outcomes before it finishes. Carries only ids. | Yes: `tries = 3`, `backoff = [10, 60]` s. Safe: a rerun claims again and never re-sends a delivery with a recorded or unknown outcome. |
 | `SweepLedgerJob` | durable | Applies lease expiry, expires overdue deliveries, dispatches a scope-wide relay when work is due. Idempotent. | `tries = 1` (the next minute's run covers it) |
 | `PlanCampaignJob`, `SweepCampaignsJob` | campaigns | Write one slice of a campaign's audience to the ledger; detect completion and stalled planners. | See [campaigns](campaigns.md) |

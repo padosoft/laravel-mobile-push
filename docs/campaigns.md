@@ -15,10 +15,10 @@ Related pages: [delivery profiles](delivery-profiles.md), [queues and Horizon](q
 [policies](policies.md), [outcomes](outcomes.md), [configuration](configuration.md).
 
 **State of the module.** The campaigns module is present and its tests pass (110 scenario and unit tests: lifecycle,
-audiences, controls, sending rules, tenants, workers killed at exact points, and a Black-Friday-sized run). A 500,000
-device run exists only in the `slow` test group, which was not part of the verification of this page. Everything was
-exercised on SQLite with a fake transport: **MySQL and PostgreSQL were not exercised**, nothing was sent to a real
-provider, and the queue was not run on Redis, SQS or Horizon.
+audiences, controls, sending rules, tenants, workers killed at exact points, query plans and scaling runs). The larger
+runs are in the `slow` test group. Everything was exercised on SQLite with a fake transport: **MySQL and PostgreSQL were
+not exercised** (the query plans are asserted on SQLite only), nothing was sent to a real provider, and the queue was not
+run on Redis, SQS or Horizon.
 
 The entry point is `MobilePush::campaign($message)`: the manager forwards to the campaigns module and returns the
 `CampaignBuilder` described below. Building it checks nothing and writes nothing. The module's checks run when the campaign
@@ -135,7 +135,14 @@ final readonly class VipAudience implements Audience
    the next planner job, or marks planning finished (`running`).
 4. The **relay** (the same one as for `queue()`) sends the deliveries, with the gates re-checked right before the network
    (device eligibility, your consent callback, the frequency cap by `->policy()`).
-5. When planning is finished and every delivery is terminal, the campaign is `completed`.
+5. When planning is finished and every delivery is terminal, the campaign is `completed`. The check runs at the end of
+   every relay run that worked on the campaign's effect (the event
+   `Padosoft\MobilePush\Laravel\Queue\Events\RelayRunFinished`), so the campaign completes right after the run that
+   stores its last delivery; the planner's last slice and the scheduled sweep stay as a safety net. While deliveries are
+   open the check is one indexed existence probe; the counters are read once, when the campaign really completes. On
+   completion the campaign's effect is announced with `EffectSettled` (when the integration module is present) with the
+   final counts, once, not after every slice: a campaign effect grows slice by slice and can look settled between two
+   slices.
 
 A worker killed at any point is recovered: an expired lease means the earlier run died, and the next run recounts the
 checkpoint from the ledger. The tests kill workers on exact statements (after the slice is written and before the
@@ -239,26 +246,36 @@ What the tests establish (SQLite, fake transport):
 - **Resume continues, never restarts**: a paused or failed campaign resumes from the stored cursor.
 - **Consent and eligibility are checked at send time**, not at planning time: a device that changed owner, was invalidated
   or opted out between planning and sending is skipped.
+- **A phone that changed hands during a campaign is not sent to.** The ledger's logical key of a registry device is
+  `dev:<kind>:<device id>`, without the generation; the generation and owner planned are stored on the row and compared
+  with the registry right before the network. A device that changed owner, or was registered again, after it was planned
+  ends `Skipped` with reason `policy_ineligible` and raw reason `owner_changed` or `generation_changed` (`owner_changed`
+  wins when both apply), and the message planned for the previous holder never reaches the new one. The new holder gets
+  **no second row** in the same campaign, and `planned` counts each device once, also when a slice that crashed runs
+  again after the re-registration.
 - **Tenants are isolated**: ids from another scope are not found.
 - **Memory is bounded** by the slice size, whatever the audience.
 
 What to know:
 
 - The audience bound is fixed at start; late arrivals are not included.
-- The relay marks an attempt as started when the item enters its sending window, not when the bytes leave. If a worker
-  dies while a window of, say, 100 items is being filled, up to that many deliveries end `OutcomeUnknown` with **zero
-  requests actually sent**. This is deliberately honest (the absence of a request cannot be proved), but pessimistic.
-- The relay does not signal the end of an effect: completion is detected by the scheduled sweeper (a job every minute while
-  the module is usable and `campaigns.sweeper.schedule` is true, named `mobile-push:sweep-campaigns`) or by reading
-  `progress()`.
-- `DeviceAudience` needs an integer primary key on the device model (the default one has).
-- A database index on the devices table for `(binding_identity, id)` was identified as useful for very large device
-  tables and is not part of the shipped migration.
-- Measured on SQLite in memory with the fake transport: about 1.2 ms per delivery (5,000 deliveries in about 6 seconds;
-  about 23 seconds for 20,000). The 500,000-device variant in the `slow` group passed but took about 1,436 seconds, **more
-  than linear** against the 20,000 run, and scalability work on the ledger, relay and planner was still in progress when this
-  page was written. These numbers describe this implementation on that setup, not a provider and not your database: size
-  and test your own campaigns before relying on them.
+- The relay marks the attempts of a transport window as started immediately before that window is handed to the
+  transport, not while it is being filled. A worker killed **while a window is being prepared** leaves those rows
+  simply due again: no attempt is counted and no outcome is unknown. A worker killed **after** a window was handed to
+  the transport leaves that whole window `OutcomeUnknown` (the requests may have left; see
+  [delivery profiles](delivery-profiles.md#what-it-does-not-guarantee-the-remaining-windows)).
+- Completion does not depend on the sweeper any more (see "How it works"), but keep the scheduler running: the sweeper
+  (a job every minute while the module is usable and `campaigns.sweeper.schedule` is true, named
+  `mobile-push:sweep-campaigns`) restarts stalled planners and completes a campaign whose event was lost.
+- `DeviceAudience` needs an integer primary key on the device model (the default one has). The devices migration
+  `2026_11_21_000002_add_mobile_push_devices_audience_index.php` adds the audience index; an application that published
+  its migrations earlier must publish again and migrate ([upgrading](upgrading.md)).
+- Measured here, **locally**: on SQLite with the fake transport, in the development container used to build the package,
+  500,000 destinations went from `dispatch()` to `completed` in 457 seconds, and the time per 1,000 destinations grew
+  about 1.3 times from 25,000 to 200,000 destinations (the audience grew 8 times, the run took 10.3 times as long). The
+  claim, audience and lookup queries read by index and their plans were checked on **SQLite only**, not on MySQL or
+  PostgreSQL. These numbers describe this implementation on that setup, not a provider and not your database, and are not a
+  promise: size and test your own campaigns before relying on them.
 
 ## Configuration
 
@@ -269,9 +286,20 @@ What to know:
 | `campaigns.connection` | | `null` | database connection of the table |
 | `campaigns.slice` | | `1000` | destinations per planner job, 1 to 5000 |
 | `campaigns.default_rate_per_minute` | | `null` | 1 to 10,000,000 |
-| `campaigns.retention_days` | | `30` | finished campaigns are pruned after this long; also the dedupe window of the effect |
+| `campaigns.retention_days` | | `30` | completed and cancelled campaigns are pruned after this long (see "Pruning"); also the dedupe window of the effect |
 | `campaigns.sweeper.schedule` | | `true` | |
 | `campaigns.audiences` | | `[]` | alias => class implementing `Audience` |
+
+## Pruning
+
+`mobile-push:campaign:prune` (and `CampaignManager::prune()`) deletes only **completed or cancelled** campaign rows older
+than the retention. A **`failed` campaign is never pruned automatically**, because it is resumable from its cursor:
+cancel it to make it prunable. `mobile-push:campaign:prune --pretend` and `CampaignManager::countPrunable()` count
+exactly what a prune would delete now; `CampaignManager::list($scope, $status, $limit)` returns the campaigns of a scope,
+newest first (what `mobile-push:campaign:list` shows). The ledger rows of a campaign prune themselves with
+[`deliveries:prune`](commands.md#mobile-pushdeliveriesprune), which waits for the retention **and** the end of the
+deduplication window (see [delivery profiles](delivery-profiles.md#deduplication-window)). On the durable profile the
+package also schedules a daily prune ([commands](commands.md#what-the-package-schedules-by-itself)).
 
 Queue names and timeouts are the package's own (`queue.bulk_queue`, `queue.timeout`, ...): see
 [queues and Horizon](queues-and-horizon.md).

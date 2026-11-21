@@ -40,7 +40,7 @@ can report that a push really arrived), [troubleshooting](troubleshooting.md) (s
 | `Deferred` | Not finished: a new attempt is planned at `nextAttemptAt`. | Not a failure. | In a queued send the package already scheduled it (see below). For a synchronous `send()` **nothing re-sends it for you**: queue it again if you need it. |
 | `OutcomeUnknown` | The request may or may not have been processed (connection lost after the request was written, an unreadable answer, a stopped worker). | Not "not sent". Not a failure. Do not assume either way. | Do not retry blindly: a retry can produce a duplicate. No fallback was started and none will be. Alert on it, count it, decide per message type. |
 | `Expired` | The logical expiry (`ttl` / `expiresAt`) passed before an attempt could be made. **Nothing was sent.** | Not a provider decision. | Nothing: the message was too old to be useful. Shorten delays or lengthen the expiry if it should have gone out. |
-| `Skipped` | A **local rule** stopped the attempt: consent / eligibility, frequency cap, safe mode, an open circuit breaker, a binding that no longer matches, a cancellation. | Not a provider decision. No connection was opened for it. | Read `reason.code`: `policy_ineligible`, `policy_frequency_capped`, `policy_safe_mode`, `circuit_open`, `binding_mismatch`, `cancelled`. |
+| `Skipped` | A **local rule** stopped the attempt: consent / eligibility, frequency cap, safe mode, an open circuit breaker, a binding that no longer matches, a cancellation. | Not a provider decision. No connection was opened for it. | Read `reason.code`: `policy_ineligible`, `policy_frequency_capped`, `policy_safe_mode`, `circuit_open`, `binding_mismatch`, `cancelled`. A binding mismatch is reported the same way on every path (direct send, light job, durable relay): `Skipped` / `binding_mismatch`, 0 attempts, one `BindingMismatchDetected` event per run. |
 | `Simulated` | Simulation mode: **no network was touched**. | Not sent. Not validated. | Nothing, in development. If you see it in production, see [safe mode](safe-mode.md). |
 | `Validated` | FCM `validate_only`: Google checked the request and did not send it. | Not sent to the device. Not a delivery test. | Treat as "the request is well-formed and the credential works". |
 
@@ -231,6 +231,11 @@ remembers `unknownOutcomeSeen`, and every later final state of that destination 
 ledger also `Cancelled`) becomes `OutcomeUnknown`. A `Rejected` answer stays `Rejected` (it is about the request
 itself). The durable ledger stores the same flag (`unknown_seen`), so a worker that dies and a worker that takes over
 reach the same conclusion.
+
+On the durable relay, attempts are marked started per transport window, immediately before the window is handed to the
+transport. A worker killed **before** that moment leaves the rows simply due again (no attempt counted, nothing
+unknown); a worker killed **after** it leaves the whole window `OutcomeUnknown` (or planned again, for a replaceable
+message by policy). See [delivery profiles](delivery-profiles.md#what-it-does-not-guarantee-the-remaining-windows).
 
 ### Why a fallback never starts from an unknown outcome
 

@@ -697,8 +697,10 @@ the ledger and change campaign rows.
   finds a difference.
 - `sweep` restarts stalled planner chains and completes finished campaigns in every scope; it is the command form of the
   job the scheduler runs every minute (`campaigns.sweeper.schedule`), so it is safe to schedule or run by hand.
-- `prune` deletes finished campaign rows (`completed`, `cancelled`, `failed`) older than the retention; `--pretend`
-  counts and changes nothing. The ledger rows prune themselves with [`deliveries:prune`](#mobile-pushdeliveriesprune).
+- `prune` deletes **completed or cancelled** campaign rows older than the retention. A **`failed` campaign is never
+  pruned automatically** because it is resumable (`resume`); cancel it to make it prunable. `--pretend` counts exactly
+  what would be deleted (`CampaignManager::countPrunable()`) and changes nothing. The ledger rows prune themselves with
+  [`deliveries:prune`](#mobile-pushdeliveriesprune).
 
 ## Not verified
 

@@ -225,6 +225,11 @@ Because a phone can change hands, a push prepared for Alice must never reach Bob
 3. Anything queued for Alice carries the old owner and generation. At send time the eligibility gate (below) finds a
    different owner and skips the destination with `PolicyIneligible` / `owner_changed`.
 
+The same holds for a durable push or a [campaign](campaigns.md): the ledger's key for a registry device is
+`dev:<kind>:<device id>`, without the generation, and the planned generation and owner are checked at send time. A phone
+that changed hands after it was planned is `Skipped` (`owner_changed` or `generation_changed`), and Bob does **not** get a
+second row in the same effect.
+
 The package does not call `unregister()` for you: it has no idea when your user logs out.
 
 ## Quarantine versus invalidation

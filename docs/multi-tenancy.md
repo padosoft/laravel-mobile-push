@@ -181,11 +181,10 @@ into the wrong environment, is worse than not sending. How the mismatch is repor
 
 - A direct `send()` (and every path that goes through the manager) returns `Skipped` / `binding_mismatch` results for
   each destination and dispatches the `BindingMismatchDetected` event (with the expected and the current binding).
-- The **durable relay** records the destinations as `skipped` / `binding_mismatch` in the ledger. At the time of writing
-  it asks for the connection's default options first, and an unresolvable or repointed connection is reported from that
-  step, **without** the `BindingMismatchDetected` event.
-- The **light job** logs one warning ("the connection of a queued send no longer exists; nothing was sent") and writes
-  no result.
+- The **durable relay** and the **light job** (`SendPushJob`) behave the same way: `BindingMismatchDetected` is dispatched
+  **once per run**, each destination is recorded as `Skipped` / `binding_mismatch` with 0 attempts (in the ledger for the
+  relay), and those results are passed to the log sinks when they are enabled. The light job still ends cleanly: it is not
+  retried and not failed. A listener that throws does not change that.
 
 ## Key rotation and generations
 

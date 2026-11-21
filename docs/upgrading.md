@@ -58,6 +58,15 @@ version, with deprecation first.
   files arrive with the upgrade; nothing is published, and a copy you published earlier takes precedence over the package
   file ([delivery profiles](delivery-profiles.md#migrations)). Upgrading from a build that auto-loaded **and** published:
   see [troubleshooting](troubleshooting.md).
+- **Scaling indexes (campaign and relay work).** Two migrations only add indexes:
+  `2026_11_21_000013_add_mobile_push_ledger_scaling_indexes.php` (in the ledger group; it adds the claim, effect-claim and
+  work indexes of the deliveries table and drops the two index prefixes they replace) and
+  `2026_11_21_000002_add_mobile_push_devices_audience_index.php` (in the devices group; the audience index). An application
+  that published its migrations **before** these files existed must publish again (`php artisan mobile-push:install`, or
+  `vendor:publish` with the `-ledger` and `-devices` tags) and run `php artisan migrate`; without them nothing breaks, but
+  claims and audience reads on large tables are slow. They are idempotent (an index that exists is not created again) and
+  were exercised on SQLite only, not on MySQL or PostgreSQL. On a table with many rows creating an index takes time and
+  locks according to your database engine: run it in a quiet period.
 - Receipts add columns to the deliveries table through their own migration (`..._create_mobile_push_ledger_receipt_columns`),
   which is part of the ledger set.
 - Stored data carries format versions where it matters (a stored retry budget has a `v` field; an encrypted value names

@@ -324,7 +324,8 @@ the scope and the ids of every ledger effect of the push. The record is **encryp
 the fallback cache store (`fallback.cache_store`, `null` = the application's default cache store) with a TTL of
 `fallback.idempotency_ttl` seconds (default 86400), one entry per effect id. The device token is not part of it.
 
-**When it fires.** `IntegrationModule` dispatches `EffectSettled` once every delivery of a ledger effect is final. The
+**When it fires.** The package dispatches `EffectSettled` once every delivery of a ledger effect is final (for an
+effect that belongs to a campaign, once, when the campaign completes). The
 package listens to it: when **every** effect of the push has settled, the results of all of them are read from the ledger and
 handed to the same `FallbackEvaluator` and the same decision table as an inline send (so an `Accepted`, a `Deferred`
 still waiting or an `OutcomeUnknown` never falls back), with the same permission callback and the same idempotency claim.

@@ -216,4 +216,4 @@ Remaining (outside W5-P's lane):
 - [ ] `src/Laravel/Console/Support/InstallPlan.php` lists `DevicesModule::migrationPath()` (the table only): use `DevicesModule::migrationPaths()` so install/doctor show the devices index migration too.
 - [ ] `IntegrationModule`'s `JobProcessed` listener is now redundant with the `RelayRunFinished` listener of `QueueModule` (both go through `EffectSettlement`, deduplicated by its cache marker); it can be removed.
 - [ ] MySQL/PostgreSQL: run `ScalingQueryPlansTest`-like checks with `EXPLAIN` on those engines in the experimental CI jobs (the plans are asserted on SQLite only).
-- [ ] `docs/campaigns.md` / `docs/delivery-profiles.md`: completion is immediate (RelayRunFinished), failed campaigns are not pruned, `IntentResult::$previousEffectId`, follow-up folding (`queue.follow_up_bucket` now also bounds relay follow-ups).
+- [x] W9-D: `docs/campaigns.md` / `docs/delivery-profiles.md`: completion is immediate (RelayRunFinished), failed campaigns are not pruned, `IntentResult::$previousEffectId`, follow-up folding (`queue.follow_up_bucket` now also bounds relay follow-ups).

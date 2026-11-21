@@ -50,7 +50,7 @@ A job runs once (`tries = 1`) and never `release()`s itself. Destinations that c
 | The queue backend loses jobs (a flushed Redis) | The pushes are lost. |
 | Continuation job lost | The deferred destinations are lost with it. |
 | The same `queue()` call is made twice by your code | Two sends. There is no cross-call deduplication. |
-| The binding no longer resolves when the job runs (connection removed or repointed) | Nothing is sent, one warning is logged with the job's ids; there is **no result record** (the durable profile records `Skipped` / `binding_mismatch`). |
+| The binding no longer resolves when the job runs (connection removed or repointed) | Nothing is sent. The job dispatches `BindingMismatchDetected` once, records `Skipped` / `binding_mismatch` with 0 attempts for each destination, passes those results to the log sinks when they are enabled, and ends cleanly (the same as the durable relay and a direct `send()`). |
 | A synchronous `send()` crashes mid-batch | Nothing is remembered. Re-running it re-sends what was already sent. |
 
 Use the light profile when an occasional omission or duplicate is acceptable and the extra tables are not wanted.
@@ -79,9 +79,9 @@ Two tables (names and connection are configurable, see below):
 | Column | Holds |
 |---|---|
 | `id`, `effect_id`, `scope` | ULID, the effect, the scope. |
-| `kind`, `logical_key` | The destination kind and a stable key that makes `(effect, destination)` unique. |
+| `kind`, `logical_key` | The destination kind and a stable key that makes `(effect, destination)` unique: an HMAC index for a raw destination, `dev:<kind>:<device id>` for a registry device (**no generation in it**). |
 | `destination` | The raw destination, **encrypted**; `NULL` for registry devices (the registry stays the only place that holds the token). |
-| `device_id`, `device_generation`, `owner_type`, `owner_id` | Registry reference and owner. |
+| `device_id`, `device_generation`, `owner_type`, `owner_id` | Registry reference and owner **as planned**; compared with the registry right before the network. |
 | `state`, `attempts`, `budget`, `unknown_seen` | State, attempts made, the stored retry budget, the unknown-outcome flag. |
 | `next_attempt_at`, `lease_owner`, `lease_expires_at`, `attempt_started_at`, `version`, `cancel_requested` | Scheduling, lease and optimistic-lock version. |
 | `message_id`, `provider_message_id`, `receipt_marker` | The id assigned at insert, the provider's id, whether a receipt marker was issued. |
@@ -107,10 +107,15 @@ The protocol, in the order it happens:
 
 1. **`queue()`** writes the effect and one delivery per unique destination. If you are inside a transaction on the ledger's database connection, the rows are part of **your** transaction: they commit or roll back with your business data. Then one `RelayDeliveriesJob` (ids only, no tokens) is dispatched **after that transaction commits** (nothing is dispatched on rollback).
 2. A **relay worker** claims due rows (`claimDue`): pending or deferred, due now, effect not expired. A claim is an `UPDATE ... WHERE version = ?` that sets a lease (`ledger.lease_seconds`, default 120). Two workers never get the same row.
-3. For each row the relay re-checks the world: a missing effect or erased snapshot is `Skipped` (`cancelled`); a connection that no longer resolves is `Skipped` (`binding_mismatch`); a registry device that is no longer eligible is `Skipped` (`policy_ineligible`).
-4. **Right before the request leaves** the relay calls `markAttemptStarted`; if the lease was lost the destination is **not sent**. **No SQL transaction is open while the network call is in flight.**
+3. For each row the relay re-checks the world: a missing effect or erased snapshot is `Skipped` (`cancelled`); a connection that no longer resolves is `Skipped` (`binding_mismatch`); a registry device that is no longer eligible is `Skipped` (`policy_ineligible`, raw reason `owner_changed` or `generation_changed` when the phone changed owner or was registered again after the delivery was written).
+4. **Right before each transport window leaves** the relay marks its attempts started (one statement per window, through `Core\Driver\TransmitObserver`, called immediately before the window is handed to the transport); a destination whose lease was lost is **not sent**. **No SQL transaction is open while the network call is in flight.**
 5. The sender produces the outcome. The relay writes it (`record`) with the final budget **before the job is acknowledged**. If the write fails it is retried at the end of the chunk and, if it still fails, the job fails (so it is not acknowledged as if the outcome were stored).
-6. A `Deferred` result is stored with `next_attempt_at`; **one follow-up relay per effect** is scheduled for the earliest one. A cache marker keeps that to a single pending job; losing it is harmless because of the sweeper.
+6. A `Deferred` result is stored with `next_attempt_at`; **one follow-up relay per effect** is scheduled for the earliest one. A cache marker keeps that to a single pending job; losing it is harmless because of the sweeper. When many effects of one scope are deferred at once (a provider throttle answered to thousands of small effects), the follow-ups are folded, see "Follow-up relays are folded" below.
+7. After every relay run the package dispatches `Padosoft\MobilePush\Laravel\Queue\Events\RelayRunFinished`. The [campaigns](/modules/campaigns) module completes a campaign on it, and the integration module announces `EffectSettled` for an ordinary effect whose deliveries are all final.
+
+### Follow-up relays are folded
+
+At most **20** precise follow-up relay jobs are queued per scope, queue and time bucket (`queue.follow_up_bucket` seconds, default 60, aligned to the clock). Every further effect deferred into the same bucket shares **one scope-wide relay** dispatched for the end of the bucket. A delay is never shorter than the provider asked for and at most one bucket longer. 10,000 effects deferred to the same second therefore queue 21 relay jobs, not 10,000 (a scenario with the fake transport; not run on a real queue backend). `queue.follow_up_bucket` = 0 turns the folding off: one job per effect.
 
 ### The sweeper
 
@@ -122,9 +127,18 @@ The protocol, in the order it happens:
 
 `php artisan mobile-push:sweep` runs one sweep by hand; `php artisan mobile-push:relay` runs the relay inline (for a cron-driven setup without a queue worker, and for debugging).
 
+### Deduplication window
+
+An effect key is deduplicated for `ledger.dedupe_seconds` (default 86,400 s; an effect may override it, a campaign uses `campaigns.retention_days`) counted from the moment the effect is created.
+
+- **Inside the window**, a call with the same key and the same message returns the existing effect (`IntentResult::$created` is `false`); a different message throws `IdempotencyConflictException`.
+- **After the window** the key is free again, on purpose (a daily topic key must be reusable). The next call creates a **new effect and pushes again**. This is explicit: the result has `created === true` **and** `IntentResult::$previousEffectId` set to the effect that held the key, and `IntentResult::reusedExpiredKey()` returns `true`. A first use of a key has `previousEffectId === null`. The earlier effect is untouched and its deliveries keep going.
+- **Pruning respects the window.** `mobile-push:deliveries:prune` deletes a delivery only when it is final, older than `ledger.retention_days` **and** its effect is past its window; an effect is deleted only when it is past its window and has no delivery left. An effect is never pruned while its key is still deduplicated, whatever the two settings; a retention shorter than the window simply waits for the window.
+- A campaign planner that finds its key taken by another effect (its window ended while it was paused) cancels that new effect and fails the campaign with an explicit error; it never plans into a second effect.
+
 ### Idempotency keys and the payload fingerprint
 
-The **effect key** names a logical effect: "the shipping notification of order 42". Within the deduplication window (`ledger.dedupe_seconds`, default 86400 s = 24 h) the same scope, binding identity and key means the same effect:
+The **effect key** names a logical effect: "the shipping notification of order 42". Within the [deduplication window](/reliability/delivery-profiles#delivery-profiles-light-and-durable-durable-profile-the-ledger-deduplication-window) (`ledger.dedupe_seconds`, default 86400 s = 24 h) the same scope, binding identity and key means the same effect:
 
 - same key, **same message**: idempotent. The existing effect is returned; destinations that are not yet present are added; existing rows (including cancelled tombstones) are left alone; no second relay is dispatched unless something was added.
 - same key, **different message**: `IdempotencyConflictException` (a `ValidationException`). Nothing is written and nothing is queued; the first effect is untouched.
@@ -188,11 +202,12 @@ Be precise about these; they are the reason the word "exactly once" does not app
 | Window | Consequence |
 |---|---|
 | The provider processed the request, then the worker died or the connection dropped **before the outcome was written**. | The row becomes `outcome_unknown` (alerts and other non-replaceable messages are **not** re-sent: you may have an omission or a delivered push, never a duplicate by the package). A **replaceable** message may be re-sent by policy (`unknown_outcome.retry`): a duplicate, harmless by definition. With `unknown_outcome.retry = always`, duplicates are possible for any message. |
-| `markAttemptStarted` is called when a destination enters the sender's window (default 100), not at the instant its bytes are written. A worker that dies while the window is filling leaves up to about a window of rows in `sending` that never went on the wire. | They end as `outcome_unknown` with zero requests: an **omission** reported honestly but pessimistically. |
+| The worker dies **while a transport window is being prepared** (before the window is handed to the transport). | Nothing was marked: those rows are simply due again after the lease. No attempt is counted and no outcome is unknown. |
+| The worker dies **after a window was handed to the transport** (default window 100). Attempts are marked per window right before that, so the whole window is `sending` and its requests may or may not have left. | The whole window follows the unknown-outcome rule: `outcome_unknown` for an alert (an **omission** or a delivered push, never a duplicate by the package), planned again for a replaceable message by policy. The rows of a window that never reached the wire are reported unknown too: pessimistic but honest. |
 | The record write fails (database down) after the provider accepted. | The relay retries the write; if it cannot, the job fails and the lease later expires: the same `outcome_unknown` rule as above. |
 | Your business data and the ledger are on **different database connections**. | The intent does not join your transaction: your data can roll back while the effect commits, or the reverse. Put the ledger on the same connection (`ledger.connection`) if you need the outbox guarantee. |
 | The scheduler (sweeper) is not running. | A relay job lost between commit and dispatch is not recovered, and deferred rows rely on the follow-up job alone. |
-| The effect key is reused **after** `ledger.dedupe_seconds`. | A new effect is created: a second push. Deduplication is a window, not forever. |
+| The effect key is reused **after** `ledger.dedupe_seconds`. | A new effect is created: a second push. Deduplication is a window, not forever (see "Deduplication window"). |
 | No effect key was given. | No deduplication across calls. |
 | A cancel (`forget`, a campaign cancel) arrives while a request is in flight. | The request cannot be recalled; its real outcome is still recorded. Only further attempts are prevented. |
 | `send()` (synchronous). | Not durable at all; see the light-profile table. |
@@ -200,6 +215,7 @@ Be precise about these; they are the reason the word "exactly once" does not app
 ### Not verified
 
 - **Concurrency on MySQL and PostgreSQL.** The contract tests for the ledger run against the in-memory ledger and against the database ledger on SQLite, in both claim strategies. SQLite has no row locks: the `FOR UPDATE SKIP LOCKED` code path executes but its concurrency is **not proven** there. Races are injected on SQLite with a second connection. Real MySQL 8 / MariaDB 10.6 / PostgreSQL concurrency tests belong in CI and have not been run.
+- The query plans of the claim, start, record and audience queries (`ScalingQueryPlansTest`) are asserted on SQLite only; the indexes exist on MySQL and PostgreSQL but their plans there were not checked.
 - Behaviour with a database that has a very high write latency, or read replicas for the ledger connection.
 - The fingerprint hashing cost on very large messages.
 
@@ -210,7 +226,7 @@ Be precise about these; they are the reason the word "exactly once" does not app
 | **Light** | Development, prototypes, notifications where "sometimes missing or doubled" is acceptable, apps without a queue worker. |
 | **Durable** | Production sends that matter (orders, security codes you do not want doubled, anything under a regulator or a client), campaigns, receipts, any time you need an audit of per-device outcomes. |
 
-Durable costs: two tables to maintain and prune, a scheduler entry, a database round trip per delivery state change (about 1.2 ms per delivery on SQLite in memory with a fake transport: 5,000 deliveries in 5.9 s; a real database and real provider latency are slower), and message snapshots stored encrypted until pruned.
+Durable costs: two tables to maintain and prune, a scheduler entry, database writes per delivery state change (the relay claims, marks and records a whole transport window per statement; a campaign of 500,000 destinations ran end to end in 457 s on SQLite with a fake transport in the development container, a local measurement and not a promise: a real database and real provider latency change it), and message snapshots stored encrypted until pruned.
 
 ## Switching
 
@@ -230,7 +246,7 @@ Durable costs: two tables to maintain and prune, a scheduler entry, a database r
 
 One rule for every module with tables (ledger, devices, Live Activities, database log sink, campaigns): the migrations are **published, not auto-loaded**.
 
-1. `php artisan mobile-push:install` copies the migrations of the modules and profile you chose into `database/migrations` (the ledger group has four files: the two tables, the receipt columns, the scaling indexes). Without the installer: `php artisan vendor:publish --tag=mobile-push-migrations-ledger` (tags: `-devices`, `-live-activities`, `-logs`, `-campaigns`).
+1. `php artisan mobile-push:install` copies the migrations of the modules and profile you chose into `database/migrations` (the ledger group has four files: the two tables, the receipt columns, the scaling indexes `2026_11_21_000013_add_mobile_push_ledger_scaling_indexes.php`; the devices group adds `2026_11_21_000002_add_mobile_push_devices_audience_index.php`). Without the installer: `php artisan vendor:publish --tag=mobile-push-migrations-ledger` (tags: `-devices`, `-live-activities`, `-logs`, `-campaigns`).
 2. `php artisan migrate` runs the copies. The modules register **nothing** with the migrator by default, so a table can never be created by two files.
 3. Teams that prefer never to publish set `MOBILE_PUSH_MIGRATIONS_AUTOLOAD=true` (`migrations.autoload`). Then the enabled modules hand their package files to `migrate` (the ledger while the profile is durable), **no publish tag exists**, and `mobile-push:install` publishes nothing and says why. A published copy that already exists **wins**: the package file is then not registered, so switching a project from published to autoload (or back, after deleting the copies) never makes `migrate` run both.
 4. As a second line of defence every migration is **idempotent**: `create table` is skipped when the table exists, column and index additions check what is there (`hasColumn`, `getIndexes`), and `down()` is symmetric and tolerates a missing table, column or index. If both sets are ever registered by hand, the second set changes nothing and `migrate:rollback` still drops everything. This is covered by `tests/Scenario/Laravel/Install` on SQLite; MySQL and PostgreSQL were **not** run.
@@ -255,7 +271,7 @@ Table names and the database connection: `ledger.tables.effects` (`MOBILE_PUSH_L
 
 ## Retention and pruning
 
-Nothing prunes automatically. `php artisan mobile-push:deliveries:prune` deletes **terminal** deliveries whose last change is older than the retention **and** whose effect is past its deduplication window, in chunks, then the effects left without deliveries. Rows that are not finished are never deleted. On the durable profile the package schedules it once a day itself (`maintenance.schedule`, see [commands](/operations/commands#artisan-commands-what-the-package-schedules-by-itself)); the Laravel scheduler must be running. Until it runs, the **encrypted message snapshot** and the masked outcome data stay in the table. `--pretend` counts without deleting.
+`php artisan mobile-push:deliveries:prune` deletes **terminal** deliveries whose last change is older than the retention **and** whose effect is past its deduplication window, in chunks, then the effects left without deliveries. Rows that are not finished are never deleted. On the durable profile the package schedules it once a day itself (`maintenance.schedule`, see [commands](/operations/commands#artisan-commands-what-the-package-schedules-by-itself)); the Laravel scheduler must be running. Until it runs, the **encrypted message snapshot** and the masked outcome data stay in the table. `--pretend` counts without deleting.
 
 For one person's data use `mobile-push:forget` ([security and privacy](/operations/security-and-privacy#security-and-privacy-forget-and-export)): it cancels pending deliveries, erases destinations, owners and message snapshots and leaves non-personal tombstones that stop a re-submitted job from re-creating the rows.
 
