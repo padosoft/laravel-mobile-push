@@ -192,12 +192,16 @@ it('KNOWN LIMITATION: eligibleUsing() called per request accumulates: the checks
 
 it('KNOWN LIMITATION: runtime registrations are kept for the life of the process (one per scope and name, no unregister)', function (): void {
     bootOnce();
-    W::apns('R000000000'); // warm the helpers
+    $base = W::apns('R000000000');
     gc_collect_cycles();
     $before = memory_get_usage();
     for ($n = 0; $n < 200; $n++) {
-        MobilePush::register('extra', W::apns(sprintf('R%09d', $n)), 'registered-'.$n); // each tenant its own key
+        // each tenant has its own key, generated here and not kept by the test
+        $key = openssl_pkey_new(['private_key_type' => OPENSSL_KEYTYPE_EC, 'curve_name' => 'prime256v1']);
+        openssl_pkey_export($key, $pem);
+        MobilePush::register('extra', array_replace($base, ['key_id' => sprintf('R%09d', $n), 'key' => ['path' => null, 'base64' => base64_encode((string) $pem)]]), 'registered-'.$n);
     }
+    unset($key, $pem);
     gc_collect_cycles();
 
     expect(MobilePush::connectionNames('registered-0'))->toContain('extra')

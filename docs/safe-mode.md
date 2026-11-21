@@ -109,8 +109,8 @@ A group that can reach many people is therefore never unlocked by an allowlist o
 The guard refuses (in every environment, production included, `Skipped` / `policy_safe_mode`) when the pieces
 contradict each other: a destination of another provider than the connection (an FCM token on an APNs connection) or a
 destination kind that does not fit the operation (a device token published as a broadcast). The guard in the core
-library also refuses an operation that asks for a provider environment other than the connection's; no shipped command
-or sending path passes such a request today.
+library also refuses an operation that asks for a provider environment other than the connection's (the environment
+probe passes the environment of the connection it uses, so that check always agrees there; ordinary sends pass none).
 
 ### In production
 
