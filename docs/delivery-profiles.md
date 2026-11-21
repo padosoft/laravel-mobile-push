@@ -292,7 +292,12 @@ Be precise about these; they are the reason the word "exactly once" does not app
   only; it is skipped when the claim is called inside a transaction you opened). A second finding came from the
   scenarios where two connections write at once: when two calls record the same effect key at the same moment, the
   one that loses the unique index reads the winner's effect back and replays it; at REPEATABLE READ a plain read
-  answered from the transaction's snapshot and did not see it, so that read is now a locking read. What was **not**
+  answered from the transaction's snapshot and did not see it, so that read is now a locking read. The same holds
+  when **your** code calls the package inside its own transaction: registering a device or a Live Activity token, a
+  client report on an activity and a campaign control (start, pause, resume, cancel) are each run in CI inside an
+  open transaction while a second connection commits a change to the same row, on both engines; a re-read after a
+  lost write is a locking read, and a write a unique index may refuse runs in a savepoint (on PostgreSQL it would
+  otherwise abort your whole transaction). What was **not**
   run: many worker processes at production volume, MariaDB, and MySQL with `binlog_format=STATEMENT` (which does not
   allow READ COMMITTED writes on InnoDB).
 - **Scaling on the server engines** was measured on GitHub-hosted runners (the `scaling` workflow, weekly; noisy
