@@ -219,3 +219,70 @@ it('never copies the transport error message (it may contain the URL with the de
 
     expect(serialize($decision))->not->toContain('INTERNAL_ERROR')->not->toContain(K::APNS_TOKEN);
 });
+
+it('records for every catalog reason the HTTP status Apple documents (shown by mobile-push:explain)', function (int $http, string $reason): void {
+    expect(ApnsReasonCatalog::find($reason)?->documentedStatus)->toBe($http);
+})->with('apns reasons');
+
+it('decides a status without reason at the edges of the 4xx and 5xx classes', function (int $http, S $status, Code $code, bool $retryable, bool $throttle, ?int $minDelay): void {
+    $decision = (new ApnsOutcomeClassifier)->classify(Exchange::responded(K::apnsRequest(), new Response($http)), K::apnsContext());
+
+    expect($decision->status)->toBe($status)
+        ->and($decision->reason->code)->toBe($code)
+        ->and($decision->reason->rawReason)->toBeNull()
+        ->and($decision->retryable)->toBe($retryable)
+        ->and($decision->throttleProvider)->toBe($throttle)
+        ->and($decision->minDelaySeconds)->toBe($minDelay)
+        ->and($decision->httpStatus)->toBe($http);
+})->with([
+    '403 is a credential refusal' => [403, S::Failed, Code::AuthForbidden, false, false, null],
+    '405 is a malformed request' => [405, S::Rejected, Code::RequestInvalid, false, false, null],
+    '406 is not in the documented request errors' => [406, S::Rejected, Code::Unknown, false, false, null],
+    '429 waits the device delay' => [429, S::Failed, Code::DestinationRateLimited, true, false, 60],
+    '500 waits the 5xx delay' => [500, S::Failed, Code::ProviderInternal, true, false, 900],
+    '503 throttles APNs and waits the 5xx delay' => [503, S::Failed, Code::ProviderUnavailable, true, true, 900],
+    '502 is an undocumented 5xx' => [502, S::Failed, Code::Unknown, true, false, 900],
+    '599 (last 5xx) is an undocumented 5xx' => [599, S::Failed, Code::Unknown, true, false, 900],
+    '600 is not a provider answer' => [600, S::OutcomeUnknown, Code::ResponseUnparseable, true, false, null],
+    '399 is not a provider answer' => [399, S::OutcomeUnknown, Code::ResponseUnparseable, true, false, null],
+]);
+
+it('decides an unknown reason by HTTP class, at the edges 399/400, 499/500 and 599/600', function (int $http, S $status, Code $code, bool $retryable, ?int $minDelay): void {
+    $decision = (new ApnsOutcomeClassifier)->classify(K::apns($http, 'BrandNewReason2027'), K::apnsContext());
+
+    expect($decision->status)->toBe($status)
+        ->and($decision->reason->code)->toBe($code)
+        ->and($decision->reason->rawReason)->toBe('BrandNewReason2027')
+        ->and($decision->retryable)->toBe($retryable)
+        ->and($decision->minDelaySeconds)->toBe($minDelay)
+        ->and($decision->throttleProvider)->toBeFalse();
+})->with([
+    '302' => [302, S::OutcomeUnknown, Code::ResponseUnparseable, true, null],
+    '399' => [399, S::OutcomeUnknown, Code::ResponseUnparseable, true, null],
+    '400' => [400, S::Rejected, Code::Unknown, false, null],
+    '429 waits the device delay' => [429, S::Failed, Code::Unknown, true, 60],
+    '499' => [499, S::Rejected, Code::Unknown, false, null],
+    '500' => [500, S::Failed, Code::Unknown, true, 900],
+    '599' => [599, S::Failed, Code::Unknown, true, 900],
+    '600' => [600, S::OutcomeUnknown, Code::ResponseUnparseable, true, null],
+]);
+
+it('reads a 410 timestamp written as a JSON float or string only when it is a positive millisecond count', function (string $timestamp, ?int $expected): void {
+    // Raw JSON on purpose: json_encode() writes 1.0 as 1, so a PHP float would reach the classifier as an int.
+    $body = '{"reason":"Unregistered","timestamp":'.$timestamp.'}';
+    $decision = (new ApnsOutcomeClassifier)->classify(Exchange::responded(K::apnsRequest(), new Response(410, ['apns-id' => K::APNS_ID], $body)), K::apnsContext());
+
+    expect($decision->status)->toBe(S::Rejected)
+        ->and($decision->destinationAction)->toBe(Dest::Invalidate)
+        ->and($decision->invalidatedAtMs)->toBe($expected);
+})->with([
+    'float with a fraction' => ['1763632800123.5', 1763632800123],
+    'float 1.0 (smallest positive whole ms)' => ['1.0', 1],
+    'float 0.0' => ['0.0', null],
+    'negative float above -1' => ['-0.5', null],
+    'float at the 9.2e18 cap' => ['9.2e18', null],
+    'float just below the cap' => ['9.1e18', 9100000000000000000],
+    'string "1" (smallest positive)' => ['"1"', 1],
+    'string "0"' => ['"0"', null],
+    'string with a fraction' => ['"1.5"', null],
+]);

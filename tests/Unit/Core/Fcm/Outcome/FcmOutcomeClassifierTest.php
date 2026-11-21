@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Padosoft\MobilePush\Core\Fcm\Outcome\FcmOutcomeClassifier;
+use Padosoft\MobilePush\Core\Fcm\Outcome\FcmReasonCatalog;
 use Padosoft\MobilePush\Core\Outcome\CredentialAction as Cred;
 use Padosoft\MobilePush\Core\Outcome\DestinationAction as Dest;
 use Padosoft\MobilePush\Core\Outcome\ReasonCode as Code;
@@ -122,7 +123,7 @@ it('keeps an unknown error code and decides by HTTP class, ignoring a known erro
         ->and($decision->destinationAction)->toBe(Dest::None);
 })->with([[400, S::Rejected, false], [429, S::Failed, true], [500, S::Failed, true]]);
 
-it('classifies by HTTP status alone when the body is empty or not JSON', function (int $http, string $body, S $status, Code $code, Cred $cred): void {
+it('classifies by HTTP status alone when the body is empty or not JSON', function (int $http, string $body, S $status, Code $code, Cred $cred, bool $retryable): void {
     $exchange = Exchange::responded(K::fcmRequest(), new Response($http, [], $body));
     $decision = (new FcmOutcomeClassifier(new FakeClock))->classify($exchange, K::fcmContext());
 
@@ -130,20 +131,21 @@ it('classifies by HTTP status alone when the body is empty or not JSON', functio
         ->and($decision->reason->code)->toBe($code)
         ->and($decision->reason->rawReason)->toBeNull()
         ->and($decision->credentialAction)->toBe($cred)
-        ->and($decision->destinationAction)->toBe(Dest::None);
+        ->and($decision->destinationAction)->toBe(Dest::None)
+        ->and($decision->retryable)->toBe($retryable);
 })->with([
-    '400' => [400, '', S::Rejected, Code::PayloadInvalid, Cred::None],
-    '401' => [401, '<html>', S::Failed, Code::AuthTokenExpired, Cred::RefreshToken],
-    '403' => [403, '', S::Failed, Code::AuthForbidden, Cred::ReportAuthFailure],
-    '404' => [404, '{"error":"x"}', S::Rejected, Code::DestinationUnregistered, Cred::None],
-    '429' => [429, '', S::Failed, Code::QuotaExceeded, Cred::None],
-    '500' => [500, '', S::Failed, Code::ProviderInternal, Cred::None],
-    '502' => [502, '', S::Failed, Code::Unknown, Cred::None],
-    '503' => [503, '', S::Failed, Code::ProviderUnavailable, Cred::None],
-    '504' => [504, '', S::OutcomeUnknown, Code::ProviderUnavailable, Cred::None],
-    '409' => [409, '', S::Rejected, Code::Unknown, Cred::None],
-    '301' => [301, '', S::OutcomeUnknown, Code::ResponseUnparseable, Cred::None],
-    'details not a list' => [400, '{"error":{"details":"x","status":7}}', S::Rejected, Code::PayloadInvalid, Cred::None],
+    '400' => [400, '', S::Rejected, Code::PayloadInvalid, Cred::None, false],
+    '401' => [401, '<html>', S::Failed, Code::AuthTokenExpired, Cred::RefreshToken, true],
+    '403' => [403, '', S::Failed, Code::AuthForbidden, Cred::ReportAuthFailure, false],
+    '404' => [404, '{"error":"x"}', S::Rejected, Code::DestinationUnregistered, Cred::None, false],
+    '429' => [429, '', S::Failed, Code::QuotaExceeded, Cred::None, true],
+    '500' => [500, '', S::Failed, Code::ProviderInternal, Cred::None, true],
+    '502' => [502, '', S::Failed, Code::Unknown, Cred::None, true],
+    '503' => [503, '', S::Failed, Code::ProviderUnavailable, Cred::None, true],
+    '504' => [504, '', S::OutcomeUnknown, Code::ProviderUnavailable, Cred::None, true],
+    '409' => [409, '', S::Rejected, Code::Unknown, Cred::None, false],
+    '301 is not a provider answer, retried' => [301, '', S::OutcomeUnknown, Code::ResponseUnparseable, Cred::None, true],
+    'details not a list' => [400, '{"error":{"details":"x","status":7}}', S::Rejected, Code::PayloadInvalid, Cred::None, false],
 ]);
 
 it('maps transport evidence the same way as APNs', function (): void {
@@ -159,4 +161,78 @@ it('maps transport evidence the same way as APNs', function (): void {
         ->and($unknown->retryable)->toBeTrue()
         ->and($unknown->destinationAction)->toBe(Dest::None)
         ->and($unknown->credentialAction)->toBe(Cred::None);
+});
+
+it('records the HTTP status each FCM error code and status usually comes with (shown by mobile-push:explain)', function (): void {
+    $typical = static fn (array $entries): array => array_map(static fn ($reason): ?int => $reason->typicalStatus, $entries);
+
+    expect($typical(FcmReasonCatalog::errorCodes()))->toBe([
+        'INVALID_ARGUMENT' => 400,
+        'UNREGISTERED' => 404,
+        'SENDER_ID_MISMATCH' => 403,
+        'QUOTA_EXCEEDED' => 429,
+        'UNAVAILABLE' => 503,
+        'INTERNAL' => 500,
+        'THIRD_PARTY_AUTH_ERROR' => 401,
+        'APNS_AUTH_ERROR' => 401,
+    ])->and($typical(FcmReasonCatalog::statuses()))->toBe([
+        'INVALID_ARGUMENT' => 400,
+        'UNAUTHENTICATED' => 401,
+        'PERMISSION_DENIED' => 403,
+        'NOT_FOUND' => 404,
+        'RESOURCE_EXHAUSTED' => 429,
+        'UNAVAILABLE' => 503,
+        'INTERNAL' => 500,
+        'DEADLINE_EXCEEDED' => 504,
+    ]);
+});
+
+it('throttles FCM and waits the throttled minimum when only error.status says quota or unavailable', function (int $http, string $rpc): void {
+    $decision = (new FcmOutcomeClassifier(new FakeClock))->classify(K::fcm($http, null, $rpc), K::fcmContext());
+
+    expect($decision->throttleProvider)->toBeTrue()
+        ->and($decision->retryable)->toBeTrue()
+        ->and($decision->minDelaySeconds)->toBe(60);
+})->with([[429, 'RESOURCE_EXHAUSTED'], [503, 'UNAVAILABLE']]);
+
+it('decides an unknown error code by HTTP class, at the edges 399/400, 499/500 and 599/600', function (int $http, S $status, bool $retryable, bool $throttle): void {
+    $decision = (new FcmOutcomeClassifier(new FakeClock))->classify(K::fcm($http, 'UNSPECIFIED_ERROR'), K::fcmContext());
+
+    expect($decision->status)->toBe($status)
+        ->and($decision->reason->code)->toBe($status === S::OutcomeUnknown ? Code::ResponseUnparseable : Code::Unknown)
+        ->and($decision->reason->rawReason)->toBe('UNSPECIFIED_ERROR')
+        ->and($decision->retryable)->toBe($retryable)
+        ->and($decision->throttleProvider)->toBe($throttle)
+        ->and($decision->httpStatus)->toBe($http);
+})->with([
+    '399 is not a provider answer' => [399, S::OutcomeUnknown, true, false],
+    '400' => [400, S::Rejected, false, false],
+    '429 throttles the project' => [429, S::Failed, true, true],
+    '499' => [499, S::Rejected, false, false],
+    '500' => [500, S::Failed, true, false],
+    '599' => [599, S::Failed, true, false],
+    '600 is not a provider answer' => [600, S::OutcomeUnknown, true, false],
+]);
+
+it('treats an empty error.status like a missing one and falls back to the HTTP status', function (): void {
+    $exchange = Exchange::responded(K::fcmRequest(), new Response(400, [], '{"error":{"code":400,"status":""}}'));
+    $decision = (new FcmOutcomeClassifier(new FakeClock))->classify($exchange, K::fcmContext());
+
+    expect($decision->status)->toBe(S::Rejected)
+        ->and($decision->reason->code)->toBe(Code::PayloadInvalid)
+        ->and($decision->reason->rawReason)->toBeNull();
+});
+
+it('works without an injected clock when it needs a reference time for Retry-After', function (): void {
+    $decision = (new FcmOutcomeClassifier)->classify(K::fcm(429, 'QUOTA_EXCEEDED', headers: ['retry-after' => '120']), K::fcmContext());
+
+    expect($decision->status)->toBe(S::Failed)
+        ->and($decision->reason->code)->toBe(Code::QuotaExceeded)
+        ->and($decision->minDelaySeconds)->toBe(120);
+});
+
+it('uses a throttled minimum of zero as configured when no Retry-After is given', function (): void {
+    $decision = (new FcmOutcomeClassifier(new FakeClock, throttledMinimumDelaySeconds: 0))->classify(K::fcm(429, 'QUOTA_EXCEEDED'), K::fcmContext());
+
+    expect($decision->minDelaySeconds)->toBe(0);
 });

@@ -171,3 +171,74 @@ it('reports whether a failover attempt still fits the budget', function (): void
         ->and($planner->hasAttemptLeft($budget->withAttempt()->withAttempt(), retryNow()))->toBeFalse()
         ->and($planner->hasAttemptLeft($budget->withAttempt(), retryNow()->modify('+60 seconds')))->toBeFalse();
 });
+
+it('says a plan should be retried only when it is Deferred', function (): void {
+    $planner = retryPlanner();
+    $budget = RetryBudget::start($planner->policy(), retryNow());
+
+    $deferred = $planner->plan(retryUnavailable(), $budget, false, retryNow());
+    $accepted = $planner->plan(new Decision(S::Accepted, Reason::none()), $budget, false, retryNow());
+
+    expect($deferred->shouldRetry())->toBeTrue()->and($deferred->isTerminal())->toBeFalse()
+        ->and($accepted->shouldRetry())->toBeFalse()->and($accepted->isTerminal())->toBeTrue();
+});
+
+it('gives a now-or-never budget exactly one attempt, failover included', function (): void {
+    $planner = retryPlanner();
+    $budget = RetryBudget::start($planner->policy(), retryNow(), retryNow(), singleAttempt: true);
+
+    expect($planner->hasAttemptLeft($budget, retryNow()))->toBeTrue()
+        ->and($planner->hasAttemptLeft($budget->withAttempt(), retryNow()))->toBeFalse()
+        ->and($planner->hasAttemptLeft($budget->withAttempt()->withAttempt(), retryNow()))->toBeFalse();
+});
+
+it('never plans a retry for a now-or-never budget, whatever its deadline', function (?string $expiry, Decision $decision, S $status): void {
+    $planner = retryPlanner(['backoffBaseMs' => 1000]);
+    $budget = RetryBudget::start($planner->policy(), retryNow(), $expiry === null ? null : new DateTimeImmutable($expiry), singleAttempt: true);
+
+    $plan = $planner->plan($decision, $budget, true, retryNow());
+
+    expect($plan->status)->toBe($status)
+        ->and($plan->reason->code)->toBe(Code::Expired)
+        ->and($plan->nextAttemptAt)->toBeNull()
+        ->and($plan->shouldRetry())->toBeFalse();
+})->with([
+    'no expiry, retryable failure' => [null, retryUnavailable(), S::Expired],
+    'expiry later, token refresh' => ['2026-11-20T12:00:00Z', new Decision(S::Failed, Reason::of(Code::AuthTokenExpired), retryable: true, credentialAction: CredentialAction::RefreshToken), S::Expired],
+    'no expiry, unknown outcome' => [null, retryLostResponse(), S::OutcomeUnknown],
+]);
+
+it('honours the provider minimum on the immediate retry after a token refresh', function (): void {
+    $planner = retryPlanner(['backoffBaseMs' => 1000]);
+    $expired = new Decision(S::Failed, Reason::of(Code::AuthTokenExpired, 'UNAUTHENTICATED'), retryable: true, minDelaySeconds: 5, credentialAction: CredentialAction::RefreshToken);
+
+    $plan = $planner->plan($expired, RetryBudget::start($planner->policy(), retryNow()), false, retryNow());
+
+    expect($plan->status)->toBe(S::Deferred)
+        ->and($plan->delayMs)->toBe(5000)
+        ->and($plan->nextAttemptAt?->format('H:i:s.v'))->toBe('10:00:05.000');
+});
+
+it('gives up when the next attempt would fall exactly on the maxElapsed deadline (boundary next == deadline)', function (): void {
+    $planner = retryPlanner(['backoffBaseMs' => 1000, 'maxElapsedSeconds' => 1]);
+
+    $plan = $planner->plan(retryUnavailable(), RetryBudget::start($planner->policy(), retryNow()), false, retryNow());
+
+    expect($plan->status)->toBe(S::Failed)
+        ->and($plan->reason->code)->toBe(Code::RetryBudgetExhausted)
+        ->and($plan->nextAttemptAt)->toBeNull();
+});
+
+it('explains why it gave up and keeps the hint of the last cause', function (): void {
+    $planner = retryPlanner(['maxAttempts' => 1]);
+    $budget = RetryBudget::start($planner->policy(), retryNow());
+
+    $exhausted = $planner->plan(retryUnavailable(), $budget, false, retryNow());
+    $expired = $planner->plan(retryUnavailable(), RetryBudget::start($planner->policy(), retryNow(), retryNow(), singleAttempt: true), false, retryNow());
+    $noHint = $planner->plan(new Decision(S::Failed, Reason::of(Code::TransportNotSent), retryable: true), $budget, false, retryNow());
+
+    expect($exhausted->reason->hint)->toStartWith('Retry budget exhausted after 1 attempt(s).')->toEndWith(' Last cause: down')
+        ->and($expired->reason->hint)->toStartWith('The next attempt would fall after the message expiry')->toEndWith(' Last cause: down')
+        ->and($noHint->reason->hint)->toStartWith('Retry budget exhausted after 1 attempt(s).')->not->toContain('Last cause')
+        ->and($noHint->reason->rawReason)->toBe('transport_not_sent');
+});

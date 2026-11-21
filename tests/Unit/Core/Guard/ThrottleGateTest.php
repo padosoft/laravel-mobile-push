@@ -29,3 +29,17 @@ it('extends a pause with a later one', function () {
 
     expect($gate->pause('k', $later))->toEqual($later);
 });
+
+it('judged at a given instant, reopens exactly at the end of the pause, not one millisecond before', function (string $offset, bool $open) {
+    $clock = new FakeClock;
+    $gate = new ThrottleGate(new InMemoryGuardStore($clock), $clock);
+    $until = $clock->now()->modify('+60 seconds');
+    $gate->pause('k', $until);
+
+    expect($gate->isOpen('k', $until->modify($offset)))->toBe($open)
+        ->and($gate->isOpen('k'))->toBeFalse();   // the clock itself is still inside the pause
+})->with([
+    'one millisecond before the end' => ['-1 millisecond', false],
+    'at the end' => ['+0 seconds', true],
+    'one millisecond after the end' => ['+1 millisecond', true],
+]);

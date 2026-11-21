@@ -135,3 +135,77 @@ it('carries the single-attempt flag through serialization and defaults to false 
     unset($stored['single_attempt']);
     expect(RetryBudget::fromArray($stored)->singleAttempt)->toBeFalse();
 });
+
+it('clamps Retry-After to one day (86400 s) exactly, and reads leading zeros as delta-seconds', function (string $value, int $expected): void {
+    expect(RetryAfter::seconds($value, new DateTimeImmutable('2026-11-20T10:00:00Z')))->toBe($expected);
+})->with([
+    'just below the cap' => ['86399', 86_399],
+    'at the cap' => ['86400', 86_400],
+    'just above the cap' => ['86401', 86_400],
+    'six digits' => ['999999', 86_400],
+    'six characters with leading zeros' => ['000005', 5],
+    'HTTP-date two days ahead' => ['Sun, 22 Nov 2026 10:00:00 GMT', 86_400],
+]);
+
+it('accepts the three HTTP-date forms recipients must read, surrounding spaces included', function (string $value): void {
+    expect(RetryAfter::httpDate($value)?->format(DATE_ATOM))->toBe('2026-11-20T10:02:00+00:00');
+})->with([
+    'IMF-fixdate' => ['Fri, 20 Nov 2026 10:02:00 GMT'],
+    'RFC 850' => ['Friday, 20-Nov-26 10:02:00 GMT'],
+    'asctime' => ['Fri Nov 20 10:02:00 2026'],
+    'asctime with a padded day' => ['Fri Nov  20 10:02:00 2026'],
+    'surrounded by spaces' => ['  Fri, 20 Nov 2026 10:02:00 GMT  '],
+]);
+
+it('treats retry numbers below 1 as the first retry', function (): void {
+    $backoff = new Backoff(new RetryPolicy(backoffBaseMs: 1000, jitter: 0.0));
+
+    expect($backoff->delayMs(0))->toBe(1000)->and($backoff->delayMs(-3))->toBe(1000);
+});
+
+it('caps the exponent at 2^62 so an extreme policy never overflows into a negative delay', function (): void {
+    $backoff = new Backoff(new RetryPolicy(backoffBaseMs: 1, backoffMaxMs: PHP_INT_MAX, jitter: 0.0));
+
+    expect($backoff->delayMs(63))->toBe(2 ** 62)
+        ->and($backoff->delayMs(500))->toBe(2 ** 62);
+});
+
+it('spreads UP from the provider minimum when it equals the exponential step (boundary minimum == exp)', function (): void {
+    $backoff = new Backoff(new RetryPolicy(backoffBaseMs: 1000, jitter: 0.5), new Randomizer(new Mt19937(3)));
+
+    $delays = array_map(static fn (): int => $backoff->delayMs(1, 1), range(1, 50));
+
+    expect(min($delays))->toBeGreaterThanOrEqual(1000)
+        ->and(max($delays))->toBeGreaterThan(1000)->toBeLessThanOrEqual(1500);
+});
+
+it('rounds a jittered delay up to the next millisecond', function (): void {
+    // exp * (1 - spread) lies in [999, 1000]: rounding up always lands on 1000.
+    $backoff = new Backoff(new RetryPolicy(backoffBaseMs: 1000, jitter: 0.001), new Randomizer(new Mt19937(11)));
+
+    expect(array_unique(array_map(static fn (): int => $backoff->delayMs(1), range(1, 100))))->toBe([1000]);
+});
+
+it('stores budgets as version 1', function (): void {
+    $stored = RetryBudget::start(new RetryPolicy, new DateTimeImmutable('2026-11-20T10:00:00Z'))->toArray();
+
+    expect($stored['v'])->toBe(1)
+        ->and(RetryBudget::fromArray(['v' => 1] + $stored)->attempts)->toBe(0);
+});
+
+it('makes the logical expiry the binding deadline when it coincides with first attempt + maxElapsed', function (): void {
+    $budget = RetryBudget::start(new RetryPolicy(maxElapsedSeconds: 600), new DateTimeImmutable('2026-11-20T10:00:00Z'), new DateTimeImmutable('2026-11-20T10:10:00Z'));
+
+    expect($budget->deadlineIsExpiry())->toBeTrue()
+        ->and($budget->deadline()->format(DATE_ATOM))->toBe('2026-11-20T10:10:00+00:00');
+});
+
+it('refuses a stored budget with a negative token-refresh count or a non-string timestamp', function (array $override): void {
+    $valid = RetryBudget::start(new RetryPolicy, new DateTimeImmutable('2026-11-20T10:00:00Z'))->toArray();
+
+    RetryBudget::fromArray($override + $valid);
+})->with([
+    'token_refreshes = -1' => [['token_refreshes' => -1]],
+    'started_at is a number' => [['started_at' => 1_763_632_800]],
+    'elapsed_deadline is null' => [['elapsed_deadline' => null]],
+])->throws(InvalidArgumentException::class);
