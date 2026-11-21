@@ -213,13 +213,13 @@ Use a **lock-capable shared store**: `redis`, `memcached`, `database` or `dynamo
 |---|---|
 | `sync` | Run in tests: jobs execute in-process; timeout links are reported "not applicable". |
 | `database` | Run in the scenario tests with a real `queue:work` loop (light chunks, continuations, the relay and the sweeper). |
-| `redis` | **Not verified** against a real Redis. Only the arithmetic of the timeout chain is tested for its config shape (`retry_after`). |
+| `redis` | **Run in CI** (`runtimes` job, Redis 7 with phpredis, as queue and as cache store) and once locally: durable pushes were queued, relayed by `queue:work redis` and by Horizon, and the ledger ended consistent. Throughput and behaviour under load were not measured. |
 | `sqs` | **Not verified**, including through an emulator. The visibility timeout is only compared when you declare it. |
 | `beanstalkd` | **Not verified.** `retry_after` is read the same way as for Redis. |
-| Horizon | **Not verified** against a running Horizon. The supervisor timeouts are read from the config files. The block printed by `install` is derived from your settings, not from a Horizon run. |
-| Octane / Swoole / RoadRunner | **Not verified.** The transport's connection pools are per process, with a guard for `fork()`; behaviour under Swoole is an open question (see [transport](/reference/transport)). |
+| Horizon | **Run in CI** with the block printed by `install` as its supervisors: jobs processed, tags present, no token in the payloads, and `doctor` validates the timeout chain from the supervisor config. Auto-balancing under a real backlog was not observed. |
+| Octane | **RoadRunner: run in CI** (sixty requests through two workers, one push each, logs flushed per request; see [runtimes](/operations/runtimes)). **Swoole and FrankenPHP: not verified**; behaviour under Swoole's coroutines is an open question (see [transport](/reference/transport)). |
 
-Treat Redis, SQS and Horizon as "designed for, not yet proven": run `mobile-push:doctor` and a canary push in a staging environment on your real backend before you rely on it, and check [troubleshooting](/operations/troubleshooting#troubleshooting-by-symptom-the-queue-sends-twice) for the symptoms of a bad chain.
+Redis and Horizon are exercised by a CI job with simulated sends and a handful of jobs; SQS is not. Treat all three as not yet proven under your load: run `mobile-push:doctor` and a canary push in a staging environment on your real backend before you rely on it, and check [troubleshooting](/operations/troubleshooting#troubleshooting-by-symptom-the-queue-sends-twice) for the symptoms of a bad chain.
 
 ---
 
