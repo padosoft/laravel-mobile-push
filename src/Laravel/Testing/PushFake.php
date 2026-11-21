@@ -36,7 +36,7 @@ final class PushFake
     /** @var list<array{0: \Closure(SentPush): bool, 1: ScriptedOutcome|\Closure(SentPush): (SendStatus|ScriptedOutcome|null)}> */
     private array $rules = [];
 
-    /** @var list<SendStatus|ScriptedOutcome|\Closure(SentPush): (SendStatus|ScriptedOutcome|null)> */
+    /** @var list<ScriptedOutcome|\Closure(SentPush): (SendStatus|ScriptedOutcome|null)> */
     private array $sequence = [];
 
     /** @var ScriptedOutcome|\Closure(SentPush): (SendStatus|ScriptedOutcome|null) */

@@ -19,7 +19,10 @@ abstract class OpsCommand extends Command
     {
         try {
             return (int) parent::execute($input, $output);
-        } catch (UsageError $e) { // @phpstan-ignore catch.neverThrown (thrown by the command's handle())
+        } catch (\Throwable $e) {
+            if (! $e instanceof UsageError) {
+                throw $e;
+            }
             $this->components->error($e->getMessage());
 
             return self::FAILURE;

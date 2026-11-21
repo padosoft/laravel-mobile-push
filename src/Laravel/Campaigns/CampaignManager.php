@@ -9,6 +9,7 @@ use Padosoft\MobilePush\Core\Guard\TrafficClass;
 use Padosoft\MobilePush\Core\Identity\BindingRef;
 use Padosoft\MobilePush\Core\Identity\Scope;
 use Padosoft\MobilePush\Core\Ledger\ClientReceiptStore;
+use Padosoft\MobilePush\Core\Ledger\DeliveryState;
 use Padosoft\MobilePush\Core\Ledger\EffectIntent;
 use Padosoft\MobilePush\Core\Ledger\Ledger;
 use Padosoft\MobilePush\Core\Ledger\Ulid;
@@ -213,7 +214,7 @@ final readonly class CampaignManager
             $notes[] = 'Topics, conditions and broadcast channels count as one delivery per publication: the number of recipients is not known.';
         }
         if ($campaign->status === CampaignStatus::Cancelled) {
-            $notes[] = sprintf('Cancelled: %d deliveries were cancelled before being sent; %d accepted and %d unknown outcomes happened before the cancel and cannot be retracted.', $counts->of(\Padosoft\MobilePush\Core\Ledger\DeliveryState::Cancelled), $counts->of(\Padosoft\MobilePush\Core\Ledger\DeliveryState::Accepted), $counts->of(\Padosoft\MobilePush\Core\Ledger\DeliveryState::OutcomeUnknown));
+            $notes[] = sprintf('Cancelled: %d deliveries were cancelled before being sent; %d accepted and %d unknown outcomes happened before the cancel and cannot be retracted.', $counts->of(DeliveryState::Cancelled), $counts->of(DeliveryState::Accepted), $counts->of(DeliveryState::OutcomeUnknown));
         }
         if (! $campaign->planningFinished() && ! $campaign->status->isFinal()) {
             $notes[] = 'Planning is not finished: totals cover the destinations planned so far, not the whole audience.';
@@ -342,11 +343,7 @@ final readonly class CampaignManager
         }
         $now = $this->store->nowMs();
         $whole = $campaign->planningFinished() || $campaign->status->isFinal();
-        $row = $this->store->find($campaign->scope, $campaign->id);
-        if ($row === null) {
-            return null;
-        }
-        [$sampleAt, $sampleDone, $stored] = $this->sampleOf($campaign);
+        [$sampleAt, $sampleDone, $stored] = $this->store->sampleOf($campaign);
 
         if ($sampleAt === null) {
             $this->store->sample($campaign, $now, $done, null);
@@ -362,12 +359,6 @@ final readonly class CampaignManager
         $elapsed = max(1, $now - Millis::of($campaign->startedAt));
 
         return self::estimateFrom($done / ($elapsed / 1000), $remaining, ThroughputEstimate::BASIS_SINCE_START, intdiv($elapsed, 1000), $whole);
-    }
-
-    /** @return array{0: int|null, 1: int, 2: float|null} */
-    private function sampleOf(Campaign $campaign): array
-    {
-        return $this->store->sampleOf($campaign);
     }
 
     private static function estimateFrom(float $perSecond, int $remaining, string $basis, int $window, bool $whole): ThroughputEstimate

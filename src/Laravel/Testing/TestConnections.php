@@ -79,8 +79,10 @@ final class TestConnections
         if ($key === false) {
             throw new \RuntimeException('Cannot generate a test key: is the OpenSSL extension available?');
         }
-        openssl_pkey_export($key, $pem);
+        if (! openssl_pkey_export($key, $pem) || ! is_string($pem)) {
+            throw new \RuntimeException('Cannot export the generated test key.');
+        }
 
-        return (string) $pem;
+        return $pem;
     }
 }
