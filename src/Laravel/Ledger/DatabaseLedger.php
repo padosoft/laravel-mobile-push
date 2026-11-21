@@ -407,7 +407,17 @@ final class DatabaseLedger implements ClientReceiptStore, DeliveryBatches, Ledge
     /** @return list<string> */
     private function claimSkipLocked(string $scope, string $owner, int $limit, ?string $effectId, int $now, int $lease): array
     {
-        return $this->connection()->transaction(function () use ($scope, $owner, $limit, $effectId, $now, $lease): array {
+        $connection = $this->connection();
+        if ($connection->transactionLevel() === 0 && in_array($connection->getDriverName(), ['mysql', 'mariadb'], true)) {
+            // InnoDB at its default REPEATABLE READ also locks the GAPS of the index range a locking read scans. The
+            // UPDATE of another claimer moves its rows inside that index (state pending -> leased) and would wait for
+            // this transaction, so claimers would run one after the other (seen on MySQL 8.4: lock wait timeout while
+            // a second worker claimed inside the first one's transaction). READ COMMITTED locks the rows only. The
+            // statement applies to the next transaction of this session and to nothing else.
+            $connection->statement('SET TRANSACTION ISOLATION LEVEL READ COMMITTED');
+        }
+
+        return $connection->transaction(function () use ($scope, $owner, $limit, $effectId, $now, $lease): array {
             $ids = array_column($this->candidates($scope, $effectId, $now, $limit, true), 'id');
             if ($ids === []) {
                 return [];
