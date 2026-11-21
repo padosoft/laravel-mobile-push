@@ -14,9 +14,9 @@ use Padosoft\MobilePush\Core\Driver\SendOptions;
 use Padosoft\MobilePush\Core\Exceptions\ConfigurationException;
 use Padosoft\MobilePush\Core\Exceptions\InvalidDestinationException;
 use Padosoft\MobilePush\Core\Exceptions\PayloadTooLargeException;
+use Padosoft\MobilePush\Core\Exceptions\UnknownConnectionException;
 use Padosoft\MobilePush\Core\Exceptions\UnsupportedCapabilityException;
 use Padosoft\MobilePush\Core\Exceptions\ValidationException;
-use Padosoft\MobilePush\Core\Exceptions\UnknownConnectionException;
 use Padosoft\MobilePush\Core\Guard\TrafficClass;
 use Padosoft\MobilePush\Core\Identity\BindingRef;
 use Padosoft\MobilePush\Core\Identity\Destination;
@@ -74,7 +74,7 @@ final class PushManager implements PushDispatcher
     /** @var (\Closure(): string)|null */
     private ?\Closure $scopeResolver = null;
 
-    /** @var list<array{0: callable, 1: ConsentGate}> the callback as the application passed it, and its gate */
+    /** @var list<array{0: callable(mixed, mixed): mixed, 1: ConsentGate}> the callback as the application passed it, and its gate */
     private array $consentGates = [];
 
     /** @var array<string, array<string, ResolvedConnection>> scope => name => connection installed with useDriver() */
@@ -270,6 +270,8 @@ final class PushManager implements PushDispatcher
     /**
      * Undo eligibleUsing(): remove every check registered with this very callable (the same closure instance, or an
      * identical string / array callable). Returns how many were removed.
+     *
+     * @param  callable(mixed, mixed): mixed  $check
      */
     public function forgetEligibility(callable $check): int
     {

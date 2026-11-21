@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Padosoft\MobilePush\Laravel\Notifications;
 
+use Illuminate\Contracts\Encryption\StringEncrypter;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Notifications\ChannelManager;
 use Padosoft\MobilePush\Core\Identity\Provider;
@@ -35,7 +36,7 @@ final class NotificationsModule implements Module
         $app->singleton(DurableFallbacks::class, static fn (Application $app): DurableFallbacks => new DurableFallbacks(
             $app->make('config'),
             $app->make('cache'),
-            $app->make('encrypter'),
+            $app->make(StringEncrypter::class),
             static fn (): ?DeliveryStore => $app->bound(DeliveryStore::class) ? $app->make(DeliveryStore::class) : null,
             static fn (): FallbackEvaluator => $app->make(FallbackEvaluator::class),
             $app->bound(LoggerInterface::class) || $app->bound('log') ? $app->make(LoggerInterface::class) : null,

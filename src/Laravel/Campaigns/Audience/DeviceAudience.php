@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Padosoft\MobilePush\Core\Identity\DestinationKind;
 use Padosoft\MobilePush\Core\Identity\DestinationRef;
 use Padosoft\MobilePush\Core\Identity\Platform;
+use Padosoft\MobilePush\Core\Ledger\LedgerRules;
 use Padosoft\MobilePush\Core\Ledger\RecordedDestination;
 use Padosoft\MobilePush\Laravel\Campaigns\CampaignException;
 use Padosoft\MobilePush\Laravel\Devices\PushDevice;
@@ -173,7 +174,7 @@ final readonly class DeviceAudience implements Audience
             $ownerType = is_string($row['owner_type'] ?? null) ? $row['owner_type'] : null;
             $ownerId = is_scalar($row['owner_id'] ?? null) ? (string) $row['owner_id'] : null;
             $ref = new DestinationRef((string) $last, $generation, $ownerType, $ownerId);
-            $destinations[] = new RecordedDestination($kind, 'dev:'.$kind->value.':'.$last.':'.$generation, $ref);
+            $destinations[] = new RecordedDestination($kind, LedgerRules::deviceKey($kind->value, (string) $last), $ref);
         }
 
         $exhausted = count($rows) < $limit || $last >= $upper;

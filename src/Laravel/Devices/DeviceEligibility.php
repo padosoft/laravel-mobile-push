@@ -71,17 +71,21 @@ final readonly class DeviceEligibility
         }
 
         $model = new (PushDevice::modelClass());
+        // Primary key only: the binding is checked on the rows read. A `forBinding()` in SQL lets the planner pick the
+        // (binding_identity, ...) index and read every device of the binding for each chunk (W5-P: measured on
+        // SQLite, 17 ms per chunk of 500 at 25,000 devices growing linearly with the registry).
         $query = $model->newQuery()
             ->whereIn($model->getKeyName(), array_values(array_unique(array_map(static fn (DestinationRef $r): string => $r->id, $refs))));
         if ($columns !== null) {
-            $query->select([$model->getKeyName(), ...$columns]);
+            $query->select(array_values(array_unique([$model->getKeyName(), 'scope', 'binding_identity', ...$columns])));
         }
-        if ($binding !== null) {
-            $query->forBinding($binding);
-        }
+        $identity = $binding?->identity();
 
         $rows = [];
         foreach ($query->get() as $row) {
+            if ($binding !== null && ($row->scope !== $binding->scope || $row->binding_identity !== $identity)) {
+                continue;   // another scope or binding: counts as missing
+            }
             $rows[PushDevice::keyOf($row)] = $row;
         }
 

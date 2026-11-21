@@ -2,6 +2,10 @@
 
 declare(strict_types=1);
 
+use Padosoft\MobilePush\Core\Credentials\CredentialCheck;
+use Padosoft\MobilePush\Laravel\Health\CredentialMonitor;
+use Padosoft\MobilePush\Laravel\Health\HealthInspector;
+use Padosoft\MobilePush\Laravel\Health\HealthSettings;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Console\ConsoleWorld as C;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Sending\SendingWorld as W;
 
@@ -30,7 +34,7 @@ it('judges a certificate that expires in N days the same way in all four command
         'certificate' => ['inline' => $cert], 'certificate_key' => ['inline' => $key],
     ]]);
     W::forgetSingletons();
-    foreach ([\Padosoft\MobilePush\Laravel\Health\HealthSettings::class, \Padosoft\MobilePush\Laravel\Health\HealthInspector::class, \Padosoft\MobilePush\Laravel\Health\CredentialMonitor::class, \Padosoft\MobilePush\Core\Credentials\CredentialCheck::class] as $abstract) {
+    foreach ([HealthSettings::class, HealthInspector::class, CredentialMonitor::class, CredentialCheck::class] as $abstract) {
         app()->forgetInstance($abstract);
     }
 

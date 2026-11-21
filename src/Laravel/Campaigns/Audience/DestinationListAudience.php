@@ -8,6 +8,7 @@ use Padosoft\MobilePush\Core\Exceptions\ValidationException;
 use Padosoft\MobilePush\Core\Identity\Destination;
 use Padosoft\MobilePush\Core\Identity\DestinationKind;
 use Padosoft\MobilePush\Core\Identity\DestinationRef;
+use Padosoft\MobilePush\Core\Ledger\LedgerRules;
 use Padosoft\MobilePush\Core\Ledger\RecordedDestination;
 use Padosoft\MobilePush\Laravel\Devices\PushDevice;
 
@@ -137,7 +138,7 @@ final readonly class DestinationListAudience implements Audience
         $ref = $item['r'] === null ? null : new DestinationRef($item['r'][0], $item['r'][1], $item['r'][2], $item['r'][3]);
 
         if ($item['v'] === null) {
-            return $ref === null ? null : new RecordedDestination($kind, 'dev:'.$kind->value.':'.$ref->id.':'.$ref->generation, $ref);
+            return $ref === null ? null : new RecordedDestination($kind, LedgerRules::deviceKey($kind->value, $ref->id), $ref);
         }
 
         try {

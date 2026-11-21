@@ -28,6 +28,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      # The cache-coordination scenario starts its own redis-server when the binary exists (and skips Redis otherwise).
+      - name: Install redis-server
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq redis-server && sudo systemctl stop redis-server || true
       - name: Install dependencies
         run: |
           composer require "illuminate/support:${{ matrix.laravel }}" --no-interaction --no-update
@@ -37,6 +40,69 @@ jobs:
       - name: Slow tests (large batches)
         if: matrix.php == '8.3' && matrix.laravel == '13.*' && matrix.stability == 'prefer-stable'
         run: vendor/bin/pest --group=slow
+
+  # EXPERIMENTAL. The suite is developed on SQLite; these jobs run the database-backed scenarios on MySQL and
+  # PostgreSQL (row locks, SKIP LOCKED claims, unique constraints, keyset pagination). They do not gate a merge until
+  # they have been green for a while: a failure here is a finding to triage, not a broken build.
+  databases:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - db: mysql
+            port: 3306
+          - db: pgsql
+            port: 5432
+    name: Database scenarios · ${{ matrix.db }} (experimental)
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
+          MYSQL_DATABASE: mobile_push_test
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1"
+          --health-interval=10s --health-timeout=5s --health-retries=10
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: mobile_push_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s --health-timeout=5s --health-retries=10
+    env:
+      DB_CONNECTION: ${{ matrix.db }}
+      DB_HOST: 127.0.0.1
+      DB_PORT: ${{ matrix.port }}
+      DB_DATABASE: mobile_push_test
+      DB_USERNAME: ${{ matrix.db == 'mysql' && 'root' || 'postgres' }}
+      DB_PASSWORD: ${{ matrix.db == 'mysql' && '' || 'postgres' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: curl, openssl, json, intl, pdo_mysql, pdo_pgsql, pdo_sqlite
+          coverage: none
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: composer update --prefer-dist --no-interaction
+      - name: Database-backed scenarios
+        run: >-
+          vendor/bin/pest
+          tests/Unit/Laravel/Ledger tests/Scenario/Laravel/Ledger
+          tests/Unit/Laravel/Devices tests/Scenario/Laravel/Devices
+          tests/Unit/Laravel/LiveActivities tests/Scenario/Laravel/LiveActivities
+          tests/Unit/Laravel/Campaigns tests/Scenario/Laravel/Campaigns
+          tests/Unit/Laravel/Receipts tests/Scenario/Laravel/Receipts
+          tests/Scenario/Laravel/Queue tests/Scenario/Laravel/Install
 
   static:
     runs-on: ubuntu-latest
