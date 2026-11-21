@@ -227,3 +227,4 @@ Open:
 - [ ] `ExpiredProviderToken` refresh path against the real APNs (not observable without a real key).
 
 Verified by hand or by CI in the closing pass (see `progress.md`): install into a fresh Laravel 12 and 13 application (`fresh-app` job), MySQL 8.4 and PostgreSQL 17 scenarios, credential-less probes of APNs sandbox / FCM / Google OAuth from a hosted runner (`providers` workflow), FCM Discovery drift check, mutation testing workflow.
+- [ ] Mutation testing: scores on 2026-11-21 are auth 99%, ledger rules 98%, retry 93%, guards 91%, APNs outcome 89%, FCM outcome 85%, message support 71%. The survivors left are judged equivalent or unreachable defensive code (lists in the M1-M3 entries of `progress.md`); the dead guards in `Truncator` (grapheme_extract failure paths) and `TextFitter` could be removed to make that visible. Compilers, parsers and the ledger database code are not in a mutation group yet.
