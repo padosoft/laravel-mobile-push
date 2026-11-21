@@ -1,0 +1,111 @@
+{
+  "$comment": "Source of truth for the generated pages of the site. Edit the Markdown sources (README.md, docs/*.md, ...), never docs-site/docs/** (except the hand-written index.md). Run `npm run sync` after changing a source or this file.",
+  "repository": {
+    "url": "https://github.com/padosoft/laravel-mobile-push",
+    "branch": "main"
+  },
+  "landing": {
+    "title": "Overview",
+    "file": "index.md"
+  },
+  "assets": [
+    { "from": "resources/laravel-mobile-push-banner.png", "to": "laravel-mobile-push-banner.png" },
+    { "from": "art/favicon.svg", "to": "favicon.svg" }
+  ],
+  "sections": [
+    {
+      "title": "Get started",
+      "slug": "get-started",
+      "items": [
+        { "source": "docs/getting-started.md", "slug": "getting-started", "title": "Getting started" },
+        { "source": "docs/credentials-apns.md", "slug": "credentials-apns", "title": "APNs credentials" },
+        { "source": "docs/credentials-fcm.md", "slug": "credentials-fcm", "title": "FCM credentials" },
+        { "source": "docs/configuration.md", "slug": "configuration", "title": "Configuration reference" }
+      ]
+    },
+    {
+      "title": "Sending",
+      "slug": "sending",
+      "items": [
+        { "source": "docs/sending.md", "slug": "sending", "title": "Sending" },
+        { "source": "docs/messages.md", "slug": "messages", "title": "Messages" },
+        { "source": "docs/notifications-and-fallback.md", "slug": "notifications-and-fallback", "title": "Notifications and fallback" },
+        { "source": "docs/topics.md", "slug": "topics", "title": "FCM topics" },
+        { "source": "docs/testing.md", "slug": "testing", "title": "Testing" }
+      ]
+    },
+    {
+      "title": "Reliability",
+      "slug": "reliability",
+      "items": [
+        { "source": "docs/outcomes.md", "slug": "outcomes", "title": "Outcomes" },
+        { "source": "docs/retries-and-limits.md", "slug": "retries-and-limits", "title": "Retries and limits" },
+        { "source": "docs/delivery-profiles.md", "slug": "delivery-profiles", "title": "Delivery profiles" },
+        { "source": "docs/queues-and-horizon.md", "slug": "queues-and-horizon", "title": "Queues and Horizon" },
+        { "source": "docs/safe-mode.md", "slug": "safe-mode", "title": "Safe mode" }
+      ]
+    },
+    {
+      "title": "Modules",
+      "slug": "modules",
+      "items": [
+        { "source": "docs/devices.md", "slug": "devices", "title": "Devices" },
+        { "source": "docs/live-activities.md", "slug": "live-activities", "title": "Live Activities" },
+        { "source": "docs/campaigns.md", "slug": "campaigns", "title": "Campaigns" },
+        { "source": "docs/receipts.md", "slug": "receipts", "title": "Receipts" },
+        { "source": "docs/policies.md", "slug": "policies", "title": "Policies" },
+        { "source": "docs/observability.md", "slug": "observability", "title": "Observability" }
+      ]
+    },
+    {
+      "title": "Operations",
+      "slug": "operations",
+      "items": [
+        { "source": "docs/commands.md", "slug": "commands", "title": "Commands" },
+        { "source": "docs/troubleshooting.md", "slug": "troubleshooting", "title": "Troubleshooting" },
+        { "source": "docs/multi-tenancy.md", "slug": "multi-tenancy", "title": "Multi-tenancy" },
+        { "source": "docs/security-and-privacy.md", "slug": "security-and-privacy", "title": "Security and privacy" },
+        { "source": "docs/runtimes.md", "slug": "runtimes", "title": "Runtimes" },
+        { "source": "docs/upgrading.md", "slug": "upgrading", "title": "Upgrading" }
+      ]
+    },
+    {
+      "title": "Reference and background",
+      "slug": "reference",
+      "items": [
+        { "source": "docs/comparison.md", "slug": "comparison", "title": "Comparison" },
+        { "source": "docs/transport.md", "slug": "transport", "title": "HTTP/2 transport" },
+        {
+          "group": "Architecture contracts",
+          "slug": "contracts",
+          "items": [
+            { "source": "docs/contracts/README.md", "slug": "overview", "title": "Overview" },
+            { "source": "docs/contracts/outcomes.md", "slug": "outcomes", "title": "Outcomes" },
+            { "source": "docs/contracts/identity.md", "slug": "identity", "title": "Identity" },
+            { "source": "docs/contracts/ledger.md", "slug": "ledger", "title": "Ledger" },
+            { "source": "docs/contracts/classification.md", "slug": "classification", "title": "Classification" },
+            { "source": "docs/contracts/retry.md", "slug": "retry", "title": "Retry and breakers" },
+            { "source": "docs/contracts/modes.md", "slug": "modes", "title": "Execution modes" },
+            { "source": "docs/contracts/messages.md", "slug": "messages", "title": "Messages and limits" }
+          ]
+        },
+        { "source": "benchmarks/RESULTS.md", "slug": "benchmarks", "title": "Benchmarks" },
+        { "source": "docs/migrating-from-pushok.md", "slug": "migrating-from-pushok", "title": "Migrating from Pushok" },
+        { "source": "docs/migrating-from-laravel-notification-channels-apn.md", "slug": "migrating-from-notification-channels-apn", "title": "Migrating from notification-channels/apn" },
+        { "source": "CHANGELOG.md", "slug": "changelog", "title": "Changelog" },
+        { "source": "CONTRIBUTING.md", "slug": "contributing", "title": "Contributing" },
+        { "source": "SECURITY.md", "slug": "security-policy", "title": "Security policy" }
+      ]
+    }
+  ],
+  "exclude": [
+    { "source": "README.md", "reason": "The hand-written landing page (docs-site/docs/index.md) replaces it as the overview; the README repeats the banner and badges and its usage tour is covered by getting-started, sending and messages." },
+    { "source": "docs/index.md", "reason": "A table of contents for GitHub readers; the site navigation replaces it." },
+    { "source": "docs/PLAN.md", "reason": "Internal plan (Italian), not public documentation." },
+    { "source": "docs/internal/**", "reason": "Internal notes." },
+    { "source": "progress.md", "reason": "Agent log." },
+    { "source": "lesson.md", "reason": "Agent log." },
+    { "source": "AGENTS.md", "reason": "Instructions for coding agents." },
+    { "source": "CLAUDE.md", "reason": "Instructions for coding agents." }
+  ]
+}

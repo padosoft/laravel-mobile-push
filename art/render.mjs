@@ -2,13 +2,19 @@
 // Renders an SVG from art/ to a PNG with headless Chromium (Playwright).
 //
 //   node art/render.mjs                                  # banner -> resources/laravel-mobile-push-banner.png (1774x887 @2x)
-//   node art/render.mjs --svg art/favicon.svg --out /tmp/fav.png --width 64 --height 64 --scale 1
+//   node art/render.mjs --svg art/favicon.svg --out /tmp/fav.png --width 64 --height 64 --scale 1 --quantize 0
+//
+// --quantize N (default 256, 0 = off) reduces the PNG to an N-colour palette
+// with Floyd-Steinberg dithering through Python Pillow, which keeps the 2x
+// banner around 0.5 MB instead of ~3.6 MB. If Pillow is missing the
+// full-colour PNG is kept and a warning is printed.
 //
 // The SVG is drawn into a page exactly --width x --height CSS pixels and
 // captured at --scale device pixels per CSS pixel. Fonts come from the
 // system (fc-list); see art/README.md.
 import { createRequire } from 'node:module';
-import { readFileSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -28,6 +34,7 @@ const outPath = resolve(root, args.out ?? 'resources/laravel-mobile-push-banner.
 const width = Number(args.width ?? 1774);
 const height = Number(args.height ?? 887);
 const scale = Number(args.scale ?? 2);
+const quantize = Number(args.quantize ?? 256);
 
 const svg = readFileSync(svgPath, 'utf8');
 const html = `<!doctype html><html><head><meta charset="utf-8"><style>
@@ -49,4 +56,17 @@ if (problems.length) {
     console.error(problems.join('\n'));
     process.exit(1);
 }
-console.log(`rendered ${svgPath} -> ${outPath} (${width}x${height} @${scale}x)`);
+if (quantize > 0) {
+    const py = `import sys
+from PIL import Image
+im = Image.open(sys.argv[1])
+alpha = im.getchannel('A') if im.mode == 'RGBA' else None
+if alpha is not None and alpha.getextrema()[0] < 255:
+    q = im.quantize(colors=int(sys.argv[2]), method=Image.Quantize.FASTOCTREE, dither=Image.Dither.FLOYDSTEINBERG)
+else:
+    q = im.convert('RGB').quantize(colors=int(sys.argv[2]), method=Image.Quantize.MEDIANCUT, dither=Image.Dither.FLOYDSTEINBERG)
+q.save(sys.argv[1], optimize=True)`;
+    const r = spawnSync('python3', ['-c', py, outPath, String(quantize)], { encoding: 'utf8' });
+    if (r.status !== 0) console.warn(`quantize skipped (python3 + Pillow needed): ${(r.stderr || r.error || '').toString().trim()}`);
+}
+console.log(`rendered ${svgPath} -> ${outPath} (${width}x${height} @${scale}x, ${statSync(outPath).size} bytes)`);

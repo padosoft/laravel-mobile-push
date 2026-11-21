@@ -109,6 +109,7 @@ final class CountingPayloadSink implements \Padosoft\MobilePush\Laravel\Logging\
 function payloadVolume(?string $level, int $n = 100_000): array
 {
     $sink = null;
+    config()->set('mobile-push.log.sinks', []);
     if ($level !== null) {
         $sink = new CountingPayloadSink;
         \Padosoft\MobilePush\Laravel\Logging\SinkManager::extend('counting', static fn () => $sink);
@@ -148,6 +149,7 @@ function payloadVolume(?string $level, int $n = 100_000): array
 }
 
 it('keeps the default path flat for 100,000 destinations: no payload is built when the level is none', function () {
+    payloadVolume('none', 2_000); // warm-up: classes, the compiled-message caches, the log buffer
     $quiet = payloadVolume(null);
     $logged = payloadVolume('none');
 
