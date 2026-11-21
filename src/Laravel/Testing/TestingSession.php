@@ -12,24 +12,26 @@ use Padosoft\MobilePush\Core\Guard\Guards;
 use Padosoft\MobilePush\Core\Identity\BindingRef;
 use Padosoft\MobilePush\Core\Identity\Environment;
 use Padosoft\MobilePush\Core\Identity\Provider;
+use Padosoft\MobilePush\Core\Identity\Scope;
+use Padosoft\MobilePush\Core\Policy\ExecutionMode;
 use Padosoft\MobilePush\Core\Policy\LiveSettings;
 use Padosoft\MobilePush\Core\Transport\Transport;
 use Padosoft\MobilePush\Laravel\Contracts\QueuedSender;
 use Padosoft\MobilePush\Laravel\Facades\MobilePush;
-use Padosoft\MobilePush\Laravel\Sending\ConnectionCache;
 use Padosoft\MobilePush\Laravel\Sending\ConnectionFactory;
 use Padosoft\MobilePush\Laravel\Sending\PushManager;
-use Padosoft\MobilePush\Laravel\Sending\ResolvedConnection;
 use Padosoft\MobilePush\Laravel\Sending\Senders;
 use Padosoft\MobilePush\Laravel\Sending\SendingSettings;
 
 /**
  * Turns the fakes on and off for one application. Nothing is swapped until fake() or fakeTransport() is called, and
- * reset() puts everything back (the application environment, the transport, the queue binding, the connections).
+ * reset() puts everything back (the transport, the queue binding, the connections, the manager's forced execution,
+ * the fake drivers and the recording gate), so nothing is left between two tests.
  *
- * While a fake is active the application environment reads as "production" to the send pipeline: that is what makes
- * the `auto` execution mode live and lets every destination through the safe-mode guard (outside production a
- * destination must be on a test-device allowlist). The real environment is saved and restored.
+ * While a fake is active the manager's execution is forced live for every destination
+ * (PushManager::forceExecution(Live, everyDestination: true)): the `auto` mode does not simulate and the safe-mode
+ * guard does not ask for a test-device allowlist. The application environment is never touched:
+ * `app()->environment()` and `app()->isProduction()` keep returning the real values inside a faked test.
  */
 final class TestingSession
 {
@@ -45,21 +47,18 @@ final class TestingSession
     {
         $this->guard($allowOutsideTesting);
         $this->reset();
-        $this->goLive();
 
         $fake = new PushFake;
-        $switch = $this->switchable();
-        $manager = $this->app->make(PushManager::class);
-        $switch->route(new AcceptingTransport);
+        $this->switchable()->route(new AcceptingTransport);
+        $manager = $this->goLive();
 
-        if (! isset($this->state->gated[$manager])) {
-            $this->state->gated[$manager] = true;
-            $manager->eligibleUsing(function (mixed $context, mixed $items): array {
-                /** @var GateContext $context */
-                /** @var list<SendItem> $items */
-                return $this->state->intent?->capture($context, $items) ?? [];
-            }, true);
-        }
+        $gate = function (mixed $context, mixed $items): array {
+            /** @var GateContext $context */
+            /** @var list<SendItem> $items */
+            return $this->state->intent?->capture($context, $items) ?? [];
+        };
+        $manager->eligibleUsing($gate, true);
+        $this->state->gate = $gate;
         $this->state->intent = $fake;
         $this->seed($manager, $fake);
 
@@ -74,12 +73,12 @@ final class TestingSession
     {
         $this->guard($allowOutsideTesting);
         $this->reset();
-        $this->goLive();
 
         $this->provideConnections(TestConnections::wire());
 
         $builder = new FakeTransportBuilder;
         $this->switchable()->route($builder->transport());
+        $this->goLive();
         $this->state->wire = $builder;
 
         return $builder;
@@ -103,12 +102,21 @@ final class TestingSession
     /** Put everything back. Safe to call when nothing is active. */
     public function reset(): void
     {
-        if (! $this->state->active() && $this->state->realEnvironment === null) {
+        if (! $this->state->dirty()) {
             return;
         }
 
         $this->state->intent?->deactivate();
-        $this->unseed();
+        $manager = $this->state->manager;
+        if ($manager !== null) {
+            foreach ($this->state->installed as [$scope, $name]) {
+                $manager->forgetDriver($name, $scope);
+            }
+            if ($this->state->gate !== null) {
+                $manager->forgetEligibility($this->state->gate);
+            }
+            $manager->forceExecution(null);
+        }
         if ($this->state->queuedSwapped) {
             $this->app->forgetInstance(QueuedSender::class);
         }
@@ -118,48 +126,47 @@ final class TestingSession
         }
         if ($this->state->connectionsReplaced) {
             config()->set('mobile-push.connections', $this->state->connectionsBackup ?? []);
-        }
-        if ($this->state->realEnvironment !== null) {
-            $this->app->instance('env', $this->state->realEnvironment);
+            if ($manager !== null) {
+                foreach ($this->state->provided as $name) {
+                    $manager->forgetConnection($name); // the drivers built from the test credentials
+                }
+            }
         }
 
-        $gated = $this->state->gated;
         $this->state->intent = null;
         $this->state->wire = null;
-        $this->state->realEnvironment = null;
+        $this->state->manager = null;
+        $this->state->gate = null;
         $this->state->queuedSwapped = false;
         $this->state->connectionsBackup = null;
         $this->state->connectionsReplaced = false;
-        $this->state->seeded = [];
-        $this->state->gated = $gated;
+        $this->state->provided = [];
+        $this->state->installed = [];
     }
 
     // ---------------------------------------------------------------- internals
 
     private function guard(bool $allow): void
     {
-        $environment = $this->state->realEnvironment ?? (string) $this->app->environment();
+        $environment = (string) $this->app->environment();
         if ($environment === 'testing' || $allow || config('mobile-push.testing.allow_fakes') === true) {
             return;
         }
 
         throw new FakeNotAllowedException(sprintf(
-            'MobilePush fakes are for tests: the application environment is "%s", not "testing". While a fake is active nothing reaches a push provider and the send pipeline treats the application as production, so it must never be switched on in a real deployment. If this is a deliberate test setup, pass true to fake()/fakeTransport() or set mobile-push.testing.allow_fakes.',
+            'MobilePush fakes are for tests: the application environment is "%s", not "testing". While a fake is active nothing reaches a push provider and every send runs live with every destination allowed, so it must never be switched on in a real deployment. If this is a deliberate test setup, pass true to fake()/fakeTransport() or set mobile-push.testing.allow_fakes.',
             $environment,
         ));
     }
 
-    /** Live mode with every destination allowed: the application environment reads as production, mode never simulates. */
-    private function goLive(): void
+    /** Live mode with every destination allowed, through the manager's execution override (the environment is untouched). */
+    private function goLive(): PushManager
     {
-        $this->state->realEnvironment ??= (string) $this->app->environment();
-        $this->app->instance('env', 'production');
+        $manager = $this->app->make(PushManager::class);
+        $manager->forceExecution(ExecutionMode::Live, null, everyDestination: true);
+        $this->state->manager = $manager;
 
-        $settings = $this->app->make(SendingSettings::class);
-        if ($settings->mode === 'simulate') {
-            config()->set('mobile-push.mode', 'live');
-            $this->rebuild();
-        }
+        return $manager;
     }
 
     /** The transport decorator. When the application bound its own Transport (a test double), it is wrapped and the pipeline rebuilt on top of it. */
@@ -192,30 +199,21 @@ final class TestingSession
         $configured = config('mobile-push.connections', []);
         foreach (is_array($configured) ? $configured : [] as $name => $config) {
             if (is_array($config)) {
-                $definitions[] = [$scope, (string) $name, $config];
+                $definitions[(string) $name] = $config;
             }
         }
         if ($definitions === []) {
-            $this->provideConnections(TestConnections::intent());
-            foreach (TestConnections::intent() as $name => $config) {
-                $definitions[] = [$scope, $name, $config];
-            }
+            $definitions = TestConnections::intent(); // known to the manager through the installed drivers only
         }
-        foreach ($definitions as [$definitionScope, $name, $config]) {
-            $this->seedOne($manager, $fake, $definitionScope, $name, $config);
+        foreach ($definitions as $name => $config) {
+            $this->install($manager, $fake, $scope, (string) $name, $config);
         }
 
         $fake->connectWith(function (string $name, string $driver, ?string $appId, ?string $scope) use ($manager, $fake): void {
             $config = $driver === 'fcm'
                 ? ['driver' => 'fcm', 'project_id' => $appId ?? TestConnections::PROJECT, 'fake' => true]
                 : ['driver' => 'apns', 'bundle_id' => $appId ?? TestConnections::BUNDLE, 'environment' => 'sandbox', 'fake' => true];
-            if ($scope === null) {
-                $scope = $manager->currentScope();
-                $this->addConnection($name, $config); // configuration, so reset() takes it back
-            } else {
-                $manager->register($name, $config, $scope); // a runtime registration cannot be taken back
-            }
-            $this->seedOne($manager, $fake, $scope, $name, $config);
+            $this->install($manager, $fake, $scope ?? $manager->currentScope(), $name, $config);
         });
     }
 
@@ -230,34 +228,21 @@ final class TestingSession
         if (is_array($configured) && $configured !== []) {
             return;
         }
-        $this->backUpConnections();
+        $this->state->connectionsBackup = is_array($configured) ? $configured : [];
+        $this->state->connectionsReplaced = true;
+        $this->state->provided = array_keys($connections);
         config()->set('mobile-push.connections', $connections);
     }
 
-    /** @param  array<string, mixed>  $config */
-    private function addConnection(string $name, array $config): void
-    {
-        $this->backUpConnections();
-        config()->set('mobile-push.connections.'.$name, $config);
-    }
-
-    private function backUpConnections(): void
-    {
-        if (! $this->state->connectionsReplaced) {
-            $configured = config('mobile-push.connections', []);
-            $this->state->connectionsBackup = is_array($configured) ? $configured : [];
-            $this->state->connectionsReplaced = true;
-        }
-    }
-
     /** @param  array<mixed>  $config */
-    private function seedOne(PushManager $manager, PushFake $fake, string $scope, string $name, array $config): void
+    private function install(PushManager $manager, PushFake $fake, string $scope, string $name, array $config): void
     {
         try {
             $provider = ConnectionFactory::providerOf($config, $name);
         } catch (\Throwable) {
             return; // an invalid definition fails exactly as it does in production, when it is used
         }
+        $scope = Scope::normalize($scope);
         $binding = new BindingRef(
             $scope,
             $name,
@@ -266,32 +251,8 @@ final class TestingSession
             $provider === Provider::Apns && ($config['environment'] ?? null) === 'sandbox' ? Environment::Sandbox : Environment::Production,
             '1',
         );
-        $this->cache($manager)->put(
-            hash('sha256', serialize($config)),
-            new ResolvedConnection($binding, new FakeDriver($binding, $fake), new LiveSettings(true, [], true, true, true), [], []),
-        );
-        $this->state->seeded[$scope."\0".$name] = [$scope, $name];
-    }
-
-    private function unseed(): void
-    {
-        if ($this->state->seeded === [] || ! $this->app->resolved(PushManager::class)) {
-            return;
-        }
-        $cache = $this->cache($this->app->make(PushManager::class));
-        foreach ($this->state->seeded as [$scope, $name]) {
-            $cache->forget($scope, $name);
-        }
-    }
-
-    private function cache(PushManager $manager): ConnectionCache
-    {
-        $cache = (new \ReflectionProperty(PushManager::class, 'cache'))->getValue($manager);
-        if (! $cache instanceof ConnectionCache) {
-            throw new \LogicException('The push manager no longer keeps its connections in a ConnectionCache: MobilePush::fake() needs updating.');
-        }
-
-        return $cache;
+        $manager->useDriver($name, new FakeDriver($binding, $fake), $scope, new LiveSettings(true, [], true, true, true));
+        $this->state->installed[$scope."\0".$name] = [$scope, $name];
     }
 
     /** @param  array<mixed>  $config */

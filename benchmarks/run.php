@@ -52,6 +52,7 @@ if (isset($opts['help']) || ! isset($opts['scenario'])) {
       --cold                 pipeline-apns/pipeline-fcm: new pool per run instead of a warm one
       --million              large-batch-memory: also run 1,000,000 destinations
       --tenants=N            many-tenants: number of pool keys (default 200)
+      --per-tenant=N         many-tenants: requests sent per pool key (default 5)
       --json                 print the result as JSON on stdout (tables go to stderr)
       --out=FILE             also write the JSON to FILE
 

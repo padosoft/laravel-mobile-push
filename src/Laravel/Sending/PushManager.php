@@ -29,6 +29,7 @@ use Padosoft\MobilePush\Core\Policy\Badge\BadgeResolver;
 use Padosoft\MobilePush\Core\Policy\ExecutionMode;
 use Padosoft\MobilePush\Core\Policy\Frequency\Subject;
 use Padosoft\MobilePush\Core\Policy\LiveSettings;
+use Padosoft\MobilePush\Core\Policy\ModeResolver;
 use Padosoft\MobilePush\Core\Privacy\TokenIndex;
 use Padosoft\MobilePush\Laravel\Contracts\PushDispatcher;
 use Padosoft\MobilePush\Laravel\Contracts\QueuedSender;
@@ -65,12 +66,17 @@ final class PushManager implements PushDispatcher
     /** @var (\Closure(): string)|null */
     private ?\Closure $scopeResolver = null;
 
-    /** @var list<ConsentGate> */
+    /** @var list<array{0: callable, 1: ConsentGate}> the callback as the application passed it, and its gate */
     private array $consentGates = [];
+
+    /** @var array<string, array<string, ResolvedConnection>> scope => name => connection installed with useDriver() */
+    private array $installed = [];
 
     private ?ExecutionMode $forcedMode = null;
 
     private ?LiveSettings $forcedLive = null;
+
+    private bool $forcedEveryDestination = false;
 
     private readonly ConnectionCache $cache;
 
@@ -146,6 +152,66 @@ final class PushManager implements PushDispatcher
     }
 
     /**
+     * Undo register(): the runtime connection of that name in that scope (null = the current scope) is removed and
+     * its cached driver dropped (its transport pools closed). A configured connection of the same name, or one
+     * supplied by the resolver, is used again from the next send. A no-op when nothing was registered.
+     */
+    public function unregister(string $name, ?string $scope = null): void
+    {
+        $name = self::name($name);
+        $scope = $this->scopeOrCurrent($scope);
+        if (! isset($this->runtime[$scope][$name])) {
+            return;
+        }
+        unset($this->runtime[$scope][$name]);
+        if ($this->runtime[$scope] === []) {
+            unset($this->runtime[$scope]);
+        }
+        $this->cache->forget($scope, $name);
+    }
+
+    /**
+     * Extension and testing seam: send through this driver for the connection `$name` in `$scope` (null = the
+     * current scope), instead of building one from the configuration. The installed driver wins over a runtime
+     * registration, the resolver and `mobile-push.connections`, and the name is listed by connectionNames() while it
+     * is installed. Nothing is cached and no transport pool is owned on its behalf. The driver's binding must carry
+     * the same scope and name.
+     *
+     * `$live` is the connection's live settings (default: none, so outside production the safe-mode guard blocks
+     * every live send through it unless the execution is forced). forgetDriver() removes it.
+     */
+    public function useDriver(string $name, Driver $driver, ?string $scope = null, ?LiveSettings $live = null): void
+    {
+        $name = self::name($name);
+        $scope = $this->scopeOrCurrent($scope);
+        $binding = $driver->binding();
+        if ($binding->scope !== $scope || $binding->name !== $name) {
+            throw new ConfigurationException(sprintf(
+                'The driver installed for the connection "%s" in scope "%s" must have a binding with the same scope and name (it has "%s" in scope "%s").',
+                $name, $scope, $binding->name, $binding->scope,
+            ));
+        }
+        $this->installed[$scope][$name] = new ResolvedConnection($binding, $driver, $live ?? new LiveSettings, [], []);
+    }
+
+    /** Remove a driver installed with useDriver(); the connection resolves from its configuration again. A no-op when none is installed. */
+    public function forgetDriver(string $name, ?string $scope = null): void
+    {
+        $name = self::name($name);
+        $scope = $this->scopeOrCurrent($scope);
+        unset($this->installed[$scope][$name]);
+        if (($this->installed[$scope] ?? null) === []) {
+            unset($this->installed[$scope]);
+        }
+    }
+
+    /** Whether a driver is installed with useDriver() for this connection. */
+    public function hasInstalledDriver(string $name, ?string $scope = null): bool
+    {
+        return isset($this->installed[$this->scopeOrCurrent($scope)][self::name($name)]);
+    }
+
+    /**
      * Supply connection configs on demand (multi-tenant apps; also used inside queue workers to resolve a job's
      * binding). Return null when the scope has no connection of that name.
      *
@@ -176,7 +242,25 @@ final class PushManager implements PushDispatcher
      */
     public function eligibleUsing(callable $check, bool $batch = false): void
     {
-        $this->consentGates[] = new ConsentGate($check, $batch);
+        $this->consentGates[] = [$check, new ConsentGate($check, $batch)];
+    }
+
+    /**
+     * Undo eligibleUsing(): remove every check registered with this very callable (the same closure instance, or an
+     * identical string / array callable). Returns how many were removed.
+     */
+    public function forgetEligibility(callable $check): int
+    {
+        $before = count($this->consentGates);
+        $this->consentGates = array_values(array_filter($this->consentGates, static fn (array $entry): bool => $entry[0] !== $check));
+
+        return $before - count($this->consentGates);
+    }
+
+    /** Number of eligibility checks registered with eligibleUsing(). */
+    public function eligibilityChecks(): int
+    {
+        return count($this->consentGates);
     }
 
     public function currentScope(): string
@@ -196,7 +280,7 @@ final class PushManager implements PushDispatcher
     {
         $scope = $this->scopeOrCurrent($scope);
         $names = array_map('strval', array_keys($this->configuredConnections()));
-        foreach (array_keys($this->runtime[$scope] ?? []) as $name) {
+        foreach ([...array_keys($this->runtime[$scope] ?? []), ...array_keys($this->installed[$scope] ?? [])] as $name) {
             if (! in_array((string) $name, $names, true)) {
                 $names[] = (string) $name;
             }
@@ -229,14 +313,29 @@ final class PushManager implements PushDispatcher
     }
 
     /**
-     * @internal Testing seam (used only by the testing module): force the execution mode (and optionally the live
+     * @internal Testing seam (used by the testing module): force the execution mode (and optionally the live
      * settings) of every send's default options, whatever the configuration and the application environment say.
-     * null clears the override. Never call it from application code: forcing `live` bypasses the safe-mode default.
+     * Every place that decides the mode reads those options (PendingSend, the notification channel, the queue jobs
+     * and the relay through PushDispatcher::defaultOptions(), Live Activities channel management, the console).
+     *
+     * With `$everyDestination` the safe-mode guard authorises every destination and operation as it does in
+     * production (no `live.only_to` allowlist, no `live.allow_*` flag needed): the options carry
+     * `applicationEnvironment = "production"` for the guard only. The application environment itself
+     * (`app()->environment()`, `app()->isProduction()`) is never changed.
+     *
+     * null clears the whole override. Never call it from application code: forcing `live` bypasses the safe-mode default.
      */
-    public function forceExecution(?ExecutionMode $mode, ?LiveSettings $live = null): void
+    public function forceExecution(?ExecutionMode $mode, ?LiveSettings $live = null, bool $everyDestination = false): void
     {
         $this->forcedMode = $mode;
         $this->forcedLive = $mode === null ? null : $live;
+        $this->forcedEveryDestination = $mode !== null && $everyDestination;
+    }
+
+    /** @internal Whether forceExecution() is in effect. */
+    public function executionForced(): bool
+    {
+        return $this->forcedMode !== null;
     }
 
     // ---------------------------------------------------------------- server-side badge (policies module)
@@ -352,6 +451,9 @@ final class PushManager implements PushDispatcher
     {
         $scope = Scope::normalize($scope);
         $name = self::name($name);
+        if (isset($this->installed[$scope][$name])) {
+            return $this->installed[$scope][$name];
+        }
         $config = $this->configFor($scope, $name)
             ?? throw new UnknownConnectionException(sprintf('No push connection named "%s" in scope "%s". Define it in mobile-push.connections, register it with MobilePush::register(), or supply it with MobilePush::resolveConnectionUsing().', $name, $scope));
         $hash = hash('sha256', serialize($config));
@@ -370,6 +472,10 @@ final class PushManager implements PushDispatcher
     /** @internal The provider of a connection, read from its config without resolving secrets. */
     public function providerOf(string $scope, string $name): Provider
     {
+        $installed = $this->installed[Scope::normalize($scope)][self::name($name)] ?? null;
+        if ($installed !== null) {
+            return $installed->binding->provider;
+        }
         $config = $this->configFor(Scope::normalize($scope), self::name($name))
             ?? throw new UnknownConnectionException(sprintf('No push connection named "%s" in scope "%s".', $name, $scope));
 
@@ -491,7 +597,8 @@ final class PushManager implements PushDispatcher
     {
         return new SendOptions(
             trafficClass: TrafficClass::Transactional,
-            applicationEnvironment: $this->app->environment(),
+            // Forced for every destination: what the safe-mode guard authorises against, never the app environment.
+            applicationEnvironment: $this->forcedEveryDestination ? ModeResolver::PRODUCTION : $this->app->environment(),
             configuredMode: $this->settings->mode,
             mode: $this->forcedMode,
             live: $this->forcedLive ?? $connection->live,
@@ -515,7 +622,9 @@ final class PushManager implements PushDispatcher
         if ($this->devicesEnabled()) {
             $gates[] = new DeviceEligibilityGate($this->app->make(DeviceEligibility::class));
         }
-        $gates = [...$gates, ...$this->consentGates];
+        foreach ($this->consentGates as [, $gate]) {
+            $gates[] = $gate;
+        }
         foreach ($this->policyGates() as $gate) {
             $gates[] = $gate instanceof DeviceKindsOnly ? $gate : new DeviceKindsOnly($gate);
         }

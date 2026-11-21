@@ -1,0 +1,9 @@
+>>> php benchmarks/run.php --scenario=transport-warm --count=20000 --server-delay-ms=0 --repeat=5 --json --out=benchmarks/results/transport-warm-d0.json
+>>> php benchmarks/run.php --scenario=transport-warm --count=20000 --server-delay-ms=20 --repeat=5 --json --out=benchmarks/results/transport-warm-d20.json
+>>> php benchmarks/run.php --scenario=transport-cold --count=20000 --server-delay-ms=0 --repeat=5 --json --out=benchmarks/results/transport-cold-d0.json
+>>> php benchmarks/run.php --scenario=pipeline-apns --count=20000 --server-delay-ms=0 --repeat=5 --json --out=benchmarks/results/pipeline-apns-d0.json
+>>> php benchmarks/run.php --scenario=pipeline-apns --count=20000 --server-delay-ms=20 --repeat=5 --json --out=benchmarks/results/pipeline-apns-d20.json
+>>> php benchmarks/run.php --scenario=pipeline-fcm --count=20000 --server-delay-ms=0 --repeat=5 --json --out=benchmarks/results/pipeline-fcm-d0.json
+>>> php benchmarks/run.php --scenario=pipeline-fcm --count=20000 --server-delay-ms=20 --repeat=5 --json --out=benchmarks/results/pipeline-fcm-d20.json
+>>> php benchmarks/run.php --scenario=pipeline-mixed-outcomes --count=20000 --server-delay-ms=0 --repeat=5 --json --out=benchmarks/results/pipeline-mixed-d0.json
+>>> php benchmarks/run.php --scenario=window-sweep --count=10000 --server-delay-ms=20 --repeat=3 --json --out=benchmarks/results/window-sweep.json

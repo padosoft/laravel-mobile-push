@@ -139,7 +139,7 @@ final class Scenarios
     private static function manyTenants(array $p): array
     {
         $tenants = (int) ($p['tenants'] ?? 200);
-        $per = (int) ($p['count'] ?? 5);
+        $per = (int) ($p['per-tenant'] ?? 5);
         $server = self::server();
         $cases = [];
         foreach ([32, 1000] as $limit) {
@@ -169,7 +169,7 @@ final class Scenarios
                 });
                 $transport->close();
                 $after = $server->waitFor(fn (array $s) => $s['openConnections'] === 0, 3000);
-                $runs[count($runs) - 1]['extra']['after_close'] = ['pools' => $registry->count(), 'fds' => Harness::fdCount(), 'server_open_connections' => $after['openConnections']];
+                $runs[count($runs) - 1]['extra']['after_close'] = ['memory_after_gc_bytes' => (gc_collect_cycles() ? memory_get_usage() : memory_get_usage()), 'pools' => $registry->count(), 'fds' => Harness::fdCount(), 'server_open_connections' => $after['openConnections']];
             }
             $cases[] = ['label' => "{$tenants} pool keys in sequence, {$per} requests each, registry limit {$limit}", 'params' => ['tenants' => $tenants, 'per_tenant' => $per, 'registry_limit' => $limit], 'runs' => $runs, 'summary' => Harness::summarize($runs)];
         }

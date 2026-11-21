@@ -34,6 +34,10 @@ final class RuntimeProbe
         }
         $n = 0;
         foreach (@scandir('/proc/self/fd') ?: [] as $fd) {
+            // skip the dots and the descriptor scandir() used (already closed): readlink() would warn
+            if ($fd === '.' || $fd === '..' || ! is_link('/proc/self/fd/'.$fd)) {
+                continue;
+            }
             $target = @readlink('/proc/self/fd/'.$fd);
             if (is_string($target) && str_starts_with($target, 'socket:')) {
                 $n++;
