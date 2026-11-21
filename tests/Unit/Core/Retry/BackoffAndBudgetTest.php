@@ -144,6 +144,10 @@ it('clamps Retry-After to one day (86400 s) exactly, and reads leading zeros as 
     'just above the cap' => ['86401', 86_400],
     'six digits' => ['999999', 86_400],
     'six characters with leading zeros' => ['000005', 5],
+    'seven characters with leading zeros (1*DIGIT: zeros do not make it large)' => ['0000005', 5],
+    'twelve zeros then 42' => ['00000000000042', 42],
+    'only zeros' => ['0000000', 0],
+    'seven significant digits' => ['1000000', 86_400],
     'HTTP-date two days ahead' => ['Sun, 22 Nov 2026 10:00:00 GMT', 86_400],
 ]);
 

@@ -28,7 +28,11 @@ final class RetryAfter
         }
 
         if (preg_match('/^\d+$/', $value) === 1) {
-            return strlen($value) > 6 ? self::MAX_SECONDS : min(self::MAX_SECONDS, (int) $value);
+            // delta-seconds is 1*DIGIT (RFC 9110): leading zeros are legal and do not make the number large. The
+            // length test only keeps an absurdly long number from overflowing the integer.
+            $digits = ltrim($value, '0');
+
+            return strlen($digits) > 6 ? self::MAX_SECONDS : min(self::MAX_SECONDS, (int) $digits);
         }
 
         $date = self::httpDate($value);

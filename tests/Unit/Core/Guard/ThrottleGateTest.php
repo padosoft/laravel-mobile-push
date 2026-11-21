@@ -43,3 +43,17 @@ it('judged at a given instant, reopens exactly at the end of the pause, not one 
     'at the end' => ['+0 seconds', true],
     'one millisecond after the end' => ['+1 millisecond', true],
 ]);
+
+it('keeps a pause longer than a day until its end (the stored state outlives the pause)', function () {
+    $clock = new FakeClock;
+    $gate = new ThrottleGate(new InMemoryGuardStore($clock), $clock);
+    $until = $clock->now()->modify('+2 days');
+
+    expect($gate->pause('fcm:p', $until))->toEqual($until);
+
+    $clock->advance(86_400 + 1);
+    expect($gate->isOpen('fcm:p'))->toBeFalse()->and($gate->pausedUntil('fcm:p'))->toEqual($until);
+
+    $clock->advance(86_400 - 1);
+    expect($gate->isOpen('fcm:p'))->toBeTrue();
+});

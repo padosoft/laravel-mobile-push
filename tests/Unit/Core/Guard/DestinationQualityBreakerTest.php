@@ -88,7 +88,7 @@ function qualityAsCircuitSees(InMemoryGuardStore $store, string $binding): array
  * 'fresh': the cooldown just ended. 'restarted': a batch went out one cooldown ago and its results never came back.
  * 'partial': a half-open state stored without probe counters.
  */
-function qualityToProbe(string $path, InMemoryGuardStore $store, FakeClock $clock, DestinationQualityBreaker $b): \DateTimeImmutable
+function qualityToProbe(string $path, InMemoryGuardStore $store, FakeClock $clock, DestinationQualityBreaker $b): DateTimeImmutable
 {
     if ($path === 'partial') {
         $store->put('mp:dest:b', json_encode(['s' => 2, 'at' => Millis::of($clock->now())], JSON_THROW_ON_ERROR), 86400);
@@ -295,3 +295,15 @@ it('forgets a half-open state nobody touched for exactly one day', function (int
     'one second before the day ends: a new probe batch' => [86399, 10],
     'at the end of the day: closed again' => [86400, 500],
 ]);
+
+it('stays open for a cooldown longer than a day (the stored state outlives the cooldown)', function () {
+    $clock = new FakeClock;
+    $b = new DestinationQualityBreaker(new InMemoryGuardStore($clock), $clock, minSample: 100, threshold: 0.5, cooldownSeconds: 2 * 86_400, probeSize: 10);
+    $b->record('b', 100, 100);
+
+    $clock->advance(86_400 + 3600);
+    expect($b->isOpen('b'))->toBeTrue()->and($b->allow('b', 50, TrafficClass::Bulk)[0])->toBe(0);
+
+    $clock->advance(86_400 - 3600);
+    expect($b->allow('b', 50, TrafficClass::Bulk)[0])->toBe(10);
+});

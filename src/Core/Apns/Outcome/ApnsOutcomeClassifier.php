@@ -180,8 +180,8 @@ final readonly class ApnsOutcomeClassifier implements OutcomeClassifier
         if (is_int($value)) {
             return $value > 0 ? $value : null;
         }
-        if (is_float($value) && is_finite($value) && $value > 0 && $value < 9.2e18) {
-            return (int) $value;
+        if (is_float($value) && is_finite($value) && $value >= 1 && $value < 9.2e18) {
+            return (int) $value;   // a fraction of a millisecond is "no timestamp", as 0 is for the other shapes
         }
         if (is_string($value) && preg_match('/^\d{1,18}$/', $value) === 1) {
             return (int) $value > 0 ? (int) $value : null;

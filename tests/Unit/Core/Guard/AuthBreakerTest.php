@@ -221,3 +221,15 @@ it('forgets consecutive failures exactly one day after the last one', function (
     'one second before the day ends: still counted' => [86399, T::Opened],
     'at the end of the day: forgotten' => [86400, T::None],
 ]);
+
+it('stays open for a cooldown longer than a day (the stored state outlives the cooldown)', function () {
+    $clock = new FakeClock;
+    $b = authBreaker($clock, 1, 2 * 86_400);
+    $b->recordFailure('c', 0);
+
+    $clock->advance(86_400 + 3600);
+    expect($b->isOpen('c'))->toBeTrue()->and($b->check('c')->allowed)->toBeFalse();
+
+    $clock->advance(86_400 - 3600);
+    expect($b->check('c')->probe)->toBeTrue();
+});

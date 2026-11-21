@@ -279,6 +279,7 @@ it('reads a 410 timestamp written as a JSON float or string only when it is a po
     'float with a fraction' => ['1763632800123.5', 1763632800123],
     'float 1.0 (smallest positive whole ms)' => ['1.0', 1],
     'float 0.0' => ['0.0', null],
+    'float below one millisecond is no timestamp, like 0' => ['0.5', null],
     'negative float above -1' => ['-0.5', null],
     'float at the 9.2e18 cap' => ['9.2e18', null],
     'float just below the cap' => ['9.1e18', 9100000000000000000],

@@ -35,8 +35,10 @@ final class ThrottleGate
     public function pause(string $accountKey, \DateTimeImmutable $until): \DateTimeImmutable
     {
         $ms = Millis::of($until);
+        // The stored pause must outlive the pause itself: a fixed day would silently end a longer one.
+        $ttl = max(86400, intdiv(max(0, $ms - Millis::of($this->clock->now())), 1000) + 60);
         /** @var int $effective */
-        $effective = StateCell::update($this->store, $this->key($accountKey), 86400, static function (array $st) use ($ms): array {
+        $effective = StateCell::update($this->store, $this->key($accountKey), $ttl, static function (array $st) use ($ms): array {
             $effective = max($ms, $st['until'] ?? 0);
 
             return [['until' => $effective], $effective];

@@ -51,7 +51,7 @@ final class AuthBreaker
         $cooldownMs = $this->cooldownSeconds * 1000;
 
         /** @var AuthCheck $check */
-        $check = StateCell::update($this->store, $this->key($credential), 86400, function (array $st) use ($now, $cooldownMs): array {
+        $check = StateCell::update($this->store, $this->key($credential), $this->ttl(), function (array $st) use ($now, $cooldownMs): array {
             $gen = $st['gen'] ?? 0;
             $state = $st['s'] ?? self::CLOSED;
             if ($state === self::CLOSED) {
@@ -85,7 +85,7 @@ final class AuthBreaker
     public function recordSuccess(string $credential, int $generation): BreakerTransition
     {
         /** @var BreakerTransition $t */
-        $t = StateCell::update($this->store, $this->key($credential), 86400, static function (array $st) use ($generation): array {
+        $t = StateCell::update($this->store, $this->key($credential), $this->ttl(), static function (array $st) use ($generation): array {
             if (($st['gen'] ?? 0) !== $generation) {
                 return [$st, BreakerTransition::None];
             }
@@ -112,7 +112,7 @@ final class AuthBreaker
         $threshold = $this->failureThreshold;
 
         /** @var BreakerTransition $t */
-        $t = StateCell::update($this->store, $this->key($credential), 86400, static function (array $st) use ($generation, $hasSecondary, $now, $threshold): array {
+        $t = StateCell::update($this->store, $this->key($credential), $this->ttl(), static function (array $st) use ($generation, $hasSecondary, $now, $threshold): array {
             $active = $st['gen'] ?? 0;
             $state = $st['s'] ?? self::CLOSED;
             if ($generation !== $active || $state === self::OPEN) {
@@ -138,5 +138,11 @@ final class AuthBreaker
     private function key(string $credential): string
     {
         return 'mp:auth:'.$credential;
+    }
+
+    /** State outlives the cooldown: a fixed day would let a breaker with a longer cooldown close by expiry. */
+    private function ttl(): int
+    {
+        return max(86400, $this->cooldownSeconds * 2);
     }
 }

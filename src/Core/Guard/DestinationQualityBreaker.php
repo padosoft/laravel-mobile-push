@@ -75,7 +75,7 @@ final class DestinationQualityBreaker
         $probeSize = $this->probeSize;
 
         /** @var array{0: int, 1: BreakerTransition, 2: ?\DateTimeImmutable} $r */
-        $r = StateCell::update($this->store, $this->key($binding), 86400, static function (array $st) use ($n, $now, $cooldownMs, $probeSize): array {
+        $r = StateCell::update($this->store, $this->key($binding), $this->ttl(), static function (array $st) use ($n, $now, $cooldownMs, $probeSize): array {
             $state = $st['s'] ?? self::CLOSED;
             if ($state === self::CLOSED) {
                 return [$st, [$n, BreakerTransition::None, null]];
@@ -112,7 +112,7 @@ final class DestinationQualityBreaker
         [$windowMs, $maxSample] = [$this->windowSeconds * 1000, $this->maxSample];
 
         /** @var BreakerTransition $t */
-        $t = StateCell::update($this->store, $this->key($binding), 86400, static function (array $st) use ($total, $bad, $now, $minSample, $threshold, $probeSize, $windowMs, $maxSample): array {
+        $t = StateCell::update($this->store, $this->key($binding), $this->ttl(), static function (array $st) use ($total, $bad, $now, $minSample, $threshold, $probeSize, $windowMs, $maxSample): array {
             $state = $st['s'] ?? self::CLOSED;
             if ($state === self::OPEN) {
                 return [$st, BreakerTransition::None];
@@ -151,5 +151,11 @@ final class DestinationQualityBreaker
     private function key(string $binding): string
     {
         return 'mp:dest:'.$binding;
+    }
+
+    /** State outlives the cooldown and the sample window: a fixed day would let a longer one end by expiry. */
+    private function ttl(): int
+    {
+        return max(86400, $this->cooldownSeconds * 2, $this->windowSeconds * 2);
     }
 }
