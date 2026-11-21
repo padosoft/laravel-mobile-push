@@ -22,5 +22,7 @@ final readonly class PushBatchCompleted
         public int $total,
         public TrafficClass $trafficClass,
         public float $durationMs,
+        /** The stored effect this call belongs to: set for a queued send (the id `queue()` returned), null otherwise. */
+        public ?string $effectId = null,
     ) {}
 }

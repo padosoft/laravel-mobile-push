@@ -7,15 +7,15 @@ Every key of `config/mobile-push.php`, its environment variable, default and all
 ## Sections
 
 - [General](#general) (4 keys)
-- [Connections](#connections) (30 keys)
-- [Transport](#transport) (8 keys)
+- [Connections](#connections) (31 keys)
+- [Transport](#transport) (9 keys)
 - [Retry budget](#retry-budget) (10 keys)
 - [Guards: rate limits and circuit breakers](#guards-rate-limits-and-circuit-breakers) (9 keys)
 - [Delivery profile and events](#delivery-profile-and-events) (3 keys)
 - [Migrations](#migrations) (1 keys)
 - [Shared cache](#shared-cache) (2 keys)
 - [Privacy keys](#privacy-keys) (4 keys)
-- [Device registry](#device-registry) (7 keys)
+- [Device registry](#device-registry) (8 keys)
 - [Send log](#send-log) (12 keys)
 - [Durable ledger](#durable-ledger) (8 keys)
 - [Queue](#queue) (13 keys)
@@ -59,6 +59,7 @@ Keys of one connection (`connections.<name>.<key>`). Transport keys left out fal
 | `passphrase` | – | `string\|secret source` |  | APNs certificate auth: the key passphrase. |
 | `bundle_id` | – | `string` |  | APNs: the app bundle id (the APNs topic). |
 | `environment` | `'production'` | `string` | `production`, `sandbox` | APNs: environment of the app build; never guessed. |
+| `key_environments` | `'both'` | `string` | `both`, `sandbox`, `production` | APNs token auth: what you declare about the environments the .p8 key can be used on (Apple lets a key be restricted to one). The environment probe refuses, before any request, a connection whose declared key cannot serve the environment it would try. both = nothing is declared. |
 | `port` | `443` | `int` | `443`, `2197` | APNs port. |
 | `broadcast_host` | `'standard'` | `string` | `standard`, `api-broadcast` | APNs: host used to publish Live Activity broadcasts. |
 | `credentials` | – | `secret source` |  | FCM service_account auth: the service-account JSON. |
@@ -122,6 +123,7 @@ HTTP/2 transport defaults for every connection that does not set its own value.
 | `transport.max_idle_seconds` | `MOBILE_PUSH_MAX_IDLE_SECONDS` | `3600` | `int` | >= 1 | An idle pooled connection is closed after this many seconds. | sending |
 | `transport.proxy` | `MOBILE_PUSH_PROXY` | `null` | `string\|null` |  | HTTP proxy URL, e.g. http://proxy.internal:3128. | sending |
 | `transport.max_pools` | `MOBILE_PUSH_TRANSPORT_MAX_POOLS` | `32` | `int` | >= 1 | Cap of the per-process registry of HTTP/2 connection pools (one pool per provider endpoint, credential and settings). When a new pool would exceed it, the least recently used idle pool is closed. Raise it when one process serves many distinct connections (multi-tenant). | sending |
+| `transport.reuse` | `MOBILE_PUSH_TRANSPORT_REUSE` | `'auto'` | `string` | `auto`, `on`, `off` | Connection reuse between sends. on: HTTP/2 connections are kept between sends (the pools are shared by the concurrent sends of one key). off: every send opens its own connection pool and closes it when the send ends (one TCP + TLS handshake per send). auto: on, except for a send that starts while a coroutine runtime (Swoole, OpenSwoole) hooks curl. | sending |
 | `transport.ca_bundle` | `MOBILE_PUSH_CA_BUNDLE` | `null` | `string\|null` |  | Path of a CA bundle; null = the system store. | sending |
 
 ## Retry budget
@@ -205,6 +207,7 @@ Installations stored per owner so MobilePush::to($user) works. Tokens are encryp
 | `devices.table` | `MOBILE_PUSH_DEVICES_TABLE` | `'mobile_push_devices'` | `string` |  | Table name. | devices |
 | `devices.connection` | `MOBILE_PUSH_DEVICES_CONNECTION` | `null` | `string\|null` |  | Database connection; null = default. | devices |
 | `devices.model` | – | `\Padosoft\MobilePush\Laravel\Devices\PushDevice::class` | `class-string` |  | Eloquent model (extend PushDevice to customise). | devices |
+| `devices.fcm_prefer` | `MOBILE_PUSH_DEVICES_FCM_PREFER` | `'token'` | `string` | `token`, `fid` | For a device row that holds both an FCM registration token and a Firebase installation id (FID): which one it is sent to. Still one destination, and one send, per row. | devices |
 | `devices.probe.cooldown_hours` | `MOBILE_PUSH_DEVICES_PROBE_COOLDOWN_HOURS` | `24` | `int` | >= 0 | mobile-push:devices:probe-environment contacts a device at most once per this many hours (0 = no cooldown). | console |
 | `devices.prune.invalidated_days` | – | `30` | `int` | >= 0 | mobile-push:devices:prune deletes invalidated rows older than this. | console |
 | `devices.prune.inactive_days` | – | `365` | `int` | >= 0 | mobile-push:devices:prune deletes rows not seen for this many days. | console |
@@ -255,7 +258,7 @@ The QUEUE connection and names used by queue() (distinct from the push connectio
 | `queue.chunk` | `MOBILE_PUSH_QUEUE_CHUNK` | `500` | `int` | 1..10000 | Destinations per light job / deliveries per relay claim. | queue |
 | `queue.chunk_bytes` | `MOBILE_PUSH_QUEUE_CHUNK_BYTES` | `98304` | `int` | >= 4096 | Estimated bytes of one light job before encryption. | queue |
 | `queue.timeout` | `MOBILE_PUSH_QUEUE_TIMEOUT` | `50` | `int` | >= 1 | Job timeout, seconds. | queue |
-| `queue.chunk_deadline` | `MOBILE_PUSH_QUEUE_CHUNK_DEADLINE` | `40` | `int` | >= 1 | Wall time of one relay run before it hands over, seconds. | queue |
+| `queue.chunk_deadline` | `MOBILE_PUSH_QUEUE_CHUNK_DEADLINE` | `40` | `int` | >= 1 | Wall time of one light job or one relay run before it stops starting new work and hands the rest to a follow-up job, seconds. | queue |
 | `queue.after_commit` | `MOBILE_PUSH_QUEUE_AFTER_COMMIT` | `true` | `bool` |  | Dispatch light jobs after the open transaction commits. | queue |
 | `queue.follow_up_bucket` | `MOBILE_PUSH_QUEUE_FOLLOW_UP_BUCKET` | `60` | `int` | >= 0 | Deferred destinations whose next attempts are this close share one continuation job, seconds; on the durable profile it is also the bucket in which relay follow-ups beyond the first 20 per scope and queue are folded into one scope-wide relay. | queue |
 | `queue.worker_timeout` | `MOBILE_PUSH_QUEUE_WORKER_TIMEOUT` | `null` | `int\|null` |  | Declared worker timeout when it is not readable from Horizon. | queue |

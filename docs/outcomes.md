@@ -26,9 +26,35 @@ can report that a push really arrived), [troubleshooting](troubleshooting.md) (s
 | `destinationAction` | `none`, `quarantine` or `invalidate`: what the package did (or asked the device registry to do) with the registration. |
 | `invalidatedAtMs` | APNs 410 only: the provider's timestamp in Unix milliseconds. |
 | `deliveryId` | The ledger delivery id (durable profile, queued sends only). |
-| `meta` | Small extra facts such as `apns-unique-id`. Never a token. |
+| `meta` | Small extra facts (strings), never a token: `message_id`, `credential_generation` once a request went out, `apns-unique-id`, `receipt_marker` = `1` when a receipt marker was embedded, and **`warnings`**: what the compiler changed or dropped for this destination (a field dropped under `lenient()`, a truncation, a TTL capped), several joined by ` \| `. A key is absent when it does not apply. |
 
 `SendResult::isAccepted()` is true only for `Accepted`.
+
+**Warnings.** A result can be `Accepted` and still carry `meta['warnings']`: the push went out, but not exactly as
+written (for example a `subtitle()` dropped for Android under `lenient()`, see
+[messages.md](messages.md#the-unified-pushmessage)). Read them per result, from the report or from `PushResultProduced`
+listeners (`$event->result->meta`):
+
+<!-- example: outcomes-warnings -->
+```php
+use Padosoft\MobilePush\Core\Message\PushMessage;
+use Padosoft\MobilePush\Core\Outcome\SendResult;
+use Padosoft\MobilePush\Laravel\Facades\MobilePush;
+
+$wire = MobilePush::fakeTransport();
+$warned = [];
+
+MobilePush::to($user)
+    ->send(PushMessage::make('Order shipped')->subtitle('Order #42')->lenient())
+    ->each(function (SendResult $result) use (&$warned): void {
+        if (isset($result->meta['warnings'])) {
+            $warned[] = $result->destination->kind()->value.': '.$result->meta['warnings'];
+        }
+    });
+
+// Only the Android destination lost the subtitle; the iPhone got it.
+expect($warned)->toHaveCount(1)->and($warned[0])->toStartWith('fcm_token: ');
+```
 
 ## The statuses
 
@@ -40,7 +66,7 @@ can report that a push really arrived), [troubleshooting](troubleshooting.md) (s
 | `Deferred` | Not finished: a new attempt is planned at `nextAttemptAt`. | Not a failure. | In a queued send the package already scheduled it (see below). For a synchronous `send()` **nothing re-sends it for you**: queue it again if you need it. |
 | `OutcomeUnknown` | The request may or may not have been processed (connection lost after the request was written, an unreadable answer, a stopped worker). | Not "not sent". Not a failure. Do not assume either way. | Do not retry blindly: a retry can produce a duplicate. No fallback was started and none will be. Alert on it, count it, decide per message type. |
 | `Expired` | The logical expiry (`ttl` / `expiresAt`) passed before an attempt could be made. **Nothing was sent.** | Not a provider decision. | Nothing: the message was too old to be useful. Shorten delays or lengthen the expiry if it should have gone out. |
-| `Skipped` | A **local rule** stopped the attempt: consent / eligibility, frequency cap, safe mode, an open circuit breaker, a binding that no longer matches, a cancellation. | Not a provider decision. No connection was opened for it. | Read `reason.code`: `policy_ineligible`, `policy_frequency_capped`, `policy_safe_mode`, `circuit_open`, `binding_mismatch`, `cancelled`. A binding mismatch is reported the same way on every path (direct send, light job, durable relay): `Skipped` / `binding_mismatch`, 0 attempts, one `BindingMismatchDetected` event per run. |
+| `Skipped` | A **local rule** stopped the attempt: consent / eligibility, frequency cap, safe mode, an open circuit breaker, a binding that no longer matches, a cancellation. | Not a provider decision. No connection was opened for it. | Read `reason.code`: `policy_ineligible`, `policy_frequency_capped`, `policy_safe_mode`, `circuit_open`, `binding_mismatch`, `cancelled`. A binding mismatch is reported the same way on every path (direct send, light job, durable relay): `Skipped` / `binding_mismatch`, 0 attempts, one `BindingMismatchDetected` event per run. A registry destination sent through a named connection of another app or scope is also `Skipped` / `binding_mismatch` (direct send, light job and durable relay; no event), see [sending.md](sending.md#a-named-connection-and-the-device-registry). |
 | `Simulated` | Simulation mode: **no network was touched**. | Not sent. Not validated. | Nothing, in development. If you see it in production, see [safe mode](safe-mode.md). |
 | `Validated` | FCM `validate_only`: Google checked the request and did not send it. | Not sent to the device. Not a delivery test. | Treat as "the request is well-formed and the credential works". |
 

@@ -192,6 +192,17 @@ The package opens HTTP/2 connections to APNs and FCM and reuses them. A **pool k
 - Two tenants that use the **same** credential may share one connection: it is the same identity to the provider.
 - After a rotation the old and the new key use different pools.
 
+### What a rotation or a revocation drains
+
+When the configuration of a connection changes (a new key through `MobilePush::register()`, or a new config that a restarted worker reads), the next send through that name builds a new driver. In that process:
+
+- the previous driver of the same name and scope is dropped from the connection cache and **its transport pools are closed**; the new generation opens its own pool (different pool key);
+- the provider token of the old generation is **never read again**: the token cache is keyed by the credential identity (APNs: team id + key id; FCM: principal + key id), so the new key mints its own JWT, or exchanges its own Google access token, on first use.
+
+`MobilePush::unregister()` (and `MobilePush::forgetConnection()`) close the pools of that connection the same way. A job captured for a binding whose name no longer resolves to the same identity is then `Skipped` / `binding_mismatch` ([what a job carries](/operations/multi-tenancy#multi-tenancy-scopes-runtime-connections-and-key-rotation-what-a-job-carries)); one that resolves to the same identity uses the current credential.
+
+What is deliberately **not** done: the old token is not deleted from the shared token cache. Other workers may still run the old configuration until they restart, and deleting the shared entry would make each of them mint again with the old key (Apple refuses tokens minted too often, `TooManyProviderTokenUpdates`). The entry is unreachable for the new generation and expires on its own (an APNs JWT is reused for at most 55 minutes, a Google access token until its `expires_in`). A worker that keeps the old configuration keeps sending with the old key until it restarts; if that key was revoked at the provider, its requests fail authentication and are classified like any authentication error (with a `secondary` configured, the breaker switches to it, see above).
+
 ## Worked example: two tenants
 
 Acme and Globex each connect their own iOS app. Acme has its own Apple team; Globex too. Both use the durable profile.

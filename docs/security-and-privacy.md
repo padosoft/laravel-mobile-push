@@ -193,7 +193,7 @@ and the command can simply be run again, every step is idempotent):
 | Ledger: pending deliveries cancelled | The owner's non-terminal deliveries become `cancelled` **first**, so a queued job cannot send them. A request already on the wire cannot be recalled (the report says so). |
 | Devices | The owner's device registrations are **deleted, tokens included**. |
 | Live Activities | The owner's activities and push-to-start tokens are deleted. |
-| Ledger: deliveries erased | The encrypted destination, the owner and the device reference are erased; the encrypted **message snapshot** and the notifiable of the effects that originate from the owner are erased. **Non-personal tombstones stay**: state, counters and the non-reversible logical key, which keep a re-submitted job from re-creating rows. |
+| Ledger: deliveries erased | The encrypted destination, the owner and the device reference are erased; the encrypted **message snapshot** of every effect addressed to the owner **alone** is erased (and, where an effect records the notifiable it originates from, that reference too). **Non-personal tombstones stay**: state, counters and the non-reversible logical key, which keep a re-submitted job from re-creating rows. |
 | Send log | Rows tied to the owner, and rows that name only a destination that was one of the owner's tokens (a send by raw token, no notifiable). A row that belongs to **another** notifiable is never touched, even if it addressed the same phone. |
 
 What it **cannot reach**, printed with every report (and in the `export` notes):
@@ -207,8 +207,9 @@ What it **cannot reach**, printed with every report (and in the `export` notes):
 - **Your application's own** tables, caches and logs.
 
 Also true, and not hidden by the report: deliveries to **raw tokens** (`toToken()`) carry no owner and cannot be found by
-owner (only the effects that originate from a notifiable can); the `effect_key` is not erased; and a message snapshot is
-erased for a whole effect, so a single effect that also addressed other recipients loses its snapshot for them too. The
+owner; the `effect_key` is not erased; and the message snapshot of an effect that **also** addresses somebody else
+(another owner, a raw token, a topic) is **kept**, because the others still need it to be sent: it holds the same
+message they receive, and it goes with the effect at the retention prune. The
 registry method `DeviceRegistrar::detachOwner()` only **detaches** a device from its owner (a "logout"); it is not
 erasure.
 

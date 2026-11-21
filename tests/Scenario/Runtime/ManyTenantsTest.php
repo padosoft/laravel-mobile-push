@@ -68,8 +68,10 @@ it('never holds more connections than the registry limit while 200 tenants are s
     $first = serveTenants($transport, $server, 200, $limit, checkEverySend: true);
     $memAfterFirst = RuntimeProbe::memory();
     $fdAfterFirst = RuntimeProbe::openDescriptors();
+    $rssAfterFirst = RuntimeProbe::rss();
     $second = serveTenants($transport, $server, 200, $limit, checkEverySend: true);
     $memGrowth = RuntimeProbe::memory() - $memAfterFirst; // before reading the (large) server stats into memory
+    $rssAfterSecond = RuntimeProbe::rss();
 
     $stats = RuntimeProbe::settle($server, 'openConnections', $limit);
     expect($first['failures'] + $second['failures'])->toBe(0)
@@ -88,6 +90,9 @@ it('never holds more connections than the registry limit while 200 tenants are s
 
     $transport->close();
     expect(RuntimeProbe::settle($server, 'openConnections', 0)['openConnections'])->toBe(0);
+
+    RuntimeProbe::assertRssGrowthBelow($rssAfterFirst, $rssAfterSecond, 4 * 1024 * 1024, 'on the second pass over 200 tenants');
+    RuntimeProbe::assertRssGrowthBelow($rssAfterFirst, RuntimeProbe::rss(), 4 * 1024 * 1024, 'after the drain');
 });
 
 it('keeps the connections of the tenants that fit under the limit: revisiting a small working set reuses them', function () use (&$server): void {
@@ -112,15 +117,20 @@ it('soak: 200 tenants served ten times stay within the limit with flat memory an
     serveTenants($transport, $server, 200, $limit, checkEverySend: false);
     $mem = RuntimeProbe::memory();
     $fd = RuntimeProbe::openDescriptors();
+    $rssWarm = null; // taken after six passes: the allocator needs that many to reach its plateau (see the note below)
     $failures = 0;
     $maxOpen = 0;
     for ($pass = 0; $pass < 9; $pass++) {
         $run = serveTenants($transport, $server, 200, $limit, checkEverySend: $pass % 3 === 0);
         $failures += $run['failures'];
         $maxOpen = max($maxOpen, $run['maxOpen']);
+        if ($pass === 4) {
+            $rssWarm = RuntimeProbe::rss();
+        }
     }
     $memGrowth = RuntimeProbe::memory() - $mem;
     $fdEnd = RuntimeProbe::openDescriptors();
+    $rssEnd = RuntimeProbe::rss();
 
     $stats = RuntimeProbe::settle($server, 'openConnections', $limit);
     expect($failures)->toBe(0)
@@ -132,4 +142,19 @@ it('soak: 200 tenants served ten times stay within the limit with flat memory an
         expect($fdEnd)->toBe($fd);
     }
     $transport->close();
+    RuntimeProbe::settle($server, 'openConnections', 0);
+
+    RuntimeProbe::assertRssGrowthBelow($rssWarm, $rssEnd, 1024 * 1024, 'over nine more passes over 200 tenants');
+    RuntimeProbe::assertRssGrowthBelow($rssWarm, RuntimeProbe::rss(), 2 * 1024 * 1024, 'after the drain');
 })->group('slow');
+
+/*
+ * Note on RSS (Linux, PHP 8.3, VmRSS, three runs each; the numbers are growth in KiB).
+ * - Two passes over 200 tenants: the second pass grew RSS by 1,050-1,070; after the drain it was 600-650 above the
+ *   first-pass reading. The allocator is still warming up (one pass is not a plateau), so the bound is 4 MiB.
+ * - Soak: a first attempt that took the warm-up reading after ONE pass saw +22 MiB over nine more passes, with the
+ *   PHP heap flat. A separate script that repeated the passes showed the cause: RSS climbs for about five passes
+ *   (curl/OpenSSL allocations, ~4.7 MiB per pass) and then stays at the same value for the rest of the run, i.e. a
+ *   plateau, not a leak. The soak therefore reads its warm-up value after six passes: the four passes that follow
+ *   grew by 60-156, and the drain by 296-392. Bounds: 1 MiB for the run, 2 MiB for the drain (6-10x the noise).
+ */

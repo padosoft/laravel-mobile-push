@@ -90,6 +90,32 @@ $wire->assertApnsRequest(fn (array $headers, array $payload) => $payload['aps'][
 $wire->assertFcmRequest(fn (array $message) => ! isset($message['notification']['subtitle']));
 ```
 
+**Where a warning goes.** Without `lenient()`, a field FCM cannot carry is refused before the network: a send whose only
+connection is FCM throws `UnsupportedCapabilityException`; in a send that also reaches an iPhone, the Android
+destinations are `Rejected` with `payload_invalid` and the iPhone gets the subtitle (see the
+[pre-flight](sending.md#multi-connection-sends-and-the-pre-flight)). With `lenient()` the field is dropped for the
+platform that cannot carry it, the push is sent, and the warning is on **that destination's result**, in
+`$result->meta['warnings']` (several warnings joined by ` | `). The same `meta` reaches `PushResultProduced` listeners
+(`$event->result->meta`). Warnings of truncation (`truncate()`) and of the other compiler adjustments (a TTL capped at
+four weeks, a dropped null data key) arrive the same way. `mobile-push:preview` prints them without sending.
+
+<!-- example: messages-lenient-warnings -->
+```php
+use Padosoft\MobilePush\Core\Identity\Platform;
+use Padosoft\MobilePush\Core\Message\PushMessage;
+use Padosoft\MobilePush\Laravel\Facades\MobilePush;
+
+$wire = MobilePush::fakeTransport();
+
+$result = MobilePush::toToken(Platform::Android, $androidToken)
+    ->send(PushMessage::make('Order shipped')->subtitle('Order #42')->lenient())
+    ->retained()[0];
+
+// The push went out without the subtitle, and the result says why.
+$wire->assertFcmRequest(fn (array $message) => ! isset($message['notification']['subtitle']), 1);
+expect($result->meta['warnings'])->toContain('Dropped iOS-only capability "subtitle"');
+```
+
 ## Platform overlays: `->apns()` and `->fcm()`
 
 `PushMessage::apns(callable)` and `PushMessage::fcm(callable)` give you the native message of each platform. The callback runs **immediately** against an empty overlay (`ApnsMessage::overlay()`, `FcmMessage::overlay()`); only what you set on it is laid on top of the message compiled from the unified fields, so the overlay wins where both set a value. Overlays are stored as data, never as closures, so the message stays serializable for queues.

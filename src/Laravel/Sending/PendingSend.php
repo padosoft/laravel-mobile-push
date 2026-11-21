@@ -39,6 +39,11 @@ use Padosoft\MobilePush\Laravel\Devices\PushDevice;
  * conditions. Without a named connection each destination goes to the only route of its provider; registry
  * devices go to the connection they were registered on. Notifiables are resolved when send()/queue() runs, and
  * every registry device is checked again immediately before the network.
+ *
+ * With a named connection, a notifiable is NARROWED to what that connection carries (its registry rows of that
+ * connection, its routed destinations of that provider); an explicit destination of the other provider is an
+ * InvalidDestinationException; a registry destination of another binding is Skipped(BindingMismatch) by the
+ * eligibility gate, before the network.
  */
 final class PendingSend
 {
@@ -506,8 +511,17 @@ final class PendingSend
             }
         }
 
+        // A notifiable is narrowed by a named connection, never refused by it: its routed destinations of the other
+        // provider are left out (as its registry rows of other connections are), so to($users) through one
+        // connection never fails because a user also has a phone of the other platform. Destinations passed
+        // explicitly stay strict (InvalidDestinationException in $route).
+        $namedProvider = $named === null ? null : $this->manager->providerOf($scope, $named);
         foreach ($this->notifiables as $notifiable) {
             foreach ($this->routedByNotifiable($notifiable) as $item) {
+                $destination = $item instanceof SendItem ? $item->destination : $item;
+                if ($namedProvider !== null && $destination->kind()->provider() !== $namedProvider) {
+                    continue;
+                }
                 if ($keep($item)) {
                     $groups[$route($item)][] = $item;
                 }

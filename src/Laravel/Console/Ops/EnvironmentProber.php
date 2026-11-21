@@ -33,7 +33,10 @@ use Psr\Clock\ClockInterface;
  * (same scope, same bundle id) on the OTHER environment:
  *  - Accepted: the registration is re-labelled (environment and binding) and reactivated under a new generation;
  *  - BadDeviceToken again: the device stays quarantined;
- *  - a refusal of the credential (a key limited to one environment answers this way): the WHOLE run stops;
+ *  - a connection that DECLARES its key restricted to one environment (`connections.<name>.key_environments`) is
+ *    refused up front, before any request, when the probe would use it on the other one (ProbeOutcome::KeyRestricted);
+ *  - a refusal of the credential (a key limited to one environment answers this way when nothing was declared): the
+ *    WHOLE run stops;
  *  - anything else: the device is left untouched.
  *
  * Devices are probed one at a time, so a stop is immediate and a rejected token (which counts against Apple's error
@@ -247,6 +250,11 @@ final class EnvironmentProber
             return new ProbeItem($device, $row->with(ProbeOutcome::NoConnection, $why ?? 'No connection.'));
         }
 
+        $restriction = $this->restriction($target);
+        if ($restriction !== null) {
+            return new ProbeItem($device, $row->with(ProbeOutcome::KeyRestricted, $restriction));
+        }
+
         $options = $this->manager->defaultOptions($target);
         $decision = $this->guard->decide($options->effectiveMode, $options->applicationEnvironment ?? '', $target, $destination, OperationKind::Probe, $options->live, $target->environment);
         if (! $decision->allowed) {
@@ -254,6 +262,46 @@ final class EnvironmentProber
         }
 
         return new ProbeItem($device, $row, true, $target, $destination);
+    }
+
+    /** The values of `connections.<name>.key_environments`. */
+    public const KEY_ENVIRONMENTS = ['both', 'sandbox', 'production'];
+
+    /**
+     * What the operator declared about the key of the connection the probe would use: `both` (the default: nothing
+     * is known, the probe tries and reacts to an authentication refusal), `sandbox` or `production` (Apple lets a
+     * `.p8` key be restricted to one environment). Read from `mobile-push.connections.<name>.key_environments`, which
+     * only exists for connections defined in the config file (a connection supplied by a resolver is `both`).
+     *
+     * @throws UsageError when the value is not one of the allowed ones (an invalid declaration is refused, never guessed)
+     */
+    private function declaredKeyEnvironments(BindingRef $target): string
+    {
+        $connections = config('mobile-push.connections', []);
+        $connection = is_array($connections) ? ($connections[$target->name] ?? null) : null;
+        $value = is_array($connection) ? ($connection['key_environments'] ?? 'both') : 'both';
+        if (! is_string($value) || ! in_array($value, self::KEY_ENVIRONMENTS, true)) {
+            throw new UsageError(sprintf(
+                'mobile-push.connections.%s.key_environments must be one of: %s (got %s). Nothing was sent. Set it to "both" when the key is not restricted, or to the single environment Apple limited it to.',
+                $target->name, implode(', ', self::KEY_ENVIRONMENTS), is_string($value) ? '"'.$value.'"' : get_debug_type($value),
+            ));
+        }
+
+        return $value;
+    }
+
+    /** The refusal text when the declared key environments exclude the environment of the probe, or null. */
+    private function restriction(BindingRef $target): ?string
+    {
+        $declared = $this->declaredKeyEnvironments($target);
+        if ($declared === 'both' || $declared === $target->environment->value) {
+            return null;
+        }
+
+        return sprintf(
+            'Refused: connection "%s" declares key_environments=%s, so its key cannot be used on %s, the environment this probe would try. Nothing was sent. Remedy: probe through a connection whose key is valid on %s (an unrestricted key, or one issued for it), or, if the key is in fact not restricted, set key_environments to "both".',
+            $target->name, $declared, $target->environment->value, $target->environment->value,
+        );
     }
 
     private function probe(ProbeItem $item): ProbeRow

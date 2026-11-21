@@ -36,6 +36,12 @@ use Psr\Log\LoggerInterface;
  * job is the same payload again) and never retried by the queue (tries = 1): Accepted, Rejected, Failed, Expired,
  * Skipped and OutcomeUnknown are terminal here.
  *
+ * Chunk deadline (queue.chunk_deadline, as in the durable relay; see ChunkDeadline): once it has passed, or the time
+ * left is shorter than the slowest window of this job, the Sender is given no further destination. The window in
+ * flight is never cut and never handed over (its outcomes are whatever the transport reports, unknown included).
+ * The destinations never given to the Sender go, with their budgets unchanged, to ONE new job dispatched at once
+ * (the next continuation number) with a fresh deadline. Each job sends at least one destination.
+ *
  * What this profile does NOT promise: if the worker dies while a job is sending, the job is not retried, so the
  * destinations not reached yet are OMITTED; if the queue redelivers a job whose worker died (e.g. retry_after
  * passed while it was still sending, or a backend that ignores tries), destinations already sent are sent AGAIN.
@@ -107,12 +113,17 @@ final class SendPushJob implements ShouldBeEncrypted, ShouldQueue
         $options = $options
             ->withTrafficClass(TrafficClass::tryFrom($this->trafficClass) ?? TrafficClass::Transactional)
             ->withEffectKey($this->effectKey)
+            ->withEffectId($this->effectId)
             ->withValidateOnly($this->validateOnly)
             ->withExpiresAt($this->expiresAtMs === null ? null : LedgerTime::date($this->expiresAtMs))
             ->withObserver($deferred);
 
+        // The chunk deadline (queue.chunk_deadline, the setting the durable relay enforces) starts now. Past it the
+        // Sender is given no further destination; what it never received is handed to ONE follow-up job below.
+        $deadline = new ChunkDeadline($clock, $settings->chunkDeadline);
+
         try {
-            $report = $dispatcher->send($binding, $message, $this->items(), $options);
+            $report = $dispatcher->send($binding, $message, $deadline->items($this->destinations), $options);
             foreach ($report->results() as $result) {
                 // consume the whole cursor: the send happens while it is read
             }
@@ -120,6 +131,16 @@ final class SendPushJob implements ShouldBeEncrypted, ShouldQueue
             $logger->warning('mobile-push: a queued message is invalid for every destination; nothing was sent.', $this->context() + ['exception' => $e::class]);
 
             return;
+        }
+
+        $rest = $deadline->remaining($this->destinations);
+        if ($rest !== []) {
+            // Never compiled, never written: they keep their budgets and run at once in a fresh job (fresh deadline).
+            $logger->info('mobile-push: a light-profile job reached its chunk deadline; the destinations not attempted go to a follow-up job.', $this->context() + [
+                'handed_over' => count($rest),
+                'chunk_deadline' => $settings->chunkDeadline,
+            ]);
+            $jobs->dispatchNow($this->continue($rest), $this->connection, $this->queue);
         }
 
         $planner = new FollowUpPlanner($settings->followUpBucket);

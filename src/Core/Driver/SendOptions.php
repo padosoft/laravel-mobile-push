@@ -57,6 +57,11 @@ final readonly class SendOptions
          * @var list<SendObserver>
          */
         public array $observers = [],
+        /**
+         * Id of the stored effect this call belongs to (a queued send: the id `queue()` returned). Carried to the
+         * observers of the call so that results can be traced back to it; it never changes what is sent.
+         */
+        public ?string $effectId = null,
     ) {
         foreach ($observers as $observer) {
             // Runtime guard for callers that ignore the phpdoc.
@@ -87,6 +92,11 @@ final readonly class SendOptions
     public function withEffectKey(?string $effectKey): self
     {
         return $this->copy(['effectKey' => $effectKey]);
+    }
+
+    public function withEffectId(?string $effectId): self
+    {
+        return $this->copy(['effectId' => $effectId]);
     }
 
     public function withExpiresAt(?\DateTimeImmutable $expiresAt): self
@@ -135,7 +145,7 @@ final readonly class SendOptions
      */
     private function copy(array $changes): self
     {
-        /** @var array{live: LiveSettings, trafficClass: TrafficClass, validateOnly: bool, effectKey: ?string, expiresAt: ?\DateTimeImmutable, window: ?int, retryPolicy: ?RetryPolicy, receiptMarker: (callable(Destination, string): ?string)|null, gates: list<DestinationGate>, observers: list<SendObserver>} $v */
+        /** @var array{live: LiveSettings, trafficClass: TrafficClass, validateOnly: bool, effectKey: ?string, expiresAt: ?\DateTimeImmutable, window: ?int, retryPolicy: ?RetryPolicy, receiptMarker: (callable(Destination, string): ?string)|null, gates: list<DestinationGate>, observers: list<SendObserver>, effectId: ?string} $v */
         $v = array_replace([
             'live' => $this->live,
             'trafficClass' => $this->trafficClass,
@@ -147,6 +157,7 @@ final readonly class SendOptions
             'expiresAt' => $this->expiresAt,
             'window' => $this->window,
             'observers' => $this->observers,
+            'effectId' => $this->effectId,
         ], $changes);
 
         return new self(
@@ -163,6 +174,7 @@ final readonly class SendOptions
             $v['expiresAt'],
             $v['window'],
             $v['observers'],
+            $v['effectId'],
         );
     }
 }

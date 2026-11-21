@@ -1,0 +1,86 @@
+name: live-probes
+
+# REAL requests to Apple and Google, with real credentials. Never on a schedule, never on a pull request, never from a
+# branch: only by hand, on main, through the protected environment `live-probes`, which holds the secrets and should
+# require a reviewer (Settings > Environments). Use a DEDICATED test app and Firebase project, not production ones.
+#
+# What it sends, through `php artisan mobile-push:doctor --live` in a freshly created application: one APNs push to an
+# obviously invalid device token (Apple is expected to answer BadDeviceToken, which proves the key, team and bundle
+# work; no device is contacted) and one FCM `validate_only` call (Google checks the credential and the message and
+# delivers nothing). Nothing else. The step fails if the output contains anything that looks like a bearer or a key.
+#
+# Secrets of the `live-probes` environment (all optional per provider: a provider without its secrets is skipped):
+#   LIVE_APNS_TEAM_ID, LIVE_APNS_KEY_ID, LIVE_APNS_BUNDLE_ID, LIVE_APNS_KEY_BASE64 (base64 of the .p8 file)
+#   LIVE_FCM_CREDENTIALS_BASE64 (base64 of the service-account JSON of the dedicated project)
+#
+# This workflow has NEVER been run in this project: no credential was available when it was written.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "send real probes" to confirm that real requests will be sent to Apple and Google'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  doctor-live:
+    if: github.ref == 'refs/heads/main' && inputs.confirm == 'send real probes'
+    runs-on: ubuntu-latest
+    environment: live-probes
+    timeout-minutes: 15
+    name: doctor --live against APNs sandbox and FCM
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: package
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: curl, openssl, json, intl, pdo_sqlite
+          coverage: none
+      - name: Create the application, require the package and install
+        run: |
+          composer create-project "laravel/laravel:^13.0" app --no-interaction --prefer-dist
+          cd app
+          composer config repositories.mobile-push '{"type":"path","url":"../package","options":{"symlink":false}}'
+          composer require padosoft/laravel-mobile-push:@dev --no-interaction
+          php artisan mobile-push:install --no-interaction --profile=light
+          php ../package/tests/Support/FreshApp/configure.php "$PWD"
+          # configure.php wrote made-up keys for the simulated jobs: take every push setting out of .env, the real
+          # ones come from the environment of the next step and from nowhere else.
+          sed -i '/^MOBILE_PUSH_/d' .env
+      - name: One real probe per configured provider
+        working-directory: app
+        env:
+          MOBILE_PUSH_MODE: live
+          MOBILE_PUSH_APNS_TEAM_ID: ${{ secrets.LIVE_APNS_TEAM_ID }}
+          MOBILE_PUSH_APNS_KEY_ID: ${{ secrets.LIVE_APNS_KEY_ID }}
+          MOBILE_PUSH_APNS_BUNDLE_ID: ${{ secrets.LIVE_APNS_BUNDLE_ID }}
+          MOBILE_PUSH_APNS_KEY_BASE64: ${{ secrets.LIVE_APNS_KEY_BASE64 }}
+          MOBILE_PUSH_APNS_ENVIRONMENT: sandbox
+          MOBILE_PUSH_APNS_LIVE_ALLOW: 'true'
+          MOBILE_PUSH_FCM_CREDENTIALS_BASE64: ${{ secrets.LIVE_FCM_CREDENTIALS_BASE64 }}
+          MOBILE_PUSH_FCM_LIVE_ALLOW: 'true'
+        run: |
+          set +e
+          status=0
+          for connection in ios android; do
+            if [ "$connection" = ios ] && [ -z "$MOBILE_PUSH_APNS_KEY_BASE64" ]; then echo "ios: no secret in the environment, skipped"; continue; fi
+            if [ "$connection" = android ] && [ -z "$MOBILE_PUSH_FCM_CREDENTIALS_BASE64" ]; then echo "android: no secret in the environment, skipped"; continue; fi
+            php artisan mobile-push:doctor "$connection" --live > "doctor-$connection.txt" 2>&1
+            code=$?
+            # never print a line that looks like a bearer, a key or a Google access token
+            if grep -Eq 'eyJ[A-Za-z0-9_-]{10,}\.|BEGIN [A-Z ]*PRIVATE KEY|ya29\.' "doctor-$connection.txt"; then
+              echo "::error::the doctor output for $connection contains something that looks like a secret; it is not printed"
+              status=1
+              continue
+            fi
+            cat "doctor-$connection.txt"
+            echo "$connection: doctor --live exit code $code"
+            [ "$code" = 0 ] || status=1
+          done
+          exit $status

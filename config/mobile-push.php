@@ -109,6 +109,7 @@ return [
     |       ],
     |       'bundle_id' => env('MOBILE_PUSH_APNS_BUNDLE_ID'),
     |       'environment' => env('MOBILE_PUSH_APNS_ENVIRONMENT', 'production'),
+    |       'key_environments' => 'both',                        // both | sandbox | production: what the key is allowed for
     |       'live' => [
     |           'allow' => (bool) env('MOBILE_PUSH_APNS_LIVE_ALLOW', false),
     |           'only_to' => array_filter(explode(',', (string) env('MOBILE_PUSH_APNS_LIVE_ONLY_TO', ''))),
@@ -173,6 +174,9 @@ return [
         'proxy' => env('MOBILE_PUSH_PROXY'),                                 // e.g. http://proxy.internal:3128
         'ca_bundle' => env('MOBILE_PUSH_CA_BUNDLE'),                         // path of a CA bundle; null = system
         'max_pools' => (int) env('MOBILE_PUSH_TRANSPORT_MAX_POOLS', 32),     // per-process cap of connection pools (>= 1)
+        // Connection reuse between sends: auto | on | off. "off" opens a pool per send and closes it when the send
+        // ends; "auto" is "on", except for a send that starts while Swoole/OpenSwoole hooks curl (docs/transport.md).
+        'reuse' => env('MOBILE_PUSH_TRANSPORT_REUSE', 'auto'),
     ],
 
     /*
@@ -318,6 +322,7 @@ return [
         'table' => env('MOBILE_PUSH_DEVICES_TABLE', 'mobile_push_devices'),
         'connection' => env('MOBILE_PUSH_DEVICES_CONNECTION'),
         'model' => PushDevice::class,
+        'fcm_prefer' => env('MOBILE_PUSH_DEVICES_FCM_PREFER', 'token'),               // token | fid: where a row holding both is sent (one send per row)
         'probe' => [                                                                   // mobile-push:devices:probe-environment
             'cooldown_hours' => (int) env('MOBILE_PUSH_DEVICES_PROBE_COOLDOWN_HOURS', 24), // a device is probed at most once per this many hours
         ],
@@ -399,7 +404,7 @@ return [
         'chunk' => (int) env('MOBILE_PUSH_QUEUE_CHUNK', 500),                          // destinations per job, 1..10000
         'chunk_bytes' => (int) env('MOBILE_PUSH_QUEUE_CHUNK_BYTES', 98304),            // >= 4096, before encryption
         'timeout' => (int) env('MOBILE_PUSH_QUEUE_TIMEOUT', 50),                       // job timeout, seconds
-        'chunk_deadline' => (int) env('MOBILE_PUSH_QUEUE_CHUNK_DEADLINE', 40),         // wall time of one relay run, seconds
+        'chunk_deadline' => (int) env('MOBILE_PUSH_QUEUE_CHUNK_DEADLINE', 40),         // wall time of one light job or relay run before it hands the rest over, seconds
         'after_commit' => (bool) env('MOBILE_PUSH_QUEUE_AFTER_COMMIT', true),
         'follow_up_bucket' => (int) env('MOBILE_PUSH_QUEUE_FOLLOW_UP_BUCKET', 60),     // seconds; deferred retries this close share a job (durable: also folds relay follow-ups)
         'worker_timeout' => env('MOBILE_PUSH_QUEUE_WORKER_TIMEOUT'),                   // seconds, when not on Horizon

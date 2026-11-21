@@ -12,7 +12,9 @@ namespace Padosoft\MobilePush\Laravel\Console\Ops;
  * environment; a normal send never does.
  *
  * Exit code: 0 every device got a clean answer (relabelled, still rejected, simulated, or skipped by the cooldown), 1 something needs attention
- * (refused, no connection, untouched, conflict) or the run was refused, 2 the run was stopped by an authentication error.
+ * (refused, no connection, untouched, conflict) or the run was refused, 2 the run was stopped by an authentication error,
+ * 3 a connection was refused up front because its `key_environments` declaration says its key cannot be used on the
+ * environment the probe would try (nothing was sent for it; 2 wins when both happened).
  */
 final class ProbeEnvironmentCommand extends OpsCommand
 {
@@ -119,6 +121,11 @@ final class ProbeEnvironmentCommand extends OpsCommand
 
         if ($stopped) {
             return 2;
+        }
+        foreach ($rows as $row) {
+            if ($row->outcome === ProbeOutcome::KeyRestricted) {
+                return 3;
+            }
         }
         foreach ($rows as $row) {
             if ($row->outcome->needsAttention()) {

@@ -53,7 +53,7 @@ beforeEach(function () use (&$server): void {
 /**
  * Queue $jobs one-destination jobs (or empty jobs, for the baseline) and run a real worker until the queue is empty.
  *
- * @return array{processed: int, memWarm: int, memEnd: int, fdWarm: ?int, fdEnd: ?int}
+ * @return array{processed: int, memWarm: int, memEnd: int, fdWarm: ?int, fdEnd: ?int, rssWarm: ?array{bytes: int, source: string}, rssEnd: ?array{bytes: int, source: string}}
  */
 function workThroughJobs(int $jobs, int $warmUp, bool $empty = false): array
 {
@@ -71,20 +71,21 @@ function workThroughJobs(int $jobs, int $warmUp, bool $empty = false): array
     }
     expect(DB::table('jobs')->count())->toBe($jobs);
 
-    $probe = ['processed' => 0, 'memWarm' => 0, 'fdWarm' => null];
+    $probe = ['processed' => 0, 'memWarm' => 0, 'fdWarm' => null, 'rssWarm' => null];
     Event::forget(JobProcessed::class);
     Event::listen(JobProcessed::class, static function () use (&$probe, $warmUp): void {
         $probe['processed']++;
         if ($probe['processed'] === $warmUp) {
             $probe['memWarm'] = RuntimeProbe::memory();
             $probe['fdWarm'] = RuntimeProbe::openDescriptors();
+            $probe['rssWarm'] = RuntimeProbe::rss();
         }
     });
 
     // --memory: the test process is larger than the worker's 128 MB default (see lesson.md).
     Artisan::call('queue:work', ['connection' => 'database', '--queue' => 'push', '--stop-when-empty' => true, '--memory' => 4096]);
 
-    return $probe + ['memEnd' => RuntimeProbe::memory(), 'fdEnd' => RuntimeProbe::openDescriptors()];
+    return $probe + ['memEnd' => RuntimeProbe::memory(), 'fdEnd' => RuntimeProbe::openDescriptors(), 'rssEnd' => RuntimeProbe::rss()];
 }
 
 it('a real queue:work run sends 2,000 SendPushJobs over ONE connection, reused job after job, with flat memory', function () use (&$server): void {
@@ -111,6 +112,11 @@ it('a real queue:work run sends 2,000 SendPushJobs over ONE connection, reused j
     if ($run['fdWarm'] !== null) {
         expect($run['fdEnd'])->toBe($run['fdWarm']);
     }
+
+    // RSS: the worker run (warm-up vs end) and, once the drivers and pools are flushed, the drain.
+    RuntimeProbe::assertRssGrowthBelow($run['rssWarm'], $run['rssEnd'], 2 * 1024 * 1024, 'in the worker run');
+    MobilePush::flush();
+    RuntimeProbe::assertRssGrowthBelow($run['rssWarm'], RuntimeProbe::rss(), 2 * 1024 * 1024, 'after the drain');
 });
 
 it('soak: a worker processing 10,000 jobs keeps one connection and flat memory and descriptors', function () use (&$server): void {
@@ -133,4 +139,17 @@ it('soak: a worker processing 10,000 jobs keeps one connection and flat memory a
     if ($run['fdWarm'] !== null) {
         expect($run['fdEnd'])->toBe($run['fdWarm']);
     }
+
+    // RSS: the worker run (warm-up vs end) and, once the drivers and pools are flushed, the drain.
+    RuntimeProbe::assertRssGrowthBelow($run['rssWarm'], $run['rssEnd'], 2 * 1024 * 1024, 'in the worker run');
+    MobilePush::flush();
+    RuntimeProbe::assertRssGrowthBelow($run['rssWarm'], RuntimeProbe::rss(), 2 * 1024 * 1024, 'after the drain');
 })->group('slow');
+
+/*
+ * Note on RSS (Linux, PHP 8.3, VmRSS, three runs each). Growth between the reading after warm-up and the end of the
+ * worker run: 136-140 KiB over the 1,800 jobs after warm-up (bound 1 MiB), and 692 KiB over the 9,000 jobs after
+ * warm-up of the soak (bound 2 MiB; the same loop with an empty job costs ~150 bytes of heap per job, see above).
+ * After MobilePush::flush() the reading was unchanged (+0 to +16 KiB). The bounds leave ~3-7x headroom because RSS
+ * moves in allocator steps; a leak of ~200 bytes per job on top of the loop's own growth would cross the soak bound.
+ */

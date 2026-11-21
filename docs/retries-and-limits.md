@@ -196,7 +196,13 @@ are told apart:
   unavailable: behaving as an empty store.") **at most once a minute per process**, and leaves the backend alone for
   **5 seconds** after a failure before trying it again, so a dead cache server does not cost a connection timeout on
   every send. While it is down you have no shared rate limit: a burst can exceed the provider's limits, and a failing
-  credential cannot trip its breaker for the other workers.
+  credential cannot trip its breaker for the other workers. The durable relay's follow-up jobs survive it too: their
+  dedupe markers live in the same cache, so while it is unreachable a follow-up is dispatched **without** its marker
+  (a duplicate relay job finds nothing to claim and does nothing; a missing one would leave deferred deliveries
+  waiting for the sweeper), with the same 5-second rest and one warning a minute. Deferred deliveries still go out
+  on time. This is pinned by a scenario with two relays, a cache store that throws on every call and the HTTP/2
+  mock counting the requests (`tests/Scenario/Laravel/Release/RetriesWithCacheDownTest.php`); it was not tried with a
+  real Redis going down under load.
 - **The cache store is alive but too contended** (many workers keep winning the same compare-and-set, so a guard cannot
   update its state). The guard gives up and **grants nothing**: the destinations come back `Deferred` with reason code
   `quota_exceeded`, a hint that says the shared state was too contended, no request is made and the retry planner picks

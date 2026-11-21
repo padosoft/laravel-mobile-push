@@ -519,7 +519,7 @@ final class PushManager implements PushDispatcher
         }
         $report = $sender->send($current->driver, $message, $destinations, $options);
 
-        return new SendReport($this->completing($report, $current->binding, $options->trafficClass, $started));
+        return new SendReport($this->completing($report, $current->binding, $options->trafficClass, $started, $options->effectId));
     }
 
     public function driver(BindingRef $binding): Driver
@@ -887,11 +887,12 @@ final class PushManager implements PushDispatcher
             static fn (): array => $connection->bearers(),
             $this->logger(),
             $markers,
+            $options->effectId,
         );
     }
 
     /** @return \Generator<int, SendResult> */
-    private function completing(SendReport $report, BindingRef $binding, TrafficClass $trafficClass, int $started): \Generator
+    private function completing(SendReport $report, BindingRef $binding, TrafficClass $trafficClass, int $started, ?string $effectId = null): \Generator
     {
         $counts = [];
         foreach (SendStatus::cases() as $status) {
@@ -903,7 +904,7 @@ final class PushManager implements PushDispatcher
             $total++;
             yield $result;
         }
-        $this->dispatchSafely(new PushBatchCompleted($binding, $counts, $total, $trafficClass, (hrtime(true) - $started) / 1e6));
+        $this->dispatchSafely(new PushBatchCompleted($binding, $counts, $total, $trafficClass, (hrtime(true) - $started) / 1e6, $effectId));
     }
 
     /** @return array<mixed>|null */

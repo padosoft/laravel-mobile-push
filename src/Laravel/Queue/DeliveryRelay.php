@@ -156,6 +156,7 @@ final readonly class DeliveryRelay
         $options = $options
             ->withTrafficClass($effect->trafficClass)
             ->withEffectKey($effect->effectKey)
+            ->withEffectId($effect->id)
             ->withExpiresAt($effect->expiresAt)
             ->withValidateOnly($effect->operation === OperationKind::Validate)
             ->withObserver($recorder);

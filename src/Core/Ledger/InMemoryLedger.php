@@ -128,6 +128,22 @@ final class InMemoryLedger implements ClientReceiptStore, DeliveryBatches, Ledge
         $now = $this->nowMs();
         $this->cancelWhere($scope, static fn (array $row): bool => $row['owner_type'] === $ownerType && $row['owner_id'] === $ownerId, 'Forgotten.');
 
+        // The effects addressed to this owner and to nobody else lose their message snapshot too (an effect that also
+        // addresses another owner, a raw token or a topic keeps it: the others still need it to be sent).
+        $mine = $others = [];
+        foreach ($this->deliveries as $row) {
+            if ($row['scope'] !== $scope) {
+                continue;
+            }
+            $effectId = Row::str($row, 'effect_id');
+            if ($row['owner_type'] === $ownerType && $row['owner_id'] === $ownerId) {
+                $mine[$effectId] = true;
+            } else {
+                $others[$effectId] = true;
+            }
+        }
+        $ownEffects = array_diff_key($mine, $others);
+
         $erased = 0;
         foreach ($this->deliveries as $id => $row) {
             if ($row['scope'] === $scope && $row['owner_type'] === $ownerType && $row['owner_id'] === $ownerId) {
@@ -136,7 +152,10 @@ final class InMemoryLedger implements ClientReceiptStore, DeliveryBatches, Ledge
             }
         }
         foreach ($this->effects as $id => $row) {
-            if ($row['scope'] === $scope && $row['origin_type'] === $ownerType && $row['origin_id'] === $ownerId) {
+            if ($row['scope'] !== $scope) {
+                continue;
+            }
+            if (($row['origin_type'] === $ownerType && $row['origin_id'] === $ownerId) || isset($ownEffects[$id])) {
                 $this->effects[$id] = array_replace($row, LedgerRules::forgetEffectChanges($now));
             }
         }

@@ -8,6 +8,7 @@ use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
+use Padosoft\MobilePush\Core\Exceptions\ConfigurationException;
 use Padosoft\MobilePush\Core\Identity\BindingRef;
 use Padosoft\MobilePush\Core\Identity\Destination;
 use Padosoft\MobilePush\Core\Identity\Destination\ApnsBroadcastChannel;
@@ -147,11 +148,35 @@ class PushDevice extends Model
         return new DestinationRef(self::keyOf($this), $this->generation, $this->owner_type, $this->owner_id);
     }
 
-    /** The typed destination of this row (decrypted), carrying its DestinationRef. */
+    /**
+     * The typed destination of this row (decrypted), carrying its DestinationRef. Always exactly one.
+     *
+     * A row that holds BOTH an FCM token and a FID is sent to what `mobile-push.devices.fcm_prefer` says
+     * (`token`, the default, or `fid`); a row that holds only one of the two is sent to what it has. The row, its
+     * reference and its generation are the same either way.
+     *
+     * @throws ConfigurationException when `fcm_prefer` is neither `token` nor `fid`
+     */
     public function destination(): Destination
     {
+        $prefer = self::fcmPrefer();
+
+        if ($prefer === 'fid' && $this->kind === DestinationKind::FcmToken && ($fid = $this->fidDestination()) !== null) {
+            return $fid;
+        }
+
         return self::build($this->kind, $this->cipher()->decrypt($this->token, $this->scope, $this->kind->value))
             ->withRef($this->ref());
+    }
+
+    /** The validated `mobile-push.devices.fcm_prefer` setting. */
+    public static function fcmPrefer(): string
+    {
+        $prefer = config('mobile-push.devices.fcm_prefer', 'token');
+
+        return $prefer === 'token' || $prefer === 'fid'
+            ? $prefer
+            : throw new ConfigurationException('mobile-push.devices.fcm_prefer must be "token" or "fid".');
     }
 
     /** The FCM installation id of this row as a typed destination, when one is attached. */

@@ -70,6 +70,8 @@ final class SendingObserver implements SendObserver
         private readonly ?LoggerInterface $logger = null,
         /** Receipt markers issued in this call: handed to the sinks as secrets of their result, never logged. */
         private readonly ?ReceiptMarkers $markers = null,
+        /** The stored effect this call belongs to (a queued send), for the events and the send log. */
+        private readonly ?string $effectId = null,
     ) {}
 
     public function attemptFinished(AttemptReport $attempt): void
@@ -130,7 +132,7 @@ final class SendingObserver implements SendObserver
         if ($this->wantsPerResultEvent()) {
             $resultView = $this->guard(fn (): ResultView => ResultView::of($result, $this->index, $this->binding->scope));
             if ($resultView instanceof ResultView) {
-                $this->dispatch(new PushResultProduced($this->binding, $resultView, $this->trafficClass, $result));
+                $this->dispatch(new PushResultProduced($this->binding, $resultView, $this->trafficClass, $result, $this->effectId));
             }
         }
     }
@@ -210,6 +212,9 @@ final class SendingObserver implements SendObserver
             'operation' => $this->validateOnly ? 'validate' : 'send',
             'traffic_class' => $this->trafficClass->value,
         ];
+        if ($this->effectId !== null) {
+            $context['effect_id'] = $this->effectId;
+        }
         if ($attempt !== null) {
             $context['duration_ms'] = (int) round($attempt['duration']);
             $context['payload_bytes'] = $attempt['bytes'];

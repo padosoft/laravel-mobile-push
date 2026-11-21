@@ -7,6 +7,8 @@ namespace Padosoft\MobilePush\Tests\Scenario\Runtime;
 use Padosoft\MobilePush\Core\Transport\Exchange;
 use Padosoft\MobilePush\Core\Transport\Request;
 use Padosoft\MobilePush\Tests\Support\H2Mock\MockServer;
+use PHPUnit\Framework\Assert;
+use PHPUnit\Framework\SkippedWithMessageException;
 
 /**
  * What a long-lived process can observe about itself (memory, open descriptors) and small helpers shared by the
@@ -52,6 +54,48 @@ final class RuntimeProbe
         gc_collect_cycles();
 
         return memory_get_usage();
+    }
+
+    /**
+     * Resident set size of this process, with the source it came from: `VmRSS` of /proc/self/status (current RSS,
+     * Linux) or, where /proc does not exist (macOS), `ru_maxrss` of getrusage() (PEAK RSS: bytes on macOS, kilobytes
+     * on Linux). Null when neither is available; callers must then skip the RSS assertion, never fail.
+     *
+     * @return array{bytes: int, source: string}|null
+     */
+    public static function rss(): ?array
+    {
+        gc_collect_cycles();
+        $status = @file_get_contents('/proc/self/status');
+        if (is_string($status) && preg_match('/^VmRSS:\s+(\d+)\s+kB/m', $status, $m) === 1) {
+            return ['bytes' => (int) $m[1] * 1024, 'source' => 'VmRSS (/proc/self/status)'];
+        }
+        $peak = function_exists('getrusage') ? (getrusage()['ru_maxrss'] ?? 0) : 0;
+        if (is_int($peak) && $peak > 0) {
+            return ['bytes' => PHP_OS_FAMILY === 'Darwin' ? $peak : $peak * 1024, 'source' => 'ru_maxrss (getrusage, peak RSS)'];
+        }
+
+        return null;
+    }
+
+    /**
+     * Asserts that the process RSS grew by less than `$bound` bytes between two readings of rss(). Skips the test
+     * (with the reason) when the platform cannot report RSS. Call it LAST in a test: the skip ends the test.
+     *
+     * @param  array{bytes: int, source: string}|null  $from
+     * @param  array{bytes: int, source: string}|null  $to
+     */
+    public static function assertRssGrowthBelow(?array $from, ?array $to, int $bound, string $what): void
+    {
+        if ($from === null || $to === null) {
+            throw new SkippedWithMessageException('RSS assertion skipped: this platform reports neither VmRSS nor ru_maxrss.');
+        }
+        $growth = $to['bytes'] - $from['bytes'];
+        Assert::assertLessThan(
+            $bound,
+            $growth,
+            sprintf('RSS grew by %d KiB %s (bound %d KiB, source %s)', intdiv($growth, 1024), $what, intdiv($bound, 1024), $to['source']),
+        );
     }
 
     /** CPU seconds (user + system) used by this process so far. */

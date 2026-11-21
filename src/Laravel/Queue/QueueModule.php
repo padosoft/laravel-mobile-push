@@ -18,6 +18,7 @@ use Padosoft\MobilePush\Laravel\Module;
 use Padosoft\MobilePush\Laravel\Queue\Events\RelayRunFinished;
 use Padosoft\MobilePush\Laravel\Receipts\ReceiptMarkerIssuer;
 use Psr\Clock\ClockInterface;
+use Psr\Log\LoggerInterface;
 
 /**
  * Queued sending: the single owner of putting push work on a queue.
@@ -62,6 +63,7 @@ final class QueueModule implements Module
             $app->make(SendJobDispatcher::class),
             $app->make(ClockInterface::class),
             $app->make(QueueSettings::class),
+            $app->bound(LoggerInterface::class) ? $app->make(LoggerInterface::class) : null,
         ));
 
         $app->bind(DeliveryRelay::class, static fn (Application $app): DeliveryRelay => new DeliveryRelay(

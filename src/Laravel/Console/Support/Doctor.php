@@ -294,6 +294,19 @@ final class Doctor
             };
         }
 
+        // The chain checks the ORDER of the values. A job stops starting new windows at its chunk deadline, but a
+        // window that started just before it runs to its end, bounded by the transport timeout: said here when that
+        // sum can reach the job timeout, as information (the outcome is "unknown", never a duplicate).
+        $transport = $chain->values['transport_timeout'] ?? null;
+        $deadline = $chain->values['chunk_deadline'] ?? null;
+        $job = $chain->values['job_timeout'] ?? null;
+        if (is_numeric($transport) && is_numeric($deadline) && is_numeric($job) && $transport + $deadline >= $job) {
+            $checks[] = DoctorCheck::info($s, sprintf(
+                'Worst case: a window that starts right before the chunk deadline (%s) may run for the transport timeout (%s), past the job timeout (%s). The worker then stops the job and the destinations of that window end with an unknown outcome (they are never sent twice). To rule it out, set the job timeout above %s and move the worker timeout and retry_after after it.',
+                self::seconds((float) $deadline), self::seconds((float) $transport), self::seconds((float) $job), self::seconds((float) $transport + (float) $deadline),
+            ));
+        }
+
         return $checks;
     }
 

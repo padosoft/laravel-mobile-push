@@ -43,7 +43,7 @@ Related pages: [safe mode](safe-mode.md), [troubleshooting](troubleshooting.md),
 | [`credentials:check`](#mobile-pushcredentialscheck) | Credential expiry and validity | 0, 1, 2 | local |
 | [`forget`](#mobile-pushforget) | Erases one owner's data | 0, 1 | local |
 | [`export`](#mobile-pushexport) | Exports one owner's data | 0, 1 | local |
-| [`devices:probe-environment`](#mobile-pushdevicesprobe-environment) | Repairs quarantined tokens' environment | 0, 1, 2 | `not_sent` |
+| [`devices:probe-environment`](#mobile-pushdevicesprobe-environment) | Repairs quarantined tokens' environment | 0, 1, 2, 3 | `not_sent` |
 | [`fcm:topic-subscription`](#mobile-pushfcmtopic-subscription) | FCM topic subscribe / unsubscribe / list | 0, 1 | reported simulated, 0 |
 | [`live-activity:start`](#live-activity-and-channel-commands) ... | Live Activities and broadcast channels (11) | 0, 1, 2 | "nothing was sent and nothing was written", 0 |
 | [`campaign:list`](#campaign-commands) ... | Campaigns: list, status, pause, resume, cancel, reconcile, sweep, prune (8) | 0, 1, 2 | local (they read and change campaign rows; nothing is sent) |
@@ -588,7 +588,15 @@ $ php artisan mobile-push:devices:probe-environment --quarantined --allow-cross-
 ```
 
 Outcomes: `relabelled`, `still_rejected`, `untouched`, `conflict`, `changed`, `not_sent`, `blocked`, `no_connection`,
-`authentication_error`, `not_contacted`, `unreadable`, `cooling_down`.
+`key_restricted`, `authentication_error`, `not_contacted`, `unreadable`, `cooling_down`.
+
+**Restricted keys.** A connection may declare `mobile-push.connections.<name>.key_environments` (`both` by default,
+`sandbox` or `production`; any other value is refused as invalid configuration). When the declaration says the key of
+the connection the probe would use cannot be used on the environment it would try, that device is reported as
+`key_restricted` with the remedy, **no request is sent** and the exit code is 3. Without a declaration the first
+device is contacted and an authentication refusal stops the run (exit 2). No restricted key has ever been tried
+against the real APNs: this is verified only on a fake transport. Details in
+[the environment probe](troubleshooting.md#environment-probe).
 
 **Frequency limit.** Every rejected probe counts against Apple's error budget, so a device is contacted **at most once
 per `devices.probe.cooldown_hours`** (`MOBILE_PUSH_DEVICES_PROBE_COOLDOWN_HOURS`, default 24; 0 switches the protection
@@ -606,6 +614,7 @@ skipped); at most 100 skipped devices are listed per run.
 | 0 | Every device got a clean answer (`relabelled`, `still_rejected`, `not_sent`, `cooling_down`), or nothing matched |
 | 1 | Something needs attention (`untouched`, `blocked`, `conflict`, `changed`, `no_connection`, `unreadable`, `not_contacted`), or the run was refused (no `--allow-cross-environment`, nothing selected, `--limit` over 100, devices module off, non-interactive without `--force`, `--ignore-cooldown` in a non-interactive run, declined) |
 | 2 | The run was **stopped by an authentication error** (a key limited to one environment answers like this) |
+| 3 | A connection was **refused up front** because its `key_environments` says its key cannot be used on the environment the probe would try (`key_restricted`); nothing was sent for it. 2 wins when both happened |
 
 ## `mobile-push:fcm:topic-subscription`
 

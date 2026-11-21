@@ -17,6 +17,7 @@ use Padosoft\MobilePush\Core\Policy\SafeModeGuard;
 use Padosoft\MobilePush\Core\Privacy\Redactor;
 use Padosoft\MobilePush\Core\Privacy\TokenIndex;
 use Padosoft\MobilePush\Core\Retry\RetryPolicy;
+use Padosoft\MobilePush\Core\Transport\Curl\ConnectionReuse;
 use Padosoft\MobilePush\Core\Transport\Curl\CurlPoolRegistry;
 use Padosoft\MobilePush\Core\Transport\Curl\CurlTransport;
 use Padosoft\MobilePush\Core\Transport\Transport;
@@ -30,7 +31,8 @@ use Psr\Log\LoggerInterface;
  * (singleton, also bound as PushDispatcher, facade MobilePush).
  *
  * Bindings:
- *  - Transport: the real CurlTransport, its pool registry capped by `transport.max_pools` (tests rebind FakeTransport with app()->instance(Transport::class, ...)
+ *  - Transport: the real CurlTransport, its pool registry capped by `transport.max_pools`, connection reuse from
+ *    `transport.reuse` (auto | on | off; tests rebind FakeTransport with app()->instance(Transport::class, ...)
  *    before the first send);
  *  - Guards: breakers, throttle gates and rate buckets on the container's GuardStore, configured from
  *    `mobile-push.guards`, WITHOUT a rate ceiling (the manager's per-provider senders apply guards.rate.fcm and
@@ -56,10 +58,14 @@ final class SendingModule implements Module
 
         // The pool registry of the process is capped by `transport.max_pools`; the shared process registry (default
         // cap) is kept when the value is the default, so every CurlTransport of the process still shares its pools.
+        // `transport.reuse`: on = keep connections between sends; off = one private pool per send, closed when the send
+        // ends; auto = on, except for a send that starts while a coroutine runtime (Swoole/OpenSwoole) hooks curl.
+        // An invalid value throws ConfigurationException here, before any request.
         $app->singleton(Transport::class, static function (Application $app): Transport {
             $max = $app->make(SendingSettings::class)->transportMaxPools;
+            $reuse = ConnectionReuse::fromConfig(self::config($app)->get('mobile-push.transport.reuse', 'auto'));
 
-            return new CurlTransport($max === CurlPoolRegistry::DEFAULT_MAX_POOLS ? null : new CurlPoolRegistry($max));
+            return new CurlTransport($max === CurlPoolRegistry::DEFAULT_MAX_POOLS ? null : new CurlPoolRegistry($max), reuse: $reuse);
         });
 
         // The official endpoints for the application environment (overrides only outside production). Used by modules

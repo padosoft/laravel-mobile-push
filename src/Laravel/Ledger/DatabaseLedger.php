@@ -279,13 +279,43 @@ final class DatabaseLedger implements ClientReceiptStore, DeliveryBatches, Ledge
         return $this->connection()->transaction(function () use ($scope, $ownerType, $ownerId, $now): int {
             $this->cancelWhere($scope, static fn (Builder $q): Builder => $q->where('owner_type', $ownerType)->where('owner_id', $ownerId), 'Forgotten.');
 
+            // Read before the owner columns are erased: the effects addressed to this owner and to nobody else.
+            $ownEffects = $this->effectsAddressedOnlyTo($scope, $ownerType, $ownerId);
+
             $erased = $this->deliveries()->where('scope', $scope)->where('owner_type', $ownerType)->where('owner_id', $ownerId)
                 ->update(LedgerRules::forgetDeliveryChanges($now));
             $this->effects()->where('scope', $scope)->where('origin_type', $ownerType)->where('origin_id', $ownerId)
                 ->update(LedgerRules::forgetEffectChanges($now));
+            foreach (array_chunk($ownEffects, 500) as $ids) {
+                $this->effects()->where('scope', $scope)->whereIn('id', $ids)->update(LedgerRules::forgetEffectChanges($now));
+            }
 
             return $erased;
         });
+    }
+
+    /**
+     * The effects whose deliveries ALL belong to this owner: their message snapshot was written for this owner alone,
+     * so forgetting the owner erases it. An effect that also addresses anybody else (another owner, a raw token, a
+     * topic) keeps its snapshot: the others still need it to be sent.
+     *
+     * @return list<string>
+     */
+    private function effectsAddressedOnlyTo(string $scope, string $ownerType, string $ownerId): array
+    {
+        $own = [];
+        $candidates = self::strings($this->deliveries()->where('scope', $scope)->where('owner_type', $ownerType)->where('owner_id', $ownerId)
+            ->distinct()->pluck('effect_id')->all());
+        foreach (array_chunk($candidates, 500) as $ids) {
+            $shared = self::strings($this->deliveries()->where('scope', $scope)->whereIn('effect_id', $ids)
+                ->where(static fn (Builder $q): Builder => $q
+                    ->whereNull('owner_type')->orWhereNull('owner_id')
+                    ->orWhere('owner_type', '!=', $ownerType)->orWhere('owner_id', '!=', $ownerId))
+                ->distinct()->pluck('effect_id')->all());
+            array_push($own, ...array_values(array_diff($ids, $shared)));
+        }
+
+        return $own;
     }
 
     public function prune(int $retentionSeconds, ?string $scope = null): PruneResult

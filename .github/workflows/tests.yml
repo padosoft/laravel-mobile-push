@@ -128,6 +128,7 @@ jobs:
           tests/Unit/Laravel/Campaigns tests/Scenario/Laravel/Campaigns
           tests/Unit/Laravel/Receipts tests/Scenario/Laravel/Receipts
           tests/Scenario/Laravel/Queue tests/Scenario/Laravel/Install
+          tests/Scenario/Laravel/Release tests/Scenario/Laravel/Privacy
 
   # The package as a user gets it: required into a freshly created Laravel application, installed with every module,
   # migrated, and driven through its public surface (commands, facade, helper, device registry, durable queue + worker).

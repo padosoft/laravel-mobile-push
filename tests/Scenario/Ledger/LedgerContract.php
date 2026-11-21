@@ -311,6 +311,29 @@ function ledgerContract(Closure $make): void
             ->and($h->ledger->counts('acme', $effect->id)->of(DeliveryState::Sending))->toBe(1);
     });
 
+    it('forget me: the snapshot of a message written for me alone is erased, one shared with others is kept for them', function () use ($make): void {
+        /** @var H $h */
+        $h = $make();
+        // No origin on either effect: this is what a plain `to($owner)->queue()` records.
+        $mine = $h->ledger->recordIntent(H::intent(H::alert('Hi Alice, your parcel'), 'mine'), [H::device(1), H::device(2)])->effect;
+        $shared = $h->ledger->recordIntent(H::intent(H::alert('Sale today'), 'shared'), [H::device(3), H::device(4, ownerId: '2')])->effect;
+        $withRawToken = $h->ledger->recordIntent(H::intent(H::alert('Sale today'), 'raw'), [H::device(5), H::token(9)])->effect;
+        $bobs = $h->ledger->recordIntent(H::intent(H::alert('Hi Bob'), 'bob'), [H::device(6, ownerId: '2')])->effect;
+
+        expect($h->ledger->forgetOwner('default', 'App\\Models\\User', '1'))->toBe(4)
+            ->and($h->ledger->message('default', $mine->id))->toBeNull()                 // addressed to the owner alone
+            ->and($h->ledger->message('default', $shared->id))->not->toBeNull()          // Bob still needs it
+            ->and($h->ledger->message('default', $withRawToken->id))->not->toBeNull()    // so does the raw token
+            ->and($h->ledger->message('default', $bobs->id))->not->toBeNull();           // untouched
+
+        // The others are still served from the shared snapshots; nothing of the forgotten owner is claimable.
+        $claimed = $h->ledger->claimDue('default', 'w', 10);
+        expect($claimed)->toHaveCount(3);
+        foreach ($claimed as $c) {
+            expect($c->delivery->effectId)->not->toBe($mine->id);
+        }
+    });
+
     it('forget me with jobs pending: cancelled, unclaimable, not re-created, no personal data left', function () use ($make): void {
         /** @var H $h */
         $h = $make();

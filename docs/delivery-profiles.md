@@ -39,7 +39,10 @@ tokens the job is `ShouldBeEncrypted` (encrypted with `APP_KEY` by Laravel). Job
 and by estimated bytes (`queue.chunk_bytes`, 98304 before encryption).
 
 A job runs once (`tries = 1`) and never `release()`s itself. Destinations that came back `Deferred` are re-queued as a
-**new** job with their budgets, delayed to their next attempt.
+**new** job with their budgets, delayed to their next attempt. A job also stops starting new windows at its
+[chunk deadline](queues-and-horizon.md#the-chunk-deadline) (`queue.chunk_deadline`): the destinations it has not
+attempted yet go, with their budgets, to **one** new job dispatched at once. The window in flight at that moment is
+never handed over: its destinations get whatever the transport reports, unknown included.
 
 ### What it guarantees
 
@@ -58,7 +61,7 @@ A job runs once (`tries = 1`) and never `release()`s itself. Destinations that c
 | A job fails with an exception | `SendPushJob::failed()` records every destination of the job as `OutcomeUnknown` in the send log (when a log sink is enabled; the log carries only masked values) or writes one warning without any destination. It does not retry. |
 | The process dies between the database commit and the queue push | The job is lost. There is no recovery in this profile. |
 | The queue backend loses jobs (a flushed Redis) | The pushes are lost. |
-| Continuation job lost | The deferred destinations are lost with it. |
+| Continuation job lost | The deferred destinations, and the ones handed over at the chunk deadline, are lost with it. |
 | The same `queue()` call is made twice by your code | Two sends. There is no cross-call deduplication. |
 | The binding no longer resolves when the job runs (connection removed or repointed) | Nothing is sent. The job dispatches `BindingMismatchDetected` once, records `Skipped` / `binding_mismatch` with 0 attempts for each destination, passes those results to the log sinks when they are enabled, and ends cleanly (the same as the durable relay and a direct `send()`). |
 | A synchronous `send()` crashes mid-batch | Nothing is remembered. Re-running it re-sends what was already sent. |

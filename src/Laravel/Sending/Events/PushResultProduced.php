@@ -28,6 +28,8 @@ final class PushResultProduced
         public readonly ResultView $result,
         public readonly TrafficClass $trafficClass,
         SendResult $sendResult,
+        /** The stored effect this result belongs to: set for a queued send (the id `queue()` returned), null otherwise. */
+        public readonly ?string $effectId = null,
     ) {
         $this->vault = new \SplObjectStorage;
         $this->anchor = new \stdClass;
@@ -43,7 +45,7 @@ final class PushResultProduced
     /** @return array<string, mixed> */
     public function __serialize(): array
     {
-        return ['binding' => $this->binding, 'result' => $this->result, 'trafficClass' => $this->trafficClass];
+        return ['binding' => $this->binding, 'result' => $this->result, 'trafficClass' => $this->trafficClass, 'effectId' => $this->effectId];
     }
 
     /** @param  array<string, mixed>  $data */
@@ -58,6 +60,8 @@ final class PushResultProduced
         $this->binding = $binding;
         $this->result = $result;
         $this->trafficClass = $class;
+        $effectId = $data['effectId'] ?? null;
+        $this->effectId = is_string($effectId) ? $effectId : null;
         $this->vault = new \SplObjectStorage;
         $this->anchor = new \stdClass;
     }

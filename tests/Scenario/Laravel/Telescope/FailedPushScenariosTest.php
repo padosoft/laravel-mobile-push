@@ -18,7 +18,10 @@ use Padosoft\MobilePush\Tests\Scenario\Laravel\Telescope\TelescopeWorld;
 
 beforeEach(fn () => TelescopeWorld::build($this->app));
 
-afterEach(fn () => Telescope::flushEntries());
+afterEach(function (): void {
+    Telescope::stopRecording();   // static state: left on, later tests would record into memory
+    Telescope::flushEntries();
+});
 
 it('shows the failed push in Telescope with its tags and content', function () {
     $binding = Kit::binding('ios-main');

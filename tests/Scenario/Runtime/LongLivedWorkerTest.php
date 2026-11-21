@@ -37,7 +37,7 @@ beforeEach(function () use (&$server): void {
 /**
  * Runs $batches sends of $perBatch requests; returns failures, memory and descriptors after warm-up and at the end.
  *
- * @return array{failures: int, exchanges: int, memWarm: int, memEnd: int, fdWarm: ?int, fdEnd: ?int}
+ * @return array{failures: int, exchanges: int, memWarm: int, memEnd: int, fdWarm: ?int, fdEnd: ?int, rssWarm: ?array{bytes: int, source: string}, rssEnd: ?array{bytes: int, source: string}}
  */
 function liveForADay(CurlTransport $transport, MockServer $server, int $batches, int $perBatch, int $warmUp, int $pauseEvery = 0, int $pauseMs = 0): array
 {
@@ -46,6 +46,7 @@ function liveForADay(CurlTransport $transport, MockServer $server, int $batches,
     $exchanges = 0;
     $memWarm = 0;
     $fdWarm = null;
+    $rssWarm = null;
     for ($b = 0; $b < $batches; $b++) {
         foreach ($transport->send(Batch::requests($server->baseUrl(), $perBatch), $profile) as $exchange) {
             $exchanges++;
@@ -54,6 +55,7 @@ function liveForADay(CurlTransport $transport, MockServer $server, int $batches,
         if ($b + 1 === $warmUp) {
             $memWarm = RuntimeProbe::memory();
             $fdWarm = RuntimeProbe::openDescriptors();
+            $rssWarm = RuntimeProbe::rss();
         }
         if ($pauseEvery > 0 && ($b + 1) % $pauseEvery === 0) {
             usleep($pauseMs * 1000); // the worker waits for the next job
@@ -67,6 +69,8 @@ function liveForADay(CurlTransport $transport, MockServer $server, int $batches,
         'memEnd' => RuntimeProbe::memory(),
         'fdWarm' => $fdWarm,
         'fdEnd' => RuntimeProbe::openDescriptors(),
+        'rssWarm' => $rssWarm,
+        'rssEnd' => RuntimeProbe::rss(),
     ];
 }
 
@@ -85,6 +89,13 @@ it('keeps one connection for 2,000 consecutive sends with idle gaps, with flat m
     if ($run['fdWarm'] !== null) {
         expect($run['fdEnd'])->toBe($run['fdWarm']);
     }
+
+    // RSS (bounds: see the note on RSS at the end of this file): after warm-up vs after many more sends, and after the drain
+    // (the transport closes every pool and its connection).
+    $transport->close();
+    $rssDrained = RuntimeProbe::rss();
+    RuntimeProbe::assertRssGrowthBelow($run['rssWarm'], $run['rssEnd'], 1024 * 1024, 'after warm-up vs the end of the run');
+    RuntimeProbe::assertRssGrowthBelow($run['rssWarm'], $rssDrained, 2 * 1024 * 1024, 'after warm-up vs after the drain');
 });
 
 it('reconnects exactly once after an idle period longer than the pool max idle time, and closes the old connection', function () use (&$server): void {
@@ -137,4 +148,20 @@ it('soak: 20,000 sends on one pool keep one connection and flat memory and descr
     if ($run['fdWarm'] !== null) {
         expect($run['fdEnd'])->toBe($run['fdWarm']);
     }
+
+    // RSS (bounds: see the note on RSS at the end of this file): after warm-up vs after many more sends, and after the drain
+    // (the transport closes every pool and its connection).
+    $transport->close();
+    $rssDrained = RuntimeProbe::rss();
+    RuntimeProbe::assertRssGrowthBelow($run['rssWarm'], $run['rssEnd'], 1024 * 1024, 'after warm-up vs the end of the run');
+    RuntimeProbe::assertRssGrowthBelow($run['rssWarm'], $rssDrained, 2 * 1024 * 1024, 'after warm-up vs after the drain');
 })->group('slow');
+
+/*
+ * Note on RSS. Measured here (Linux, PHP 8.3, VmRSS, 3 runs each): after warm-up vs the end of the run the resident
+ * set grew by 4-8 KiB over 10,000 sends and by 64-84 KiB over 100,000 sends; after transport->close() it was
+ * 340-400 KiB above the warm-up reading in both (a one-time cost of the first close(), not growth per send).
+ * Bounds: 1 MiB for the run and 2 MiB for the drain, i.e. about 10x the noise: RSS follows the allocator and moves
+ * in page steps, so a tight bound would flake, but a per-send leak of even ~100 bytes would cross 1 MiB in the
+ * 100,000-send soak. On platforms without /proc the reading is ru_maxrss (a peak) and the same bounds apply.
+ */

@@ -23,6 +23,8 @@ enum ProbeOutcome: string
     case Blocked = 'blocked';
     /** No (or no unique) connection of the same app in the other environment. */
     case NoConnection = 'no_connection';
+    /** The connection declares (`key_environments`) that its key cannot be used on the environment the probe would try: nothing was sent. */
+    case KeyRestricted = 'key_restricted';
     /** The provider refused the credential: the whole run stopped here. */
     case AuthenticationError = 'authentication_error';
     /** The run stopped before this device. */
@@ -36,7 +38,7 @@ enum ProbeOutcome: string
     public function needsAttention(): bool
     {
         return match ($this) {
-            self::Untouched, self::Blocked, self::Conflict, self::Changed, self::NoConnection, self::NotContacted, self::Unreadable, self::AuthenticationError => true,
+            self::Untouched, self::Blocked, self::Conflict, self::Changed, self::NoConnection, self::NotContacted, self::Unreadable, self::AuthenticationError, self::KeyRestricted => true,
             default => false,
         };
     }

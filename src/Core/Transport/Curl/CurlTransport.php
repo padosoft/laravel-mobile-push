@@ -19,7 +19,9 @@ use Padosoft\MobilePush\Core\Transport\TransportFailure;
  *  - one Exchange per request, never an exception mid-batch; safe when the consumer stops iterating early;
  *  - lazy input: requests are pulled from the iterable only when the window has room;
  *  - sliding window of in-flight requests = ConnectionProfile::$window (AIMD-reduced after refused streams);
- *  - persistent pools per pool key in a CurlPoolRegistry (LRU, idle expiry, fork safety);
+ *  - persistent pools per pool key in a CurlPoolRegistry (LRU, idle expiry, fork safety), or, with connection reuse
+ *    off for a send (ConnectionReuse::Off, or Auto under a coroutine curl hook), a private pool owned by that send
+ *    alone and closed when its generator finishes or is destroyed;
  *  - request bodies are streamed through a read callback WITHOUT a seek callback, which makes libcurl's silent
  *    automatic re-send (REFUSED_STREAM, GOAWAY, reused connection died before any response byte) fail with
  *    CURLE_SEND_FAIL_REWIND instead of duplicating a request the server may already have processed.
@@ -42,10 +44,28 @@ final class CurlTransport implements Transport
 
     private readonly CurlCapabilities $capabilities;
 
-    public function __construct(?CurlPoolRegistry $pools = null, ?CurlCapabilities $capabilities = null)
-    {
+    private readonly CoroutineCurlHook $hook;
+
+    /** Private pools (reuse off) currently open: one per running send() of this transport. */
+    private int $privateOpen = 0;
+
+    /** Private pools opened since construction. */
+    private int $privateOpened = 0;
+
+    /**
+     * @param  ConnectionReuse  $reuse  On = pools of the registry, kept between sends; Off = one private pool per send;
+     *                                  Auto (default) = On unless a coroutine runtime hooks curl when the send starts
+     * @param  CoroutineCurlHook|null  $hook  facts for Auto (default: this process, CoroutineCurlHook::detect())
+     */
+    public function __construct(
+        ?CurlPoolRegistry $pools = null,
+        ?CurlCapabilities $capabilities = null,
+        private readonly ConnectionReuse $reuse = ConnectionReuse::Auto,
+        ?CoroutineCurlHook $hook = null,
+    ) {
         $this->pools = $pools ?? CurlPoolRegistry::process();
         $this->capabilities = $capabilities ?? CurlCapabilities::detect();
+        $this->hook = $hook ?? CoroutineCurlHook::detect();
     }
 
     public function send(iterable $requests, ConnectionProfile $profile): \Generator
@@ -53,9 +73,42 @@ final class CurlTransport implements Transport
         // Throws TransportConfigurationException here, at call time, before anything is sent.
         $this->capabilities->assertSupports($profile);
 
-        return $this->stream($requests, $profile);
+        // Decided once per send, when it starts: a send never switches mode half-way.
+        return $this->stream($requests, $profile, $this->reusesConnections());
     }
 
+    /** The configured mode (not the decision for a given send: see reusesConnections()). */
+    public function reuse(): ConnectionReuse
+    {
+        return $this->reuse;
+    }
+
+    /** Whether a send() starting now would use the shared, persistent pools (true) or a private pool (false). */
+    public function reusesConnections(): bool
+    {
+        return match ($this->reuse) {
+            ConnectionReuse::On => true,
+            ConnectionReuse::Off => false,
+            ConnectionReuse::Auto => ! $this->hook->active(),
+        };
+    }
+
+    /** Private pools open right now (sends running with reuse off). Zero once every such send has ended. */
+    public function privatePoolsOpen(): int
+    {
+        return $this->privateOpen;
+    }
+
+    /** Private pools opened since this transport was built (one per send that ran with reuse off). */
+    public function privatePoolsOpened(): int
+    {
+        return $this->privateOpened;
+    }
+
+    /**
+     * Close pools of the registry. Private pools (reuse off) are not affected: each one belongs to its running send
+     * and is closed when that send ends.
+     */
     public function close(?string $poolKey = null): void
     {
         $this->pools->close($poolKey);
@@ -70,9 +123,8 @@ final class CurlTransport implements Transport
      * @param  iterable<Request>  $requests
      * @return \Generator<string, Exchange>
      */
-    private function stream(iterable $requests, ConnectionProfile $profile): \Generator
+    private function stream(iterable $requests, ConnectionProfile $profile, bool $shared): \Generator
     {
-        $pool = $this->pools->acquire($profile);
         $owner = ++self::$nextOwner;
         $input = (static function (iterable $requests): \Generator {
             yield from $requests;
@@ -82,8 +134,20 @@ final class CurlTransport implements Transport
         $inflight = [];
         $limit = $this->maxWindow($profile);
         $window = $limit;
-        $pilotPending = $profile->httpVersion === HttpVersion::Http2 && $profile->requireHttp2 && $pool->negotiated === null;
         $stopReason = null;
+        $pid = (int) getmypid();
+
+        // Nothing above can fail; from here on the finally block owns the pool. A generator that is never iterated
+        // never gets here, so it never opens a pool.
+        if ($shared) {
+            $pool = $this->pools->acquire($profile);
+        } else {
+            $pool = new CurlPool($profile->poolKey, $profile);
+            $pool->acquire();
+            $this->privateOpen++;
+            $this->privateOpened++;
+        }
+        $pilotPending = $profile->httpVersion === HttpVersion::Http2 && $profile->requireHttp2 && $pool->negotiated === null;
 
         try {
             while (true) {
@@ -155,10 +219,20 @@ final class CurlTransport implements Transport
                 // Measured on 8.5: they may stay queued in nghttp2 until the connection's next egress.
                 $pool->perform(0.0);
             }
-            if ($stopReason !== null) {
-                $this->pools->close($profile->poolKey);
+            if (! $shared) {
+                // The private pool ends with its send: its connections are closed, nothing is kept. A forked child
+                // that destroys a generator inherited from its parent leaves the parent's socket alone.
+                $pool->release();
+                if ((int) getmypid() === $pid) {
+                    $pool->close();
+                }
+                $this->privateOpen--;
+            } else {
+                if ($stopReason !== null) {
+                    $this->pools->close($profile->poolKey);
+                }
+                $this->pools->release($pool);
             }
-            $this->pools->release($pool);
         }
     }
 

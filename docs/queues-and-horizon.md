@@ -53,7 +53,7 @@ effects made 21 relay jobs), not on Redis, SQS or Horizon.
 
 | Job | Profile | What it does | Retried by the queue? |
 |---|---|---|---|
-| `SendPushJob` | light | Sends one small chunk of destinations (`queue.chunk` 500, `queue.chunk_bytes` 98304), then dispatches a **new** job for the `Deferred` ones. Encrypted payload (`ShouldBeEncrypted`). If its connection no longer matches the binding it was queued for, it sends nothing, dispatches `BindingMismatchDetected` once, records `Skipped` / `binding_mismatch` for each destination (to the log sinks when enabled) and ends cleanly, like the durable relay. | **No**: `tries = 1`, never `release()`d |
+| `SendPushJob` | light | Sends one small chunk of destinations (`queue.chunk` 500, `queue.chunk_bytes` 98304), then dispatches a **new** job for the `Deferred` ones. Stops starting new windows at the [chunk deadline](#the-chunk-deadline) and dispatches **one** new job, at once, for the destinations it never attempted. Encrypted payload (`ShouldBeEncrypted`). If its connection no longer matches the binding it was queued for, it sends nothing, dispatches `BindingMismatchDetected` once, records `Skipped` / `binding_mismatch` for each destination (to the log sinks when enabled) and ends cleanly, like the durable relay. | **No**: `tries = 1`, never `release()`d |
 | `RelayDeliveriesJob` | durable | Claims due deliveries of one effect (or of a whole scope), sends them, records outcomes before it finishes. Carries only ids. | Yes: `tries = 3`, `backoff = [10, 60]` s. Safe: a rerun claims again and never re-sends a delivery with a recorded or unknown outcome. |
 | `SweepLedgerJob` | durable | Applies lease expiry, expires overdue deliveries, dispatches a scope-wide relay when work is due. Idempotent. | `tries = 1` (the next minute's run covers it) |
 | `PlanCampaignJob`, `SweepCampaignsJob` | campaigns | Write one slice of a campaign's audience to the ledger; detect completion and stalled planners. | See [campaigns](campaigns.md) |
@@ -96,7 +96,7 @@ and, in the durable profile:  chunk deadline  <  ledger lease
 | Link | Where it is set | Default |
 |---|---|---|
 | transport timeout | `transport.timeout_ms` (or the largest `connections.*.timeout_ms`) | 30000 ms (30 s) |
-| chunk deadline | `queue.chunk_deadline` (`MOBILE_PUSH_QUEUE_CHUNK_DEADLINE`): wall time of one relay run before it hands over | 40 s |
+| chunk deadline | `queue.chunk_deadline` (`MOBILE_PUSH_QUEUE_CHUNK_DEADLINE`): wall time of one light job or one relay run before it stops starting new work and hands over (see [below](#the-chunk-deadline)) | 40 s |
 | job timeout | `queue.timeout` (`MOBILE_PUSH_QUEUE_TIMEOUT`): the `$timeout` of every package job | 50 s |
 | worker timeout | Horizon supervisor `timeout`, or `queue:work --timeout`; declare it in `queue.worker_timeout` when it cannot be read | not set |
 | `retry_after` | `queue.connections.<connection>.retry_after`; for SQS the queue's visibility timeout, declared in `queue.visibility_timeout` | the connection's |
@@ -110,6 +110,45 @@ least `50 + 5 = 55` s and `retry_after` at least `55 + 5.5`, rounded up to **61 
 prints. A connection that sets no `retry_after` falls back to the framework's 60, which still fits. The chain is checked
 as a whole: if you raise one value (a slower transport, a bigger chunk), raise the ones above it too, and
 `mobile-push:doctor` tells you which link breaks.
+
+### The chunk deadline
+
+Both profiles enforce `queue.chunk_deadline`, the same single setting, measured the same way: from the package clock
+(`Psr\Clock\ClockInterface`), starting when the job begins to send. Neither ever interrupts a request that is on the
+wire, and the deadline itself never waits or sleeps.
+
+- **Light profile (`SendPushJob`).** The Sender takes destinations from the job one window at a time (the connection's
+  window, `window` 100 by default). Before each new window the job checks the clock: when the deadline has passed,
+  or the time left is shorter than the slowest window this job has had so far, it gives the Sender no further
+  destination. The window in flight is finished as usual: its destinations get the outcomes the transport reports,
+  `OutcomeUnknown` included, and are **never** handed over or sent again. Every destination the Sender never received
+  (never compiled, never written) goes, with its retry budget unchanged, to **one** new `SendPushJob` dispatched at once
+  (no delay) on the same queue connection and queue, with the next continuation number and a fresh deadline. The binding
+  reference, effect key, traffic class and pinned expiry are carried unchanged, exactly as for a continuation of
+  `Deferred` destinations, so a connection re-pointed to another app in between is still `Skipped` / `binding_mismatch`
+  and a credential rotation on the same app is not. A job always sends at least its first window, so a chain of
+  handovers is never longer than the number of windows in the chunk. The handover writes one `info` line to the
+  application log (counts only, no destination).
+- **Durable profile (`RelayDeliveriesJob`).** The relay stops claiming new chunks on the same rule (deadline passed, or
+  less time left than its slowest chunk) and dispatches a fresh relay for the same effect (or scope) at once; unclaimed deliveries
+  simply stay due in the ledger.
+
+What the deadline does **not** guarantee: a window (light) or a chunk (relay) that starts before the deadline runs to
+its end, so a job can run past `queue.chunk_deadline` by up to one window. The slowest-window rule keeps that overrun
+short when windows take a similar time; a window much slower than every earlier one in the same job is not predicted.
+One window is bounded by the transport timeout per pass (plus in-process retries within the retry policy's inline
+threshold). Keep `queue.chunk_deadline` plus one window under the job timeout: with the defaults (40 s and a 30 s
+transport timeout) a window that hits the transport timeout right before the deadline could still reach the 50 s job
+timeout. `doctor` checks the order of the values and reports that sum as an **information** line ("Worst case: ...")
+when it can reach the job timeout, with the job timeout that would rule it out (above 70 s with the defaults; the worker
+timeout and `retry_after` then have to move after it).
+
+Verified with scenario tests on a fake transport and a fake clock (`tests/Scenario/Laravel/Queue/LightChunkDeadlineTest.php`):
+a chunk cut at its deadline is completed by exactly one follow-up with every destination requested once; a chunk that
+fits gets no follow-up; a window in flight when the deadline passes (one response lost) is not re-sent; a provider
+slower than the whole deadline produces one job per window; a continuation's budgets survive the handover; with the
+default chain and a provider answering in 28 s per window every light job returned after 28 s instead of running for
+84 s. Not measured on a real worker under a real slow provider.
 
 ### How `doctor` reports it
 
@@ -126,9 +165,10 @@ Queue timeouts
       Remedy: worker_timeout cannot be read here: check it by hand or declare it (the Horizon supervisor "timeout" or `queue:work --timeout` (declare it in mobile-push.queue.worker_timeout)).
   ✓ job_timeout (50 s) < retry_after (90 s), margin 5 s
   ✓ chunk_deadline (40 s) < lease_seconds (120 s), margin 5 s
+  i Worst case: a window that starts right before the chunk deadline (40 s) may run for the transport timeout (30 s), past the job timeout (50 s). The worker then stops the job and the destinations of that window end with an unknown outcome (they are never sent twice). To rule it out, set the job timeout above 70 s and move the worker timeout and retry_after after it.
 ```
 
-There is no violation. The two "not verifiable" lines are about the one value the application cannot read, the
+There is no violation. The last line is information, not a failure (see [the chunk deadline](#the-chunk-deadline)). The two "not verifiable" lines are about the one value the application cannot read, the
 `queue:work --timeout` flag (see below); the line that follows them proves the rule that matters most, job timeout below
 `retry_after`. With a higher `queue.timeout` (for example 120) and the same `retry_after` of 90 the last two lines turn
 into a violation with a remedy such as `Raise retry_after to at least 132 s, or lower job_timeout to at most 81.818 s`.

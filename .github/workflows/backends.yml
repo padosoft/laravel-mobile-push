@@ -286,9 +286,13 @@ jobs:
           grep -hE 'ERROR|Fatal|Exception' storage/logs/*.log 2>/dev/null | cut -c1-400 | sort | uniq -c | sort -rn | head -10 || true
           echo "--- the first errors of the workers"
           grep -m 6 -E 'Uncaught|Fatal error|cannot be operated|Swoole.Error' octane.log | cut -c1-400 || true
-          # What is asserted: one request at a time works with the hooks on, and the doctor says the configuration is
-          # not safe. The concurrent series is printed, not asserted: it is the documented failure (docs/runtimes.md).
+          # With transport.reuse = auto (the default) a send that starts while Swoole hooks curl gets its own
+          # connection pool: the mock must have seen far more than one connection per worker, and no worker may die
+          # inside the shared pool any more. One request at a time must work. The concurrent series is printed:
+          # whether Octane itself survives concurrent requests in one worker is reported in docs/runtimes.md.
           test "$(grep -c '"status":200,"http":"2"' wire.txt)" = 60
+          php -r '$s = json_decode(file_get_contents("wire.json.stats"), true); echo "connections: ", $s["connections"], "\n"; exit($s["connections"] >= 60 ? 0 : 1);'
+          ! grep -q 'CurlPool.php' octane.log
           php artisan mobile-push:doctor | tee doctor.txt || true
           grep -q 'curl coroutine hook' doctor.txt
 

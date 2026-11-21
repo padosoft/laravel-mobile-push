@@ -233,3 +233,27 @@ Open:
 
 Verified by hand or by CI in the closing pass (see `progress.md`): install into a fresh Laravel 12 and 13 application (`fresh-app` job), MySQL 8.4 and PostgreSQL 17 scenarios, credential-less probes of APNs sandbox / FCM / Google OAuth from a hosted runner (`providers` workflow), FCM Discovery drift check, mutation testing workflow.
 - [x] Mutation testing (weekly `mutation` workflow, 16 groups). Scores on 2026-11-21, unit tests + scenarios: signatures 99%, ledger rules 98%, APNs compiler 98%, token providers 95%, FCM compiler 95%, retry 93%, guards 91%, safe mode 91%, ledger core 91%, send pipeline 90%, APNs outcome 89%, privacy 88%, FCM outcome 85%, database ledger 92% (SQLite 91.9%, PostgreSQL 92.0%, MySQL 92.9%; all 77 survivors of the first run settled one by one in the M9 entry of `progress.md`), message support 71%, transport parsers 53%. Reading them: the coverage driver reports constants and static tables as uncovered even when a test kills the mutant (all 80 of the transport group, 27 of FCM outcome), and the survivors left are listed, with the reason each is equivalent, unreachable or concurrency-only, in the M1-M8 entries of `progress.md`. Message support keeps its termination guards on purpose.
+
+
+## Plan audit of 2026-11-21 (wave 6) and decided deviations from `docs/PLAN.md`
+
+An independent read of the plan against code and tests found gaps; each was closed in wave 6 (see `progress.md`, entries W6-A to W6-H) or is recorded here as a deliberate deviation.
+
+Closed:
+- [x] §6.4 `fcm.prefer`: `devices.fcm_prefer` = `token` | `fid` (W6-A, `FcmPreferenceStoriesTest`).
+- [x] §6.6 chunk deadline in the light profile: `SendPushJob` hands the destinations it has not attempted to one follow-up job (W6-C, `LightChunkDeadlineTest`).
+- [x] §6.3 lenient warnings on the result (W6-B, `LenientWarningsTest`); §6.2 rotation closes the old pool and never reuses the old token (W6-B, `CredentialRotationTest`).
+- [x] §4.4 environment probe refused before any request for a key declared as restricted (`connections.*.key_environments`, W6-E).
+- [x] §11 release table: concurrent retries with the cache unavailable, counted by the HTTP/2 mock (`Release/RetriesWithCacheDownTest`); canaries on every surface with a retried push and the receipt marker, then `forget` (`Release/ConfidentialityCanariesTest`); RSS in the runtime scenarios (W6-E); badge not applied to topics, conditions and broadcast (W6-E).
+- [x] Long-lived runtimes, «se un runtime non supera i test di riuso, il riuso viene disattivato»: `transport.reuse` = `auto` | `on` | `off` (W6-G).
+- [x] §11 mutation testing: `Core\Outcome` and the OpenSSL signers are in the workflow, and every group has a minimum score.
+- [x] §11 CI «sonde live … su ref protetto»: `.github/workflows/live-probes.yml` exists (protected environment, manual, `main` only). Never run: no credential.
+- [x] Defects found by the new scenarios and fixed: follow-up relays did not survive an unreachable cache (W6-H); `forget` left the encrypted message snapshot of effects addressed to the owner alone (no production code ever set an effect's origin); a registry device sent through a connection of another binding was reported as `row_missing` instead of `binding_mismatch`; a routing notifiable with destinations of both providers threw when a connection was named.
+
+Deviations kept on purpose:
+- §4.2 «un override incongruente è un errore prima della rete»: a named connection NARROWS a notifiable to the devices and routed destinations of that connection, so `to($users)` cannot fail because one user has no device there. An explicit destination of the other provider still throws before the network; a registry device of another binding is `Skipped` / `binding_mismatch` (never an exception: "never throw for a single destination").
+- §6.2 «drenano … cache»: on rotation the old provider token is not deleted from the shared cache; it becomes unreachable (the cache key includes the credential identity) and expires on its TTL. Deleting it would make workers still on the old configuration mint again, and Apple refuses provider tokens minted too often.
+- §7 `->queue($msg)->onQueueConnection(...)->onQueue(...)`: the options come BEFORE `queue()`, which is the terminal call and returns the effect id.
+- §8 receipts «Marcatore per evento e destinazione»: one marker per delivery (destination), with the event type in the callback; uniqueness is per `(delivery, event type)`.
+- Light profile «best effort … nei report»: `queue()` returns the effect id, not a report; what can be observed afterwards (events, send-log records with the effect id, `SendPushJob::failed()`) is in `docs/sending.md`.
+- Swoole with curl coroutine hooks: reuse is switched off for such sends by `transport.reuse = auto`; whether Octane itself survives concurrent requests in one worker is reported in `docs/runtimes.md` from the CI run.

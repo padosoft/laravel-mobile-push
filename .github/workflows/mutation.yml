@@ -1,8 +1,11 @@
 name: mutation
 
-# Mutation testing of the dense, fragile parts of the core (signatures, retry planning, classifiers, the ledger state
-# machine, truncation). It is slow and its score is a quality signal, not a gate: weekly, and by hand from the Actions
-# tab. Each group runs the unit tests and the scenarios that are meant to pin that code.
+# Mutation testing of the dense, fragile parts of the core (signatures, retry planning, classifiers, outcomes, the
+# ledger state machine, truncation). It is slow: weekly, and by hand from the Actions tab, never on a pull request.
+# Each group runs the unit tests and the scenarios that are meant to pin that code, and fails when its score drops
+# below its `min`: a floor a few points under the score measured on 2026-11-21, so a regression is noticed while the
+# survivors already classified as equivalent or unreachable (progress.md) do not turn the job red. A `min` of 0 marks a
+# group whose score has not been recorded yet.
 
 on:
   schedule:
@@ -20,51 +23,71 @@ jobs:
       matrix:
         include:
           - name: auth
-            classes: 'Padosoft\MobilePush\Core\Auth\DerSignature,Padosoft\MobilePush\Core\Auth\JwtEncoder'
+            min: 0
+            classes: 'Padosoft\MobilePush\Core\Auth\DerSignature,Padosoft\MobilePush\Core\Auth\JwtEncoder,Padosoft\MobilePush\Core\Auth\OpenSslEs256Signer,Padosoft\MobilePush\Core\Auth\OpenSslRs256Signer'
             tests: tests/Unit/Core/Auth tests/Scenario/Auth
           - name: retry
+            min: 88
             classes: 'Padosoft\MobilePush\Core\Retry'
             tests: tests/Unit/Core/Retry tests/Scenario/Outcome tests/Scenario/Send
           - name: apns-outcome
+            min: 85
             classes: 'Padosoft\MobilePush\Core\Apns\Outcome'
             tests: tests/Unit/Core/Apns/Outcome tests/Scenario/Outcome tests/Scenario/Send
           - name: fcm-outcome
+            min: 80
             classes: 'Padosoft\MobilePush\Core\Fcm\Outcome'
             tests: tests/Unit/Core/Fcm/Outcome tests/Scenario/Outcome tests/Scenario/Send
           - name: ledger-rules
+            min: 94
             classes: 'Padosoft\MobilePush\Core\Ledger\DeliveryStateMachine,Padosoft\MobilePush\Core\Ledger\PayloadFingerprint'
             tests: tests/Unit/Core/Ledger tests/Scenario/Ledger
           - name: message-support
+            min: 66
             classes: 'Padosoft\MobilePush\Core\Message\Support'
             tests: tests/Unit/Core/Message tests/Scenario/Apns/Compile tests/Scenario/Fcm/Compile
           - name: guards
+            min: 87
             classes: 'Padosoft\MobilePush\Core\Guard\RateLimiter,Padosoft\MobilePush\Core\Guard\AuthBreaker,Padosoft\MobilePush\Core\Guard\DestinationQualityBreaker,Padosoft\MobilePush\Core\Guard\ThrottleGate'
             tests: tests/Unit/Core/Guard tests/Scenario/Guard tests/Scenario/Send
           - name: apns-compile
+            min: 94
             classes: 'Padosoft\MobilePush\Core\Apns\ApnsCompiler,Padosoft\MobilePush\Core\Apns\ApnsPayloadLimits,Padosoft\MobilePush\Core\Apns\TopicResolver'
             tests: tests/Unit/Core/Apns tests/Scenario/Apns/Compile
           - name: fcm-compile
+            min: 90
             classes: 'Padosoft\MobilePush\Core\Fcm\FcmCompiler,Padosoft\MobilePush\Core\Fcm\FcmPayloadLimits'
             tests: tests/Unit/Core/Fcm/Message tests/Scenario/Fcm/Compile
           - name: transport-parsers
+            min: 48
             classes: 'Padosoft\MobilePush\Core\Transport\Curl\ResponseHeaderParser,Padosoft\MobilePush\Core\Transport\Curl\CurlErrorClassifier'
             tests: tests/Unit/Core/Transport tests/Scenario/Transport
           - name: ledger-core
+            min: 86
             classes: 'Padosoft\MobilePush\Core\Ledger\LedgerRules,Padosoft\MobilePush\Core\Ledger\InMemoryLedger'
             tests: tests/Unit/Core/Ledger tests/Scenario/Ledger
           - name: ledger-database
+            min: 87
             classes: 'Padosoft\MobilePush\Laravel\Ledger\DatabaseLedger'
             tests: tests/Unit/Laravel/Ledger tests/Scenario/Laravel/Ledger
           - name: safe-mode
+            min: 86
             classes: 'Padosoft\MobilePush\Core\Policy\SafeModeGuard,Padosoft\MobilePush\Core\Policy\ModeResolver,Padosoft\MobilePush\Core\Policy\EndpointCatalog'
             tests: tests/Unit/Core/Policy tests/Scenario/Policy tests/Scenario/Send
           - name: privacy
+            min: 83
             classes: 'Padosoft\MobilePush\Core\Privacy'
             tests: tests/Unit/Core/Privacy tests/Scenario/Privacy
           - name: token-providers
+            min: 90
             classes: 'Padosoft\MobilePush\Core\Apns\Auth,Padosoft\MobilePush\Core\Fcm\Auth,Padosoft\MobilePush\Core\Auth\TokenSlot,Padosoft\MobilePush\Core\Auth\InMemoryTokenStore,Padosoft\MobilePush\Core\Auth\PrivateKey,Padosoft\MobilePush\Core\Auth\TokenCacheKey'
             tests: tests/Unit/Core/Auth tests/Scenario/Auth
+          - name: outcome
+            min: 0
+            classes: 'Padosoft\MobilePush\Core\Outcome'
+            tests: tests/Unit/Core/Outcome tests/Scenario/Outcome tests/Scenario/Send
           - name: send-pipeline
+            min: 85
             classes: 'Padosoft\MobilePush\Core\Driver'
             tests: tests/Unit/Core/Driver tests/Scenario/Send
     name: Mutation · ${{ matrix.name }}
@@ -81,7 +104,7 @@ jobs:
       - run: composer update --prefer-dist --no-interaction
       # Not --parallel: the parallel runner takes a single test path, and each group names several.
       - name: Mutate
-        run: vendor/bin/pest --mutate --class='${{ matrix.classes }}' ${{ matrix.tests }}
+        run: vendor/bin/pest --mutate --min=${{ matrix.min }} --class='${{ matrix.classes }}' ${{ matrix.tests }}
 
   # The database ledger again, on the server engines: the mutants that only a server can kill survive the SQLite group
   # above by construction (on SQLite the lock clause compiles to nothing and there is one writer). PostgreSQL kills the
@@ -153,6 +176,6 @@ jobs:
         run: mysql -h 127.0.0.1 -uroot -e "SET GLOBAL innodb_lock_wait_timeout = 5"
       - name: Mutate
         run: >-
-          vendor/bin/pest --mutate
+          vendor/bin/pest --mutate --min=87
           --class='Padosoft\MobilePush\Laravel\Ledger\DatabaseLedger'
           tests/Unit/Laravel/Ledger tests/Scenario/Laravel/Ledger

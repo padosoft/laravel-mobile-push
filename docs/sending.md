@@ -116,6 +116,40 @@ MobilePush::connection('ios')
 
 Sending an APNs destination through an FCM connection (or the reverse) is an `InvalidDestinationException` before the network. A send whose targets span several connections (an iPhone and an Android phone) returns one report that streams the results of each connection in turn.
 
+### A named connection and the device registry
+
+With `connection('x')` the rules depend on what you pass:
+
+| Target | Through `connection('x')` |
+|---|---|
+| A model using `HasPushDevices` | **Narrowed** to the owner's active devices registered on `x`. Its devices on other connections are left out (not sent, not reported). An owner with no device on `x` contributes nothing; a send where nobody has a device on `x` returns an **empty report**, not an exception, so `to($users)` never fails because one user has no device there. |
+| A notifiable with `routeNotificationForPush()` (or `Notification::route('push', ...)`) | **Narrowed** the same way: its routed destinations of the other provider are left out (not sent, not reported). |
+| A typed destination **without** a registry reference (`ApnsDeviceToken::of(...)`, `toToken()`) | Sent through `x` when the provider matches (otherwise `InvalidDestinationException`). The package cannot tell which app a bare token belongs to: you named the connection, you decide. |
+| A registry destination (from `$user->pushDestinations()`, it carries a `DestinationRef`) registered on **another binding** (another app or environment of the same provider, or another scope) | **Not sent.** `Skipped` with `binding_mismatch`, 0 attempts. The hint names the connection the device is registered on (only when it is in the same scope; another tenant's names are never echoed). Checked immediately before the network, one query per window. |
+| A registry destination registered under another *name* with the **same** identity (same scope, provider, app id and environment) | Sent: two names for the same identity are interchangeable. |
+
+`onlyProvider()` combined with a named connection of the other provider sends nothing (empty report).
+
+<!-- example: sending-connection-narrows -->
+```php
+use Padosoft\MobilePush\Core\Message\PushMessage;
+use Padosoft\MobilePush\Laravel\Facades\MobilePush;
+
+// Only the Android destination of $user goes out: the iPhone belongs to the "ios" connection.
+MobilePush::connection('android')->to($user)->send(PushMessage::make('Android only'))->counts();
+
+$fake->assertSentOnConnection('android');
+```
+
+Without a named connection, `to($user)` sends each registry device through the connection it was registered on, but a
+list of registry destinations passed explicitly (`to($user->pushDestinations())`) is routed **by provider** like any
+typed destination: with two APNs connections in the routes that is a `ConfigurationException` asking you to name one.
+Pass the owner, or name the connection.
+
+The `binding_mismatch` above is reported the same way by a direct `send()`, by a light-profile job and by the durable
+relay, with the same hint; nothing is sent. No `BindingMismatchDetected` event is dispatched for it: that event is
+for a connection whose binding changed (see [multi-tenancy.md](multi-tenancy.md)).
+
 ### Multi-connection sends and the pre-flight
 
 When the targets of one `send()` or `queue()` span several connections (an iPhone and an Android phone, or two apps), the
@@ -383,8 +417,30 @@ $fake->assertQueued();
 ```
 
 - `queue()` returns the effect id (several ids joined by `,` when the targets span several connections). There is no report: results are known only when a worker runs the job (a connection refused by the [pre-flight](#multi-connection-sends-and-the-pre-flight) is the exception: its `Rejected` results are recorded at once and it contributes no id); read them through events, the send log or `mobile-push:health`.
-- Set the queue options **before** `queue()`. Defaults: `queue.connection` (null = the app's default queue connection), `queue.queue` (`push`), `queue.bulk_queue` (`push-bulk`) for `bulk()` traffic, `afterCommit(true)`.
+- `queue()` is the **last** call of the chain: it returns the effect id (a string), so options written after it
+  (`->queue($message)->onQueue('push')`) do not exist. Set the queue options **before** `queue()`, as in the example above. Defaults: `queue.connection` (null = the app's default queue connection), `queue.queue` (`push`), `queue.bulk_queue` (`push-bulk`) for `bulk()` traffic, `afterCommit(true)`.
 - The **light profile** (default) dispatches jobs carrying the encrypted message and the destinations: best effort, no tables; a crashed worker can lose or duplicate pushes. The **durable profile** (`MOBILE_PUSH_DELIVERY_PROFILE=durable`) records the intent in a ledger (inside your database transaction when it runs on the ledger connection) and a relay sends it, recording each outcome before acknowledging. `send()` never writes the ledger in either profile. Details and worker setup: [delivery-profiles.md](delivery-profiles.md) and [queues-and-horizon.md](queues-and-horizon.md).
+
+### What you can observe after a light-profile `queue()`
+
+"Best effort" means that the light profile does not remember a send anywhere but in the queue: a worker that dies
+mid-job omits the destinations it had not reached, a job the queue redelivers sends again what was already sent, and a
+lost job is gone (the full table is in [delivery-profiles.md](delivery-profiles.md#light-profile-best-effort)). What
+you can observe:
+
+| Where | What |
+|---|---|
+| The return value of `queue()` | The effect id: a fresh ULID per connection (not your `effectKey()`), several joined by `,`. |
+| The job itself | Tags `mobile-push`, `provider:<p>`, `connection:<name>`, `scope:<scope>` and `effect:<id>` (Horizon search) and a display name with the provider, the connection and the number of destinations. |
+| Events, in the worker process | The same as a direct `send()`: `PushResultProduced` per destination (by default only for transactional traffic: `mobile-push.events.per_result` = `auto`, `always`, `never`), `PushBatchCompleted` per job, `DestinationInvalidated` / `DestinationQuarantined`, `BindingMismatchDetected`. |
+| The send log (`mobile-push.log.sinks`) | One record per destination, as for a direct `send()`. |
+| A job that throws or times out | `SendPushJob::failed()` records every destination of the job as `OutcomeUnknown` in the send log (when a sink is enabled), otherwise writes one warning to the application log. It is not retried. |
+
+The effect id ties these together: `PushResultProduced` and `PushBatchCompleted` have an `effectId` property, and the
+send-log records an `effect_id`, set to the id `queue()` returned for every job of that effect (its continuations
+included; `null` for a direct `send()`). What the light profile does **not** give you is a report, or a stored state
+to query later: if you need "what happened to effect X" after the fact without your own listener or the send log, use
+the durable profile, whose ledger keeps every delivery under its effect id.
 
 ## Helpers
 

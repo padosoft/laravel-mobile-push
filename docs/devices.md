@@ -263,7 +263,7 @@ are `Skipped` results with reason `PolicyIneligible` and a raw reason of:
 
 | Raw reason | Meaning |
 |---|---|
-| `row_missing` | pruned, deleted, or from another scope |
+| `row_missing` | pruned or deleted. A row that exists under another connection (binding) or scope is reported as `binding_mismatch` instead, with a hint naming the connection when it is in the same scope |
 | `state_not_active` | quarantined or invalidated |
 | `owner_changed` | logout, or a shared phone (also reported when the row was registered again and changed hands) |
 | `generation_changed` | registered again after this push was queued |
@@ -297,11 +297,28 @@ Treat the key like a secret and back it up with the rest of your secrets.
 
 An Android installation can be addressed by its FCM registration token or by its Firebase installation id (FID). The
 registry keeps them in **one row**: the row's kind is `fcm_token`, the FID is an extra encrypted column with its own
-index. `pushDestinations()` returns one destination per row (the token), so a message is sent **once** per installation,
+index. `pushDestinations()` returns one destination per row, so a message is sent **once** per installation,
 never twice. Pass `'fid' => FcmFid::of($fid)` when registering, or call
 `DeviceRegistrar::attachFid($device, $fid)` later (it throws `InvalidDestinationException` unless the row is an FCM token
 row). Registering an `FcmFid` destination whose FID is already attached to a token row finds that row instead of creating
 a second one. `$device->fidDestination()` returns the FID as a typed destination carrying the same registry reference.
+
+Which of the two a row is sent to is the setting `mobile-push.devices.fcm_prefer` (`token` or `fid`, default `token`):
+
+| Row holds | `token` (default) | `fid` |
+|---|---|---|
+| token and FID | the token | the FID |
+| token only | the token | the token |
+| FID only | the FID | the FID |
+
+It is always **one** destination per row. The destination keeps the row's registry reference and generation, so
+eligibility checks, `markSent()` and outcome application behave identically: an `UNREGISTERED` answer for the FID
+invalidates the whole installation row (it is the same installation), and a destination list taken before the phone
+changed hands is skipped as usual. The setting is read when the destination is built, so a destination already queued
+keeps the kind it was built with (the registry never converts between kinds). Any value other than `token` or `fid` raises
+a `ConfigurationException` when a destination is built, before any request. The request bodies (`message.token` /
+`message.fid`) and the invalidation path are covered by `tests/Scenario/Laravel/Devices/FcmPreferenceStoriesTest.php`
+against the in-memory transport; sending to a FID has **not** been verified against the real FCM service.
 
 ## Pruning
 

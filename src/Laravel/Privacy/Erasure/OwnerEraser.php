@@ -132,9 +132,12 @@ final class OwnerEraser
             return StoreReport::notPresent('ledger: deliveries erased', 'no ledger tables (light profile)');
         }
 
-        $snapshots = $this->stores->effects()
-            ?->where('scope', $scope)->where('origin_type', $owner->type)->where('origin_id', $owner->id)->whereNotNull('message')->count() ?? 0;
+        // The ledger erases the snapshot of the effects that originate from the owner and of those addressed to the
+        // owner alone: counted as the difference, since only the ledger knows which ones those are.
+        $stored = fn (): int => $this->stores->effects()?->where('scope', $scope)->whereNotNull('message')->count() ?? 0;
+        $before = $stored();
         $erased = $ledger->forgetOwner($scope, $owner->type, $owner->id);
+        $snapshots = max(0, $before - $stored());
 
         return StoreReport::done('ledger: deliveries erased', $erased, sprintf('destination, owner and device snapshot erased; %d message snapshot(s) erased; non-personal tombstones kept', $snapshots));
     }

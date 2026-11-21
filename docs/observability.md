@@ -82,9 +82,10 @@ type / id, notification, time (UTC).
 
 **What the manager fills in.** The send pipeline hands the sinks: operation, traffic class, duration, payload bytes, push
 type, the result itself (including the delivery id when it came from the ledger) and, depending on `log.payload`, the
-payload. It does **not** pass the effect id, the campaign id or the notification origin, so with the manager's own wiring
-`effect_id`, `campaign_id`, `origin_type`, `origin_id` and `notification` are empty in the table and the log lines (they
-are filled only for records you hand to `SinkManager::recordResult()` yourself with those context keys).
+payload. For a queued send (a light-profile job or the durable relay) it also passes the **effect id**, the id
+`queue()` returned; a direct `send()` has none. It does **not** pass the campaign id or the notification origin, so with
+the manager's own wiring `campaign_id`, `origin_type`, `origin_id` and `notification` are empty in the table and the log
+lines (they are filled only for records you hand to `SinkManager::recordResult()` yourself with those context keys).
 
 ### The payload level
 

@@ -14,6 +14,8 @@ description: "CurlTransport implements Core\\Transport\\Transport on curl_multi.
 | `CurlTransport` | the `Transport`: sliding window, lazy input, one Exchange per request |
 | `CurlPool` | one persistent `CurlMultiHandle` per pool key (its connection cache *is* the pool), easy-handle recycling, routing of completions between concurrent `send()` generators |
 | `CurlPoolRegistry` | per-process registry: global limit + LRU eviction, idle expiry, controlled close, fork guard |
+| `ConnectionReuse` | `auto` / `on` / `off`: whether a `send()` uses the registry's persistent pools or a private pool of its own |
+| `CoroutineCurlHook` | detects a coroutine runtime that hooks curl (Swoole / OpenSwoole); drives `auto` |
 | `CurlCapabilities` | runtime probe; throws `TransportConfigurationException` with a remedy before anything is sent |
 | `CurlErrorClassifier` | libcurl error + counters → `TransportFailure` with honest evidence |
 | `ResponseHeaderParser` | `CURLOPT_HEADERFUNCTION` parser (interim 1xx, proxy CONNECT block, lowercased names) |
@@ -160,6 +162,20 @@ With zero latency PHP is CPU-bound at ~25k req/s from window 50 on; with latency
 - Global limit (default 32, `transport.max_pools` in the Laravel config, env `MOBILE_PUSH_TRANSPORT_MAX_POOLS`, at least 1) with LRU eviction; the evicted pool is closed (server sees the connection close). Pools in use by a running `send()` are never evicted; the registry may exceed the limit only while more sends than the limit run at once.
 - Idle expiry: a pool unused for more than its `$maxIdleSeconds` is closed on the next registry access.
 - `close($key)` on a pool in use detaches it (new sends get a new pool) and closes it when its last send finishes.
+
+### Connection reuse: `on`, `off`, `auto`
+
+`new CurlTransport($registry, $capabilities, reuse: ConnectionReuse::…)`; in Laravel `mobile-push.transport.reuse` (`auto` by default). The mode is decided **once per `send()`, when `send()` is called**, and never changes half-way through that send.
+
+- **`on`**: today's behaviour above. Every `send()` of a pool key uses the registry's persistent pool; connections are kept between sends, and concurrent sends of one key share one `curl_multi` handle.
+- **`off`**: every `send()` builds its **own private pool** (its own `curl_multi` handle and connections) when its generator starts running, and closes it in the generator's `finally` block: when the generator is exhausted, when the consumer stops iterating, or when the generator is destroyed (including a suspended Fiber that is destroyed). The registry is never touched, nothing is kept between sends, and two concurrent sends never share a handle. A generator that is never iterated opens nothing. `close()` only closes registry pools; a running private pool ends with its send. `CurlTransport::privatePoolsOpen()` (open now) and `privatePoolsOpened()` (since construction) count them.
+- **`auto`** (the default of the constructor and of the Laravel setting): `on`, except for a send that starts while `CoroutineCurlHook` reports a curl hook, which runs as `off`. The facts are read again at every send: `extension_loaded('swoole' | 'openswoole')`, then `Swoole\Runtime::getHookFlags()` (OpenSwoole: `OpenSwoole\Runtime::getHookFlags()`, then the `Swoole\Runtime` alias) through a dynamic call, masked with `SWOOLE_HOOK_CURL` (2048) and `SWOOLE_HOOK_NATIVE_CURL` (4096), plus the value of those constants (and of `OpenSwoole\Runtime::HOOK_CURL` / `HOOK_NATIVE_CURL`) when they are defined. An extension that is loaded but whose flags cannot be read counts as hooked. Nothing is imported; Swoole is not a dependency.
+
+Why: under a curl coroutine hook a coroutine can be switched out *inside* `curl_multi_exec()`, and a second coroutine of the same worker then drives the same shared `curl_multi` handle (measured under Octane on Swoole 6.2: a fatal error in `curl_multi_exec`, the worker dies). With a private pool per send that handle is never shared. Whether that is enough to make such a runtime safe is a separate question (see [runtimes](/operations/runtimes)).
+
+**Cost of `off`**: every send opens a new connection (TCP + TLS handshake) and closes it at the end. Measured on loopback against the mock: 200 sends of one request each → **200 connections** with `off` and **1** with `on`; about **3.1 ms** per send with `off` against **0.6 ms** with `on` (loopback, no network latency: over a real network each handshake adds round trips on top). With `requireHttp2` (the default) a new pool also sends its first request alone before filling the window (the pilot described above), once per send. Against APNs many short connections are a risk in themselves: Apple's documentation asks providers to keep connections open rather than opening one per notification and may treat rapid connect/disconnect as a denial-of-service attempt; how Apple reacts to a given rate was **not** measured here. Prefer `off`/`auto` only where reuse is not safe, and send in batches (one send, many requests) so that one connection carries many pushes.
+
+Pinned by `ConnectionReuseTest` (scenarios on the mock: N sends → N connections, each closed; abandoned and never started generators leave nothing open; two interleaved Fiber sends of one pool key on two distinct server-side sessions, each receiving only its own answers; a suspended send released when its Fiber is destroyed; `auto` with a simulated hook, and a hook turned on mid-process) and `CoroutineCurlHookTest` (the detection with injected facts).
 
 ### Fork safety
 

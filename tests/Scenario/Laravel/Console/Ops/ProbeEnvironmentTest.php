@@ -32,9 +32,9 @@ beforeEach(function (): void {
 /**
  * @return array{world: OpsWorld, devices: list<PushDevice>, tokens: list<string>}
  */
-function probeStory(int $count = 2, bool $sandboxConnection = true, array $config = []): array
+function probeStory(int $count = 2, bool $sandboxConnection = true, array $config = [], array $sandboxExtra = []): array
 {
-    $connections = ['ios' => W::apns()] + ($sandboxConnection ? ['ios-sandbox' => W::apns(keyId: 'KEY2222222', environment: 'sandbox')] : []);
+    $connections = ['ios' => W::apns()] + ($sandboxConnection ? ['ios-sandbox' => W::apns(keyId: 'KEY2222222', environment: 'sandbox', extra: $sandboxExtra)] : []);
     $world = OpsWorld::boot(['connections' => $connections + ['android' => W::fcm()]] + $config);
     $registrar = app(DeviceRegistrar::class);
     $devices = $tokens = [];
@@ -236,3 +236,53 @@ it('does not re-label when the same token is already registered for the other en
     expect($exit)->toBe(1)->and($output)->toContain('conflict')
         ->and(OpsWorld::device($one->getKey())->state)->toBe(DeviceState::Quarantined);
 });
+
+it('refuses up front a connection whose key is declared production-only: zero requests, a message with the remedy, exit 3', function (): void {
+    ['world' => $world] = probeStory(3, sandboxExtra: ['key_environments' => 'production']);
+
+    [$exit, $output] = $world->call('mobile-push:devices:probe-environment', PROBE_ARGS);
+
+    expect($world->w->transport->sentCount())->toBe(0)          // counted by the transport fake: nobody was contacted
+        ->and($exit)->toBe(3)
+        ->and($output)->toContain('key_restricted')->toContain('key_environments=production')->toContain('Nothing was sent')->toContain('Remedy')
+        ->and(PushDevice::query()->where('state', 'quarantined')->count())->toBe(3)
+        ->and(PushDevice::query()->where('environment', 'sandbox')->count())->toBe(0);
+    $world->assertClean();
+
+    $json = $world->json('mobile-push:devices:probe-environment', PROBE_ARGS);
+    expect(array_column($json['rows'], 'outcome'))->toBe(['key_restricted', 'key_restricted', 'key_restricted'])
+        ->and($world->w->transport->sentCount())->toBe(0);
+});
+
+it('behaves as before when the key is declared for both environments, or for the environment of the probe', function (string $declared): void {
+    ['world' => $world] = probeStory(2, sandboxExtra: ['key_environments' => $declared]);
+
+    [$exit, $output] = $world->call('mobile-push:devices:probe-environment', PROBE_ARGS);
+
+    expect($exit)->toBe(0)
+        ->and($world->w->requestsTo('api.sandbox.push.apple.com'))->toHaveCount(2)
+        ->and($output)->toContain('relabelled')->not->toContain('key_restricted')
+        ->and(PushDevice::query()->where('state', 'active')->count())->toBe(2);
+})->with(['both', 'sandbox']);
+
+it('still stops the whole run on an authentication refusal when nothing was declared (the reactive guard stays)', function (): void {
+    ['world' => $world] = probeStory(3, sandboxExtra: ['key_environments' => 'both']);
+    $world->w->answer = static fn (): Response => SendKit::apnsReason(403, 'BadEnvironmentKeyIdInToken');
+
+    [$exit, $output] = $world->call('mobile-push:devices:probe-environment', PROBE_ARGS);
+
+    expect($world->w->pushRequests())->toHaveCount(1)
+        ->and($exit)->toBe(2)
+        ->and($output)->toContain('authentication_error');
+});
+
+it('refuses an invalid key_environments value as invalid configuration before any request', function (mixed $value): void {
+    ['world' => $world] = probeStory(2, sandboxExtra: ['key_environments' => $value]);
+
+    [$exit, $output] = $world->call('mobile-push:devices:probe-environment', PROBE_ARGS);
+
+    expect($exit)->toBe(1)
+        ->and($output)->toContain('mobile-push.connections.ios-sandbox.key_environments must be one of: both, sandbox, production')->toContain('Nothing was sent')
+        ->and($world->w->transport->sentCount())->toBe(0)
+        ->and(PushDevice::query()->where('state', 'quarantined')->count())->toBe(2);
+})->with(['an unknown word' => ['staging'], 'wrong case' => ['Sandbox'], 'a list' => [['sandbox']], 'an empty string' => ['']]);

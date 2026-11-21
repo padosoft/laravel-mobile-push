@@ -299,6 +299,7 @@ bundle id) on the **other** environment, one device at a time:
 | Mode `simulate` | `not_sent` | No request. |
 | Safe mode refused | `blocked` | No request. |
 | No (or no unique) connection of that app on the other environment | `no_connection` | Name one with `--connection`. |
+| The connection declares `key_environments` that excludes the environment the probe would try | `key_restricted` | **Refused before any request** (see below). |
 | The stored token cannot be decrypted | `unreadable` | Key rotation problem. |
 
 **Why it is explicit.** `BadDeviceToken` is ambiguous (a malformed token, or a good token of the other environment). A
@@ -310,15 +311,31 @@ an operator**. You must pass `--allow-cross-environment` to acknowledge it, and 
 - A probe **is a real push** (silent, to the device). If accepted, it reaches the phone.
 - Every **rejected** token counts against Apple's error budget; `--limit` (default 10, maximum 100) bounds a run.
   There is no time-based rate limit: run it in batches.
-- It needs a second connection for the other environment with a key allowed for it.
+- It needs a second connection for the other environment with a key allowed for it. Apple lets a `.p8` key be
+  restricted to one environment; the package cannot read that restriction from the file, so you may **declare** it on
+  the connection (next paragraph). Without a declaration the probe contacts the first device, and an authentication
+  refusal stops the whole run (`authentication_error`).
 - It needs the devices module, the live mode, and (outside production) the allowlist: a quarantined token not in
   `live.only_to` is `blocked`.
 - It changes registry rows (binding, environment, generation, state). Nothing is undone automatically.
 - Not verified against the real APNs services: the behaviour of environment-restricted keys is read from Apple's
-  documentation and the package's tests, not measured.
+  documentation and the package's tests, not measured. **No environment-restricted key has ever been tried against the
+  real APNs by this project**; the refusal below and the reactive stop are pinned by tests on a fake transport only.
+
+**Declaring a restricted key.** `mobile-push.connections.<name>.key_environments` (default `both`: nothing is known,
+the probe behaves as described above) takes `both`, `sandbox` or `production`. The probe reads it on the connection it
+would use on the other environment: if it says the key serves only the other one (for example `production` on the
+sandbox connection), that connection is refused **before any request**: the device row is `key_restricted`, the message
+names the connection and the remedy (probe through a connection whose key is valid on that environment, or set `both` if
+the key is not restricted), and the exit code is 3. Any other value is refused as invalid configuration, also before any
+request. The declaration is read only for connections defined in `mobile-push.connections`; a connection supplied by
+`resolveConnectionUsing()` counts as `both`. It is your statement about the key, not something the package verifies, so
+the reactive stop stays as the safety net for a wrong or missing declaration.
 
 Exit codes: 0 every device got a clean answer (relabelled, still rejected, or not sent), 1 something needs attention or the
-run was refused, 2 the run was stopped by an authentication error. Full options in [commands](commands.md).
+run was refused (including an invalid `key_environments`), 2 the run was stopped by an authentication error, 3 a connection
+was refused because its declared key cannot be used on the environment of the probe (2 wins if both happened). Full options
+in [commands](commands.md).
 
 ## Reason catalog
 
