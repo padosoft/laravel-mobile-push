@@ -126,11 +126,12 @@ load.
 
 **Cause.** The queue handed a job to a second worker while the first was still sending: `retry_after` (SQS: visibility
 timeout) is shorter than the job timeout, or the worker timeout is shorter than the job. The package's timeout chain
-exists to prevent exactly this, and Laravel's stock `retry_after` of 90 is **below** the package's default job timeout
-of 120 s. A worker process killed and restarted mid-job gives the same symptom.
+exists to prevent exactly this. The package's defaults fit Laravel's stock `retry_after` of 90 (job timeout 50 s), so
+this happens when `queue.timeout` was raised without raising `retry_after`, or the application's own `retry_after` is
+lower. A worker process killed and restarted mid-job gives the same symptom.
 
 **Check.** `php artisan mobile-push:doctor`, section "Queue timeouts": any `violation` or `not verifiable` line. Raise
-`retry_after` to at least what `mobile-push:install` prints (146 s with the defaults), or lower `queue.timeout`. Declare
+`retry_after` to at least what `mobile-push:install` prints (61 s with the defaults), or lower `queue.timeout`. Declare
 `queue.worker_timeout` / `queue.visibility_timeout` so the chain can be verified. See
 [queues and Horizon](/reliability/queues-and-horizon#queues-workers-horizon-and-the-scheduler-the-timeout-chain).
 
@@ -146,7 +147,7 @@ may have left: the provider may have accepted it". On the durable profile the sw
 expires; on the light profile a failed job records its destinations as unknown in the send log.
 
 **Remedy.** Stop workers gracefully: `php artisan queue:restart` (workers finish the current job), `horizon:terminate`
-with a supervisor `stopwaitsecs` at least as long as the worker `timeout` (132 s with the defaults), and a container
+with a supervisor `stopwaitsecs` at least as long as the worker `timeout` (55 s with the defaults), and a container
 `terminationGracePeriod` to match. **Do not resend unknown outcomes blindly**: an alert may already have been
 delivered. Replaceable messages were already retried by policy. Count them with `mobile-push:health`, the send log
 (`status = outcome_unknown`) or the `outcome_unknown` results.
@@ -171,13 +172,14 @@ reports "The cache store cannot take locks".
 
 ### `table "mobile_push_effects" already exists` when migrating
 
-**Cause.** The durable profile (or another module) is on **and** the migrations were also published (for example by
-`mobile-push:install`). The package registers its own migration files with the migrator while the module is on, and the
-published copies have different names, so the second `create table` fails. See the "Known trap" in
-[delivery profiles](/reliability/delivery-profiles#delivery-profiles-light-and-durable-switching-migrations).
+**Cause.** This was a defect of earlier builds: an enabled module registered its own migration files with the migrator
+**and** `mobile-push:install` published copies under new names, so `migrate` ran both sets. The package now follows one
+rule ([delivery profiles](/reliability/delivery-profiles#delivery-profiles-light-and-durable-switching-migrations)): migrations are **published, not auto-loaded**, unless
+`MOBILE_PUSH_MIGRATIONS_AUTOLOAD=true`, in which case nothing is published and a published copy wins over the package
+file. Every migration is also idempotent (`Schema::hasTable` / `hasColumn` guards), so a second run changes nothing.
 
-**Remedy.** Keep one set: delete the published copies (and let `migrate` use the package's), or mark the package's own
-migration names as already run if the tables came from the copies.
+**Remedy.** If your database still holds the failure from an older build: upgrade, and run `php artisan migrate` again
+(the guarded migrations skip what exists). Choose one source from now on: published copies (default) or autoload.
 
 ### `IdempotencyConflictException`
 

@@ -15,9 +15,10 @@ Every key of `config/mobile-push.php`, its environment variable, default and all
 - [Retry budget](/get-started/configuration#configuration-reference-retry-budget) (10 keys)
 - [Guards: rate limits and circuit breakers](/get-started/configuration#configuration-reference-guards-rate-limits-and-circuit-breakers) (9 keys)
 - [Delivery profile and events](/get-started/configuration#configuration-reference-delivery-profile-and-events) (3 keys)
+- [Migrations](/get-started/configuration#configuration-reference-migrations) (1 keys)
 - [Shared cache](/get-started/configuration#configuration-reference-shared-cache) (2 keys)
 - [Privacy keys](/get-started/configuration#configuration-reference-privacy-keys) (4 keys)
-- [Device registry](/get-started/configuration#configuration-reference-device-registry) (6 keys)
+- [Device registry](/get-started/configuration#configuration-reference-device-registry) (7 keys)
 - [Send log](/get-started/configuration#configuration-reference-send-log) (12 keys)
 - [Durable ledger](/get-started/configuration#configuration-reference-durable-ledger) (8 keys)
 - [Queue](/get-started/configuration#configuration-reference-queue) (13 keys)
@@ -166,6 +167,14 @@ The light profile is best effort and keeps no tables; the durable profile record
 | `events.per_result` | `MOBILE_PUSH_EVENTS_PER_RESULT` | `'auto'` | `string` | `auto`, `always`, `never` | When to dispatch PushResultProduced per destination: auto = transactional sends only. Pulse needs always to see the reason codes of bulk traffic. | sending |
 | `connection_cache.size` | `MOBILE_PUSH_CONNECTION_CACHE_SIZE` | `64` | `int` | 1..100000 | Resolved connections (drivers, pools) kept per process. | sending |
 
+## Migrations
+
+Where the tables of the modules come from. By default the migrations are published into your application (`mobile-push:install` does it) and the modules never register their own copies with `migrate`.
+
+| Key | Env | Default | Type | Allowed | Description | Module |
+|---|---|---|---|---|---|---|
+| `migrations.autoload` | `MOBILE_PUSH_MIGRATIONS_AUTOLOAD` | `false` | `bool` |  | false (default): module migrations are published by mobile-push:install and `migrate` runs the copies. true: enabled modules register their package files with `migrate` and nothing is published (a copy already published wins). | install |
+
 ## Shared cache
 
 Provider tokens, breakers, rate limits, throttle gates, metrics, frequency counters and badges are shared between workers through this store. Cross-process guarantees need a lock-capable shared store (redis, memcached, database, dynamodb).
@@ -192,10 +201,11 @@ Installations stored per owner so MobilePush::to($user) works. Tokens are encryp
 
 | Key | Env | Default | Type | Allowed | Description | Module |
 |---|---|---|---|---|---|---|
-| `devices.enabled` | `MOBILE_PUSH_DEVICES_ENABLED` | `false` | `bool` |  | Enable the registry (and load its migration). | devices |
+| `devices.enabled` | `MOBILE_PUSH_DEVICES_ENABLED` | `false` | `bool` |  | Enable the registry (its migration is published by mobile-push:install, or auto-loaded with migrations.autoload). | devices |
 | `devices.table` | `MOBILE_PUSH_DEVICES_TABLE` | `'mobile_push_devices'` | `string` |  | Table name. | devices |
 | `devices.connection` | `MOBILE_PUSH_DEVICES_CONNECTION` | `null` | `string\|null` |  | Database connection; null = default. | devices |
 | `devices.model` | – | `\Padosoft\MobilePush\Laravel\Devices\PushDevice::class` | `class-string` |  | Eloquent model (extend PushDevice to customise). | devices |
+| `devices.probe.cooldown_hours` | `MOBILE_PUSH_DEVICES_PROBE_COOLDOWN_HOURS` | `24` | `int` | >= 0 | mobile-push:devices:probe-environment contacts a device at most once per this many hours (0 = no cooldown). | console |
 | `devices.prune.invalidated_days` | – | `30` | `int` | >= 0 | mobile-push:devices:prune deletes invalidated rows older than this. | console |
 | `devices.prune.inactive_days` | – | `365` | `int` | >= 0 | mobile-push:devices:prune deletes rows not seen for this many days. | console |
 
@@ -244,8 +254,8 @@ The QUEUE connection and names used by queue() (distinct from the push connectio
 | `queue.bulk_queue` | `MOBILE_PUSH_BULK_QUEUE` | `'push-bulk'` | `string` |  | Queue of bulk() traffic. | queue |
 | `queue.chunk` | `MOBILE_PUSH_QUEUE_CHUNK` | `500` | `int` | 1..10000 | Destinations per light job / deliveries per relay claim. | queue |
 | `queue.chunk_bytes` | `MOBILE_PUSH_QUEUE_CHUNK_BYTES` | `98304` | `int` | >= 4096 | Estimated bytes of one light job before encryption. | queue |
-| `queue.timeout` | `MOBILE_PUSH_QUEUE_TIMEOUT` | `120` | `int` | >= 1 | Job timeout, seconds. | queue |
-| `queue.chunk_deadline` | `MOBILE_PUSH_QUEUE_CHUNK_DEADLINE` | `60` | `int` | >= 1 | Wall time of one relay run before it hands over, seconds. | queue |
+| `queue.timeout` | `MOBILE_PUSH_QUEUE_TIMEOUT` | `50` | `int` | >= 1 | Job timeout, seconds. | queue |
+| `queue.chunk_deadline` | `MOBILE_PUSH_QUEUE_CHUNK_DEADLINE` | `40` | `int` | >= 1 | Wall time of one relay run before it hands over, seconds. | queue |
 | `queue.after_commit` | `MOBILE_PUSH_QUEUE_AFTER_COMMIT` | `true` | `bool` |  | Dispatch light jobs after the open transaction commits. | queue |
 | `queue.follow_up_bucket` | `MOBILE_PUSH_QUEUE_FOLLOW_UP_BUCKET` | `60` | `int` | >= 0 | Deferred destinations whose next attempts are this close share one continuation job, seconds. | queue |
 | `queue.worker_timeout` | `MOBILE_PUSH_QUEUE_WORKER_TIMEOUT` | `null` | `int\|null` |  | Declared worker timeout when it is not readable from Horizon. | queue |
@@ -308,7 +318,7 @@ Activity registry, push-to-start and update tokens, broadcast channels. Coalesce
 
 | Key | Env | Default | Type | Allowed | Description | Module |
 |---|---|---|---|---|---|---|
-| `live_activities.enabled` | `MOBILE_PUSH_LIVE_ACTIVITIES_ENABLED` | `false` | `bool` |  | Enable the module (and load its migrations). | live_activities |
+| `live_activities.enabled` | `MOBILE_PUSH_LIVE_ACTIVITIES_ENABLED` | `false` | `bool` |  | Enable the module (its migrations are published by mobile-push:install, or auto-loaded with migrations.autoload). | live_activities |
 | `live_activities.binding` | `MOBILE_PUSH_LA_BINDING` | `'apns'` | `string` |  | APNs connection used by default. | live_activities |
 | `live_activities.connection` | `MOBILE_PUSH_LA_DB_CONNECTION` | `null` | `string\|null` |  | Database connection of the tables. | live_activities |
 | `live_activities.table` | – | `'mobile_push_live_activities'` | `string` |  | Activities table. | live_activities |
@@ -358,7 +368,7 @@ Durable profile only: a stable upper bound fixed at planning time, a final eligi
 
 | Key | Env | Default | Type | Allowed | Description | Module |
 |---|---|---|---|---|---|---|
-| `campaigns.enabled` | `MOBILE_PUSH_CAMPAIGNS_ENABLED` | `false` | `bool` |  | Enable campaigns (and load their migration). | campaigns |
+| `campaigns.enabled` | `MOBILE_PUSH_CAMPAIGNS_ENABLED` | `false` | `bool` |  | Enable campaigns (the migration is published by mobile-push:install, or auto-loaded with migrations.autoload). | campaigns |
 | `campaigns.table` | – | `'mobile_push_campaigns'` | `string` |  | Campaigns table. | campaigns |
 | `campaigns.connection` | – | `null` | `string\|null` |  | Database connection; null = default. | campaigns |
 | `campaigns.slice` | – | `1000` | `int` | 1..5000 | Destinations per planner job. | campaigns |

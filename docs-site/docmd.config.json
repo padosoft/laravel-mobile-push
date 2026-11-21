@@ -9,9 +9,6 @@
   "copyCode": true,
   "pageNavigation": true,
   "minify": true,
-  "markdown": {
-    "breaks": false
-  },
   "theme": {
     "name": "default",
     "appearance": "system",

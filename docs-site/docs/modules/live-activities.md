@@ -10,7 +10,7 @@ Server side and app side, including broadcast channels. Live Activities are opti
 | | |
 |---|---|
 | Enable | `mobile-push.live_activities.enabled` = `true` (env `MOBILE_PUSH_LIVE_ACTIVITIES_ENABLED=true`) |
-| Migration tag | `php artisan vendor:publish --tag=mobile-push-migrations-live-activities` then `php artisan migrate` (three tables: activities, push-to-start tokens, broadcast channels) |
+| Migration tag | `php artisan vendor:publish --tag=mobile-push-migrations-live-activities` then `php artisan migrate` (or `php artisan mobile-push:install`; with `MOBILE_PUSH_MIGRATIONS_AUTOLOAD=true` nothing is published and `migrate` loads the package files) (three tables: activities, push-to-start tokens, broadcast channels) |
 | Needs | the privacy keys (derived from `APP_KEY` unless set), an APNs connection, a database |
 | Commands | registered only while the module is enabled: `mobile-push:live-activity:*` and `mobile-push:channels:*` ([commands](/operations/commands)) |
 
@@ -295,7 +295,8 @@ An end is terminal. Transition rules, evaluated in this order:
 
 | Situation | Result |
 |---|---|
-| `ended` or `expired` row | `Skipped`, `PolicyIneligible` ("nothing is sent after an end") |
+| `ended` or `expired` row | `Skipped`, `PolicyIneligible` ("nothing is sent after an end" / the local expiry passed) |
+| open row (`requested`, `active`, `ending`) at or past `local_expires_at`, update **or end** | `Skipped`, `PolicyIneligible` naming the local expiry; the row becomes `expired` (nothing is sent) |
 | `ending` row and the request is an update | `Skipped`, `PolicyIneligible` |
 | `requested` row (no update token yet) | `Skipped`, `PolicyIneligible` |
 | token quarantined or invalidated | `Skipped`, `PolicyIneligible` |
@@ -349,18 +350,24 @@ Three different facts, kept apart on the row:
 
 | Fact | Column | Set by |
 |---|---|---|
-| **Local expiry**: past it the server stops sending (state `expired`) | `local_expires_at` | the server: `start + live_activities.local_expiry.hours` (default 8), or `last accepted update + hours` with `local_expiry.from = last_update` |
+| **Local expiry**: past it the server stops sending, checked at every transition (state `expired`) | `local_expires_at` | the server: `start + live_activities.local_expiry.hours` (default 8), or `last accepted update + hours` with `local_expiry.from = last_update` |
 | **Accepted end**: APNs accepted an end | `end_accepted_at`, state `ended`, `closed_reason = end_accepted` | the server |
 | **Client-reported state**: what the app says the device shows | `client_reported_state`, `client_reported_at` | the app, through `reportClientState()` |
 
 `expired` says nothing about the phone: iOS ends an activity on its own after the 8-hour rule and only the app knows.
 
-**Important, verified in the code:** the `expired` state is applied only when `ActivityPruner::prune()` runs
-(`php artisan mobile-push:live-activity:prune`). The transition rules themselves do not compare `local_expires_at` with
-the clock, and I found nothing in the package that schedules the prune command. Until you schedule it, an activity past its
-local expiry can still be updated. Schedule it often (every few minutes), for example
-`Schedule::command('mobile-push:live-activity:prune')->everyFiveMinutes();`. `closed_after_days` (default 7) controls when
-closed rows are deleted.
+**Enforced at transition time.** Every transition (update, end, flush of a pending update, replay of a queued job)
+compares `local_expires_at` with the clock inside the transition rules, whether or not anything has pruned. An open row
+(`requested`, `active` or `ending`) at or past its local expiry is **not sent to**: the result is `Skipped` with reason
+`PolicyIneligible` naming the local expiry, and the same compare-and-set marks the row `expired`. An **end** on an
+expired activity is refused too (the server sends nothing after the expiry; the phone ends the activity on its own).
+In simulate mode nothing is written, so the row stays as it was. Set the local expiry at or beyond the real lifetime of
+your activities, because past it nothing more leaves the server.
+
+The prune command is therefore housekeeping, not part of the rule: it marks as `expired` the open rows nobody touched
+since their expiry (tidier lists and channel cleanup) and **deletes closed rows** older than `closed_after_days`
+(default 7). Nothing in the package schedules it, so schedule it **daily**, for example
+`Schedule::command('mobile-push:live-activity:prune')->daily();`.
 
 ## Broadcast channels
 
@@ -459,7 +466,7 @@ Connection key `broadcast_host` (`standard` default, or `api-broadcast`) chooses
 | `mobile-push:live-activity:end {activity} [--state= --dismiss= --json]` | end |
 | `mobile-push:live-activity:list [--owner= --type= --state= --scope= --limit=50 --json]` | rows, tokens masked |
 | `mobile-push:live-activity:flush [--limit=100 --json]` | send due pending transitions |
-| `mobile-push:live-activity:prune [--days= --pretend --json]` | expire past local expiry, delete old closed rows |
+| `mobile-push:live-activity:prune [--days= --pretend --json]` | delete old closed rows, mark untouched rows past their expiry `expired` (schedule it daily) |
 | `mobile-push:channels:list [--connection= --scope= --state= --json]` | local rows (nothing is sent) |
 | `mobile-push:channels:create [--connection= --scope= --storage=none\|recent --label= --type=]` | create at APNs |
 | `mobile-push:channels:delete {channel} [--force]` | delete at APNs (irreversible) |
