@@ -4,8 +4,8 @@ name: mutation
 # ledger state machine, truncation). It is slow: weekly, and by hand from the Actions tab, never on a pull request.
 # Each group runs the unit tests and the scenarios that are meant to pin that code, and fails when its score drops
 # below its `min`: a floor a few points under the score measured on 2026-11-21, so a regression is noticed while the
-# survivors already classified as equivalent or unreachable (progress.md) do not turn the job red. A `min` of 0 marks a
-# group whose score has not been recorded yet.
+# survivors already classified as equivalent or unreachable (progress.md) do not turn the job red. The two newest groups (auth with the OpenSSL signers, outcome) have
+# floors from their first run, before the tests written for their survivors.
 
 on:
   schedule:
@@ -23,7 +23,7 @@ jobs:
       matrix:
         include:
           - name: auth
-            min: 0
+            min: 85
             classes: 'Padosoft\MobilePush\Core\Auth\DerSignature,Padosoft\MobilePush\Core\Auth\JwtEncoder,Padosoft\MobilePush\Core\Auth\OpenSslEs256Signer,Padosoft\MobilePush\Core\Auth\OpenSslRs256Signer'
             tests: tests/Unit/Core/Auth tests/Scenario/Auth
           - name: retry
@@ -83,7 +83,7 @@ jobs:
             classes: 'Padosoft\MobilePush\Core\Apns\Auth,Padosoft\MobilePush\Core\Fcm\Auth,Padosoft\MobilePush\Core\Auth\TokenSlot,Padosoft\MobilePush\Core\Auth\InMemoryTokenStore,Padosoft\MobilePush\Core\Auth\PrivateKey,Padosoft\MobilePush\Core\Auth\TokenCacheKey'
             tests: tests/Unit/Core/Auth tests/Scenario/Auth
           - name: outcome
-            min: 0
+            min: 75
             classes: 'Padosoft\MobilePush\Core\Outcome'
             tests: tests/Unit/Core/Outcome tests/Scenario/Outcome tests/Scenario/Send
           - name: send-pipeline
