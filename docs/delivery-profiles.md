@@ -282,10 +282,16 @@ Be precise about these; they are the reason the word "exactly once" does not app
 
 ### Not verified
 
-- **Concurrency on MySQL and PostgreSQL.** The contract tests for the ledger run against the in-memory ledger and
-  against the database ledger on SQLite, in both claim strategies. SQLite has no row locks: the `FOR UPDATE SKIP LOCKED`
-  code path executes but its concurrency is **not proven** there. Races are injected on SQLite with a second connection.
-  Real MySQL 8 / MariaDB 10.6 / PostgreSQL concurrency tests belong in CI and have not been run.
+- **MySQL and PostgreSQL under load.** What was run: the database-backed scenarios (ledger contract in both claim
+  strategies, relay, crash recovery, campaigns, devices, Live Activities, receipts, install) pass on **MySQL 8.4 and
+  PostgreSQL 17 in CI**, and the whole suite passed once on a local PostgreSQL 16. One scenario uses two real
+  connections: a second worker claims while the first one is inside its `FOR UPDATE SKIP LOCKED` transaction, and every
+  delivery is claimed exactly once. On MySQL that scenario first failed with a lock wait timeout: at InnoDB's default
+  REPEATABLE READ a locking read also locks index gaps, and the other claimer's `UPDATE` waited for them; the claim
+  transaction now runs at **READ COMMITTED** on MySQL/MariaDB (`SET TRANSACTION ISOLATION LEVEL`, for that transaction
+  only; it is skipped when the claim is called inside a transaction you opened). What was **not** run: many worker
+  processes at production volume, MariaDB, and MySQL with `binlog_format=STATEMENT` (which does not allow READ
+  COMMITTED writes on InnoDB).
 - The query plans of the claim, start, record and audience queries (`ScalingQueryPlansTest`) are asserted on SQLite only;
   the indexes exist on MySQL and PostgreSQL but their plans there were not checked.
 - Behaviour with a database that has a very high write latency, or read replicas for the ledger connection.
@@ -342,8 +348,8 @@ are **published, not auto-loaded**.
 4. As a second line of defence every migration is **idempotent**: `create table` is skipped when the table exists,
    column and index additions check what is there (`hasColumn`, `getIndexes`), and `down()` is symmetric and tolerates
    a missing table, column or index. If both sets are ever registered by hand, the second set changes nothing and
-   `migrate:rollback` still drops everything. This is covered by `tests/Scenario/Laravel/Install` on SQLite; MySQL and
-   PostgreSQL were **not** run.
+   `migrate:rollback` still drops everything. This is covered by `tests/Scenario/Laravel/Install`, which passes on SQLite and, in
+   CI, on MySQL 8.4 and PostgreSQL 17.
 
 An older build registered the package files **and** published copies, which failed with `table
 "mobile_push_effects" already exists`; see [troubleshooting](troubleshooting.md).

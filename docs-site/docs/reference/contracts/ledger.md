@@ -114,7 +114,7 @@ All times are UTC epoch milliseconds in `BIGINT` columns. No clear token is ever
 
 ## Open points
 
-- **Concurrency on MySQL and PostgreSQL is not proven.** The shared contract tests run on the in-memory ledger and on the database ledger over SQLite in both claim strategies; SQLite has no row locks, so the `FOR UPDATE SKIP LOCKED` path executes but its concurrency has not been exercised. Real MySQL 8 / MariaDB 10.6 / PostgreSQL runs belong in CI and have not been done.
+- **MySQL and PostgreSQL under load are not proven.** The shared contract tests run on the in-memory ledger and on the database ledger in both claim strategies, on SQLite and, in CI, on MySQL 8.4 and PostgreSQL 17; `ConcurrentClaimTest` runs one worker's claim inside the other worker's `FOR UPDATE SKIP LOCKED` transaction on two real connections and every delivery is claimed exactly once. On MySQL/MariaDB the claim transaction runs at READ COMMITTED (at REPEATABLE READ the gap locks of the locking read made the other claimer's update wait). Many worker processes at production volume and MariaDB have not been run.
 - The behaviour with a very high write latency, or read replicas for the ledger connection, has not been measured.
 - The cost of the fingerprint on very large messages has not been measured.
 

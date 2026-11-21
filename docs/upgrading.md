@@ -65,7 +65,8 @@ version, with deprecation first.
   that published its migrations **before** these files existed must publish again (`php artisan mobile-push:install`, or
   `vendor:publish` with the `-ledger` and `-devices` tags) and run `php artisan migrate`; without them nothing breaks, but
   claims and audience reads on large tables are slow. They are idempotent (an index that exists is not created again) and
-  were exercised on SQLite only, not on MySQL or PostgreSQL. On a table with many rows creating an index takes time and
+  run on SQLite and, in CI, on MySQL 8.4 and PostgreSQL 17 (on empty tables: how long they take on a large table was
+  not measured). On a table with many rows creating an index takes time and
   locks according to your database engine: run it in a quiet period.
 - Receipts add columns to the deliveries table through their own migration (`..._create_mobile_push_ledger_receipt_columns`),
   which is part of the ledger set.

@@ -16,8 +16,9 @@ Related pages: [delivery profiles](delivery-profiles.md), [queues and Horizon](q
 
 **State of the module.** The campaigns module is present and its tests pass (110 scenario and unit tests: lifecycle,
 audiences, controls, sending rules, tenants, workers killed at exact points, query plans and scaling runs). The larger
-runs are in the `slow` test group. Everything was exercised on SQLite with a fake transport: **MySQL and PostgreSQL were
-not exercised** (the query plans are asserted on SQLite only), nothing was sent to a real provider, and the queue was not
+runs are in the `slow` test group. Everything was developed on SQLite with a fake transport; the same scenarios also run
+on **MySQL 8.4 and PostgreSQL 17 in CI** (the query plans are asserted on SQLite only, and the scaling runs were made on
+SQLite only). Nothing was sent to a real provider, and the queue was not
 run on Redis, SQS or Horizon.
 
 The entry point is `MobilePush::campaign($message)`: the manager forwards to the campaigns module and returns the
@@ -274,7 +275,7 @@ What to know:
   500,000 destinations went from `dispatch()` to `completed` in 457 seconds, and the time per 1,000 destinations grew
   about 1.3 times from 25,000 to 200,000 destinations (the audience grew 8 times, the run took 10.3 times as long). The
   claim, audience and lookup queries read by index and their plans were checked on **SQLite only**, not on MySQL or
-  PostgreSQL. These numbers describe this implementation on that setup, not a provider and not your database, and are not a
+  PostgreSQL (where the scenarios pass, but no timing was taken). These numbers describe this implementation on that setup, not a provider and not your database, and are not a
   promise: size and test your own campaigns before relying on them.
 
 ## Configuration

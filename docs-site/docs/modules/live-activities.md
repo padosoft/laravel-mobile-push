@@ -16,7 +16,7 @@ Server side and app side, including broadcast channels. Live Activities are opti
 
 Read first: `Accepted` means **accepted by APNs**, never that an activity changed on a screen. An accepted broadcast publication is **one publication**, not N deliveries: there is no per-device result, count or receipt behind it.
 
-Nothing on this page has run against real APNs or a real device. The Swift snippets were not compiled. The server logic is covered by scenario tests on SQLite with a fake transport; MySQL and PostgreSQL were not exercised.
+Nothing on this page has run against real APNs or a real device. The Swift snippets were not compiled. The server logic is covered by scenario tests with a fake transport, on SQLite and (in CI) on MySQL 8.4 and PostgreSQL 17.
 
 Related pages: [sending](/sending/sending), [outcomes](/reliability/outcomes), [retries and limits](/reliability/retries-and-limits), [safe mode](/reliability/safe-mode), [credentials for APNs](/get-started/credentials-apns), [troubleshooting](/operations/troubleshooting).
 

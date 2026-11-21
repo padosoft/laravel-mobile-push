@@ -13,7 +13,7 @@ Read first: `Accepted` means **accepted by APNs**, never that an activity change
 publication is **one publication**, not N deliveries: there is no per-device result, count or receipt behind it.
 
 Nothing on this page has run against real APNs or a real device. The Swift snippets were not compiled. The server logic
-is covered by scenario tests on SQLite with a fake transport; MySQL and PostgreSQL were not exercised.
+is covered by scenario tests with a fake transport, on SQLite and (in CI) on MySQL 8.4 and PostgreSQL 17.
 
 Related pages: [sending](sending.md), [outcomes](outcomes.md), [retries and limits](retries-and-limits.md),
 [safe mode](safe-mode.md), [credentials for APNs](credentials-apns.md), [troubleshooting](troubleshooting.md).

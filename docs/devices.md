@@ -17,8 +17,8 @@ from `vendor/`, and it is idempotent (it skips a table or column that already ex
 publish tag exists; a copy you already published always wins, so the table is never created twice. You need one way or the
 other, never both.
 
-What was and was not verified: the registry is covered by scenario tests on SQLite. MySQL and PostgreSQL were not
-exercised, and nothing has been run against real APNs or FCM or a real device.
+What was and was not verified: the registry is covered by scenario tests on SQLite, which also pass on MySQL 8.4
+and PostgreSQL 17 in CI. Nothing has been run against real APNs or FCM or a real device.
 
 Related pages: [sending](sending.md), [configuration](configuration.md), [multi-tenancy](multi-tenancy.md),
 [security and privacy](security-and-privacy.md), [commands](commands.md), [troubleshooting](troubleshooting.md).

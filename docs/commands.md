@@ -709,4 +709,4 @@ and blocked), `preview`, `explain`, `simulator --export`, `health`, `credentials
 `prune` commands, `forget` and `export` (on empty tables) and the refusals of `devices:probe-environment`. **Not**
 verified against real systems: any command that sends (`send --live`, `doctor --live`, `devices:probe-environment`,
 `fcm:topic-subscription`, the Live Activity and channel commands) against real APNs and FCM; `simulator` with a real
-`xcrun`; `relay` and `sweep` on MySQL or PostgreSQL under concurrent workers; `send --user` with a real user model.
+`xcrun`; `relay` and `sweep` on MySQL or PostgreSQL with many worker processes under load (their scenarios pass on both engines in CI); `send --user` with a real user model.
