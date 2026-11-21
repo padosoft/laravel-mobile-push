@@ -307,6 +307,13 @@ final class ActivityManager
             $decision = $this->rules->decide($store->snapshot($row), $command, $now);
 
             if ($decision->kind === DecisionKind::Skip) {
+                if ($decision->expire && ! $store->markExpired($row)) {
+                    // The row moved meanwhile: decide again on the new version.
+                    $row = $store->find($id) ?? $row;
+
+                    continue;
+                }
+
                 return new TransitionResult(TransitionOutcome::Skipped, SendStatus::Skipped, $decision->reason, null, $row, $command->seq, broadcast: $broadcast);
             }
 
@@ -384,8 +391,8 @@ final class ActivityManager
     }
 
     /**
-     * Simulate mode: decide as for real (a closed activity or a stale ticket is still Skipped), then let the pipeline
-     * simulate the request. No ticket, claim, pending transition or counter is written.
+     * Simulate mode: decide as for real (a closed or locally expired activity, or a stale ticket, is still Skipped),
+     * then let the pipeline simulate the request. No ticket, claim, pending transition, counter or expiry is written.
      *
      * @template T of Model
      *

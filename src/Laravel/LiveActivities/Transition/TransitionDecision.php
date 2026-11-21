@@ -22,6 +22,8 @@ final readonly class TransitionDecision
         public int $hpCount = 0,
         /** Defer: the first Unix second at which the pending transition may be sent. */
         public ?int $dueAt = null,
+        /** Skip: the row is past its local expiry and must be marked `expired` now (in the same compare-and-set). */
+        public bool $expire = false,
     ) {}
 
     public static function send(int $timestamp, Priority $priority, bool $downgraded, ?int $hpWindowStartedAt, int $hpCount): self
@@ -37,5 +39,13 @@ final readonly class TransitionDecision
     public static function skip(ReasonCode $code, string $hint): self
     {
         return new self(DecisionKind::Skip, Reason::of($code, null, $hint));
+    }
+
+    public static function expired(): self
+    {
+        return new self(DecisionKind::Skip, Reason::of(
+            ReasonCode::PolicyIneligible, null,
+            'The local expiry (local_expires_at) of the activity has passed: the server stopped sending.',
+        ), expire: true);
     }
 }

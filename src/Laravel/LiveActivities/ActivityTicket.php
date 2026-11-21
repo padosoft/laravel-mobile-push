@@ -11,7 +11,9 @@ use Padosoft\MobilePush\Laravel\LiveActivities\Transition\TransitionPayload;
  * row version seen at dispatch (informational) and the payload captured at dispatch. Plain data, serializable.
  *
  * Replaying is safe at any time: a ticket older than one already applied or pending is skipped, and nothing is
- * sent after an end or the local expiry (ActivityManager::replay()).
+ * sent after an end or once the activity's `local_expires_at` is at or before the clock's now. The expiry is checked
+ * when the ticket is applied, whether or not ActivityPruner has run; an update OR an end then comes back Skipped
+ * (PolicyIneligible) and the row is marked `expired` (ActivityManager::replay(), TransitionRules).
  */
 final readonly class ActivityTicket
 {

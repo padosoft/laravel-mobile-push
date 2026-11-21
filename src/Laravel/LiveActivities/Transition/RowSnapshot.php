@@ -18,5 +18,7 @@ final readonly class RowSnapshot
         public ?int $lastTimestamp,
         public ?int $hpWindowStartedAt = null,
         public int $hpCount = 0,
+        /** Unix second of `local_expires_at`; null = no local expiry (broadcast channels have none). */
+        public ?int $localExpiresAt = null,
     ) {}
 }
