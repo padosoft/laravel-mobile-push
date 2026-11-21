@@ -277,8 +277,12 @@ What to know:
   about 1.3 times from 25,000 to 200,000 destinations (the audience grew 8 times, the run took 10.3 times as long). The
   claim, audience and lookup queries read by index and their plans were checked on SQLite (the claim's plan also on PostgreSQL and MySQL in CI). On a local
   **PostgreSQL 16** the same guard run took 29.7 seconds for 25,000 destinations and 273.6 seconds for 200,000 (9.2
-  times for 8 times the audience: 1.19 and 1.37 seconds per 1,000 destinations). MySQL passes the scenarios in CI but
-  was not timed. These numbers describe this implementation on that setup, not a provider and not your database, and are not a
+  times for 8 times the audience: 1.19 and 1.37 seconds per 1,000 destinations). The guard also runs weekly on
+  GitHub-hosted runners (the `scaling` workflow): on **PostgreSQL 17** 33.6 and 293.7 seconds (8.8 times), on
+  **MySQL 8.4** 47.1 and 430.0 seconds (9.1 times) with a 2 GB InnoDB buffer pool. With MySQL's image default of
+  128 MB the same run took 38.8 and 630.5 seconds (16.2 times) and the guard failed: the deliveries table and its
+  indexes no longer fit in memory at 200,000 rows. Give `innodb_buffer_pool_size` room for the ledger before a large
+  campaign. These numbers describe this implementation on that setup, not a provider and not your database, and are not a
   promise: size and test your own campaigns before relying on them.
 
 ## Configuration

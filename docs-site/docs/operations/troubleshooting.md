@@ -111,6 +111,10 @@ Same family: the two environments have different tokens and different endpoints,
 | Is the mode `simulate`? Then the rows end `simulated`. | See the first symptom. |
 | Are jobs failing (Horizon failed jobs, `failed_jobs`)? | Read the exception; `SendPushJob::failed()` records the destinations as unknown. |
 
+### A large send gets slower per destination as it goes, on MySQL
+
+The durable profile reads and writes the deliveries table by index; the time per destination should stay about the same from 25,000 to 200,000 rows. If it grows on MySQL, check `innodb_buffer_pool_size` first: once the deliveries table and its indexes no longer fit in the buffer pool, every claim and record waits for the disk. In the package's own scaling run on MySQL 8.4 the cost per 1,000 destinations doubled between 25,000 and 200,000 with the image default of 128 MB, and stayed flat (ratio 1.18) with 2 GB. `SHOW GLOBAL STATUS LIKE 'Innodb_buffer_pool_reads'` climbing during a send is the sign. Pruning final rows (`mobile-push:deliveries:prune`, which the package schedules daily on the durable profile) keeps the working set small. See [delivery profiles](/reliability/delivery-profiles#delivery-profiles-light-and-durable-durable-profile-the-ledger-not-verified) for what was measured.
+
 ### `Guard state is too contended to update`
 
 **Cause.** The shared cache store is alive but the compare-and-set that the breakers and the rate limiter need keeps losing (many workers writing the same keys, or a store that is very slow). The destinations are `Deferred` with `quota_exceeded` and nothing is sent. This is **not** what a dead cache looks like: when the store is unreachable the guards fail open, sending continues without cross-process limits and the log shows the warning "mobile-push cache unavailable: behaving as an empty store." (at most once a minute; the backend is retried after 5 seconds). See [retries and limits](/reliability/retries-and-limits#retries-limits-and-circuit-breakers-rate-limit-messages-per-provider-account-when-the-cache-behind-the-guards-is-down).

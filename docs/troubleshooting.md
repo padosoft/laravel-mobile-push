@@ -157,6 +157,16 @@ delivered. Replaceable messages were already retried by policy. Count them with 
 | Is the mode `simulate`? Then the rows end `simulated`. | See the first symptom. |
 | Are jobs failing (Horizon failed jobs, `failed_jobs`)? | Read the exception; `SendPushJob::failed()` records the destinations as unknown. |
 
+### A large send gets slower per destination as it goes, on MySQL
+
+The durable profile reads and writes the deliveries table by index; the time per destination should stay about the
+same from 25,000 to 200,000 rows. If it grows on MySQL, check `innodb_buffer_pool_size` first: once the deliveries
+table and its indexes no longer fit in the buffer pool, every claim and record waits for the disk. In the package's
+own scaling run on MySQL 8.4 the cost per 1,000 destinations doubled between 25,000 and 200,000 with the image
+default of 128 MB, and stayed flat (ratio 1.18) with 2 GB. `SHOW GLOBAL STATUS LIKE 'Innodb_buffer_pool_reads'`
+climbing during a send is the sign. Pruning final rows (`mobile-push:deliveries:prune`, which the package schedules daily on the durable profile) keeps
+the working set small. See [delivery profiles](delivery-profiles.md#not-verified) for what was measured.
+
 ### `Guard state is too contended to update`
 
 **Cause.** The shared cache store is alive but the compare-and-set that the breakers and the rate limiter need keeps
