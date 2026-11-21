@@ -8,7 +8,6 @@ use Padosoft\MobilePush\Core\Message\PushMessage;
 use Padosoft\MobilePush\Core\Outcome\SendStatus;
 use Padosoft\MobilePush\Core\Policy\ExecutionMode;
 use Padosoft\MobilePush\Laravel\Facades\MobilePush;
-use Padosoft\MobilePush\Laravel\Sending\PendingSend;
 use Padosoft\MobilePush\Laravel\Sending\PushManager;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Integration\IntegrationWorld;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Sending\SendingWorld as W;
