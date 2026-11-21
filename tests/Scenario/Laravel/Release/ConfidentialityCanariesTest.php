@@ -118,12 +118,30 @@ function markerIn(array $body): ?string
     return null;
 }
 
-/** @return array<string, string> table => every row as JSON */
+/**
+ * @return array<string, string> table => every row as JSON. A value that is not UTF-8 (MySQL and MariaDB hand binary
+ *                               columns back as raw bytes) is dumped as the bytes themselves next to their hex and
+ *                               base64 forms, so that the canary search still sees every representation.
+ */
 function tableDumps(array $tables): array
 {
     $dumps = [];
     foreach ($tables as $table) {
-        $dumps['table '.$table] = json_encode(DB::table($table)->get()->all(), JSON_THROW_ON_ERROR);
+        $rows = [];
+        foreach (DB::table($table)->get()->all() as $row) {
+            $rows[] = array_map(
+                static fn (mixed $value): mixed => is_string($value) && ! mb_check_encoding($value, 'UTF-8')
+                    ? ['hex' => bin2hex($value), 'base64' => base64_encode($value)]
+                    : $value,
+                (array) $row,
+            );
+            foreach ((array) $row as $value) {
+                if (is_string($value) && ! mb_check_encoding($value, 'UTF-8')) {
+                    $rows[] = ['raw' => mb_convert_encoding($value, 'UTF-8', 'ISO-8859-1')];   // every byte kept, searchable as text
+                }
+            }
+        }
+        $dumps['table '.$table] = json_encode($rows, JSON_THROW_ON_ERROR);
     }
 
     return $dumps;
