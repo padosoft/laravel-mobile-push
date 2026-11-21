@@ -36,6 +36,14 @@ interface TransitionStore
     /** @param  T  $row */
     public function storePending(Model $row, TransitionCommand $command, TransitionPayload $payload, int $dueAt): bool;
 
+    /**
+     * Mark a row past its local expiry as `expired` (clearing any pending transition), under compare-and-set.
+     * A store whose rows have no local expiry returns false.
+     *
+     * @param  T  $row
+     */
+    public function markExpired(Model $row): bool;
+
     /** @param  T  $row  updated in memory on success */
     public function claim(Model $row, TransitionCommand $command, TransitionPayload $payload, TransitionDecision $decision): bool;
 

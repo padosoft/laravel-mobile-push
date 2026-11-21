@@ -323,7 +323,24 @@ final readonly class ActivityRegistry implements TransitionStore
             $row->last_timestamp,
             $row->hp_window_started_at,
             $row->hp_count,
+            $row->local_expires_at?->getTimestamp(),
         );
+    }
+
+    public function markExpired(Model $row): bool
+    {
+        if ($row->state->isClosed()) {
+            return false;
+        }
+
+        return $this->rows->cas($row, [
+            'state' => ActivityState::Expired,
+            'closed_reason' => CloseReason::LocalExpiry,
+            'closed_at' => $this->rows->now(),
+            'pending_seq' => null,
+            'pending_payload' => null,
+            'pending_due_at' => null,
+        ]);
     }
 
     public function destination(Model $row): ?Destination
@@ -438,14 +455,7 @@ final readonly class ActivityRegistry implements TransitionStore
                 if ($current->state->isClosed()) {
                     break;
                 }
-                if ($this->rows->cas($current, [
-                    'state' => ActivityState::Expired,
-                    'closed_reason' => CloseReason::LocalExpiry,
-                    'closed_at' => $now,
-                    'pending_seq' => null,
-                    'pending_payload' => null,
-                    'pending_due_at' => null,
-                ])) {
+                if ($this->markExpired($current)) {
                     $count++;
                     break;
                 }

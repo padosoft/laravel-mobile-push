@@ -12,7 +12,12 @@ use Padosoft\MobilePush\Laravel\LiveActivities\ActivityState;
 /**
  * The state machine of a Live Activity transition, as a pure function of one row version. Evaluated in order:
  *
- *  1. State: `ended` / `expired` accept nothing; `ending` accepts only the end (a resend); `requested` has no
+ *  1. State: `ended` / `expired` accept nothing. Then the LOCAL EXPIRY, against the injected clock and whether or
+ *     not the pruner has run: an open activity (requested, active or ending) whose `local_expires_at` is at or before
+ *     now accepts nothing either, an end included, and the decision asks the store to mark it `expired` (one
+ *     compare-and-set, nothing sent). Apple ends an activity on its own after 8 hours; the local expiry is the point
+ *     after which this server sends nothing more, so set it at or beyond the real lifetime of your activities.
+ *     Broadcast channels have no local expiry. Then: `ending` accepts only the end (a resend); `requested` has no
  *     update token yet; an undeliverable row (token quarantined/invalidated, channel not active) sends nothing.
  *  2. Ticket order: a transition dispatched earlier than one already applied (or pending) is stale and skipped,
  *     so an old queued update can never overwrite a newer state or reopen an end.
@@ -32,7 +37,19 @@ final readonly class TransitionRules
         $refusal = match (true) {
             $command->event === LiveActivityEvent::Start => [ReasonCode::RequestInvalid, 'A start is not a transition of an existing activity.'],
             $row->state === ActivityState::Ended => [ReasonCode::PolicyIneligible, 'The activity has ended: nothing is sent after an end.'],
-            $row->state === ActivityState::Expired => [ReasonCode::PolicyIneligible, 'The activity is past its local expiry: the server stopped sending.'],
+            $row->state === ActivityState::Expired => [ReasonCode::PolicyIneligible, 'The local expiry (local_expires_at) of the activity has passed: the server stopped sending.'],
+            default => null,
+        };
+
+        if ($refusal !== null) {
+            return TransitionDecision::skip($refusal[0], $refusal[1]);
+        }
+
+        if ($row->localExpiresAt !== null && $now >= $row->localExpiresAt) {
+            return TransitionDecision::expired();
+        }
+
+        $refusal = match (true) {
             $row->state === ActivityState::Ending && ! $isEnd => [ReasonCode::PolicyIneligible, 'The activity is ending: an update can no longer be sent.'],
             $row->state === ActivityState::Requested => [ReasonCode::PolicyIneligible, 'The app has not reported the update token of this activity yet.'],
             ! $row->deliverable => [ReasonCode::PolicyIneligible, 'No usable destination: the update token is quarantined or invalidated, or the channel is not active.'],

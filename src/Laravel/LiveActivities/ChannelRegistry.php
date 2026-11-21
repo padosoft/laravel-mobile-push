@@ -321,6 +321,12 @@ final readonly class ChannelRegistry implements TransitionStore
         return $row->destination();
     }
 
+    /** Channels have no local expiry: they are closed by deleting them (cleanup()). */
+    public function markExpired(Model $row): bool
+    {
+        return false;
+    }
+
     public function nextSeq(Model $row): array
     {
         return $this->rows->nextSeq($row);

@@ -50,6 +50,28 @@ No request reached APNs or FCM: the effective mode is "simulate".
 
 An expired message is `Expired` even in simulation (the expiry check comes first).
 
+Reading it in code (the statuses are the same on every path, so one `match` serves a send, a job and a command):
+
+<!-- example: safe-mode-branch -->
+```php
+use Padosoft\MobilePush\Core\Identity\Platform;
+use Padosoft\MobilePush\Core\Message\PushMessage;
+use Padosoft\MobilePush\Core\Outcome\ReasonCode;
+use Padosoft\MobilePush\Core\Outcome\SendResult;
+use Padosoft\MobilePush\Core\Outcome\SendStatus;
+use Padosoft\MobilePush\Laravel\Facades\MobilePush;
+
+$notes = [];
+MobilePush::toToken(Platform::Ios, $iosToken)->send(PushMessage::make('Hello'))
+    ->each(function (SendResult $result) use (&$notes): void {
+        if ($result->status === SendStatus::Simulated) {
+            $notes[] = 'simulation mode: nothing was sent';
+        } elseif ($result->status === SendStatus::Skipped && $result->reason->code === ReasonCode::PolicySafeMode) {
+            $notes[] = $result->reason->hint;               // names the setting that is missing
+        }
+    });
+```
+
 ## Sending for real from a non-production environment
 
 Sometimes you do want to push to **your own phone** from staging. Two things must both be true, per connection:

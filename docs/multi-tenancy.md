@@ -112,6 +112,16 @@ Notes that matter:
   handshake when a cold tenant sends. `MobilePush::forgetConnection($name, $scope)` and `MobilePush::flush()` drop cached
   connections by hand.
 
+<!-- example: tenancy-scope-using -->
+```php
+use Padosoft\MobilePush\Laravel\Facades\MobilePush;
+
+// Normally in a service provider's boot(), reading the tenant you resolved from the authenticated request.
+MobilePush::scopeUsing(fn () => 'tenant:42');
+
+$scope = MobilePush::currentScope();   // "tenant:42": ledger rows, devices and caches of this send use it
+```
+
 <!-- example: tenancy-scoped-send -->
 ```php
 use Padosoft\MobilePush\Core\Identity\Platform;

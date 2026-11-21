@@ -188,6 +188,19 @@ $effectId = MobilePush::to($user)
     ->queue(PushMessage::make('Order shipped', 'Order #42 is on its way')->ttl(3600));
 ```
 
+In a test, the fake records what was queued, so you can check the key without a database:
+
+<!-- example: profiles-queued-assertion -->
+```php
+use Padosoft\MobilePush\Core\Message\PushMessage;
+use Padosoft\MobilePush\Laravel\Facades\MobilePush;
+use Padosoft\MobilePush\Laravel\Testing\SentPush;
+
+MobilePush::to($user)->effectKey('order-42-shipped')->queue(PushMessage::make('Order shipped'));
+
+$fake->assertQueued(fn (SentPush $push): bool => $push->message instanceof PushMessage);
+```
+
 In **both** profiles the effect key also makes the provider message ids deterministic (a UUIDv5 of the binding, the key
 and the destination) so retries present the same `apns-id`. The package does **not** claim that APNs or FCM deduplicate
 on that id; that was not verified. Do not rely on it.

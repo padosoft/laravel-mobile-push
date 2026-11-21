@@ -241,6 +241,28 @@ the notification fallback add: nothing is sent if any destination is `Accepted`,
 for a topic, condition or broadcast (the audience is unknown). See
 [notifications and fallback](notifications-and-fallback.md).
 
+<!-- example: outcomes-unknown-no-fallback -->
+```php
+use Padosoft\MobilePush\Core\Identity\Destination\ApnsDeviceToken;
+use Padosoft\MobilePush\Core\Identity\Platform;
+use Padosoft\MobilePush\Core\Message\PushMessage;
+use Padosoft\MobilePush\Core\Outcome\SendResult;
+use Padosoft\MobilePush\Core\Outcome\SendStatus;
+use Padosoft\MobilePush\Laravel\Facades\MobilePush;
+
+// In a test: the connection dropped after the request was written.
+$fake->unknownFor(ApnsDeviceToken::of($iosToken));
+
+$mayFallBack = null;
+$report = MobilePush::toToken(Platform::Ios, $iosToken)->send(PushMessage::make('Order shipped'));
+$report->each(function (SendResult $result) use (&$mayFallBack): void {
+    // OutcomeUnknown is not Failed: the push may well have arrived, so no other channel is started from it.
+    $mayFallBack = $result->status->allowsFallback();      // false
+});
+
+$hadUnknown = $report->hasUnknown();   // true: ask for counters only after the cursor was read
+```
+
 ## What happens to the destination: actions
 
 The classifier decides, once, what the registration deserves. These actions only act on the **generation that was
