@@ -83,14 +83,38 @@ jobs:
       - name: Mutate
         run: vendor/bin/pest --mutate --class='${{ matrix.classes }}' ${{ matrix.tests }}
 
-  # The database ledger again, on PostgreSQL: the mutants that only a server engine can kill (row locks, SKIP LOCKED,
-  # the claim's lock clause, statements SQLite accepts and a server refuses) survive the SQLite group above by
-  # construction. Every test drops and migrates the schema, so this is by far the slowest job of the workflow.
-  mutate-postgres:
+  # The database ledger again, on the server engines: the mutants that only a server can kill survive the SQLite group
+  # above by construction (on SQLite the lock clause compiles to nothing and there is one writer). PostgreSQL kills the
+  # row-lock and SKIP LOCKED ones; MySQL the READ COMMITTED statement of the claim and the locking read that follows a
+  # lost effect key. Every test drops and migrates the schema, so these are by far the slowest jobs of the workflow.
+  mutate-server:
     runs-on: ubuntu-latest
     timeout-minutes: 350
-    name: Mutation · ledger-database on PostgreSQL
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - db: mysql
+            label: MySQL
+            port: 3306
+            username: root
+            password: ''
+          - db: pgsql
+            label: PostgreSQL
+            port: 5432
+            username: postgres
+            password: postgres
+    name: Mutation · ledger-database on ${{ matrix.label }}
     services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
+          MYSQL_DATABASE: mobile_push_test
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1"
+          --health-interval=10s --health-timeout=5s --health-retries=10
       postgres:
         image: postgres:17
         env:
@@ -102,23 +126,28 @@ jobs:
           --health-cmd="pg_isready -U postgres"
           --health-interval=10s --health-timeout=5s --health-retries=10
     env:
-      DB_CONNECTION: pgsql
+      DB_CONNECTION: ${{ matrix.db }}
       DB_HOST: 127.0.0.1
-      DB_PORT: 5432
+      DB_PORT: ${{ matrix.port }}
       DB_DATABASE: mobile_push_test
-      DB_USERNAME: postgres
-      DB_PASSWORD: postgres
+      DB_USERNAME: ${{ matrix.username }}
+      DB_PASSWORD: ${{ matrix.password }}
     steps:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'
-          extensions: curl, openssl, json, intl, pdo_pgsql, pdo_sqlite
+          extensions: curl, openssl, json, intl, pdo_mysql, pdo_pgsql, pdo_sqlite
           coverage: pcov
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - run: composer update --prefer-dist --no-interaction
+      # A mutant that makes two transactions wait for each other is killed by the lock wait timeout: 5 seconds
+      # instead of the 50 of the image keeps one such mutant from costing minutes.
+      - name: Short lock wait on MySQL
+        if: matrix.db == 'mysql'
+        run: mysql -h 127.0.0.1 -uroot -e "SET GLOBAL innodb_lock_wait_timeout = 5"
       - name: Mutate
         run: >-
           vendor/bin/pest --mutate
