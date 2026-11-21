@@ -127,6 +127,38 @@ it('rejects keys that do not fit the algorithm without leaking material', functi
     'empty' => [fn () => PrivateKey::fromPem('  ')],
 ]);
 
+it('says exactly which key it was given when it refuses one', function (Closure $make, string $message) {
+    expect($make)->toThrow(AuthenticationException::class, $message);
+})->with([
+    'ES256 with P-384' => [fn () => new OpenSslEs256Signer(PrivateKey::fromPem(TestKeys::ec('secp384r1')['pem'])), 'ES256 requires an EC P-256 (prime256v1) private key; got EC on curve secp384r1.'],
+    'ES256 with RSA' => [fn () => new OpenSslEs256Signer(PrivateKey::fromPem(TestKeys::rsa()['pem'])), 'ES256 requires an EC P-256 (prime256v1) private key; got RSA.'],
+    'RS256 with EC' => [fn () => new OpenSslRs256Signer(PrivateKey::fromPem(TestKeys::ec()['pem'])), 'RS256 requires an RSA private key of at least 2048 bits; got EC.'],
+    'RS256 with RSA 1024' => [fn () => new OpenSslRs256Signer(PrivateKey::fromPem(TestKeys::rsa(1024)['pem'])), 'RS256 requires an RSA private key of at least 2048 bits; got RSA of 1024 bits.'],
+    // one bit under the limit: the boundary itself
+    'RS256 with RSA 2047' => [fn () => new OpenSslRs256Signer(PrivateKey::fromPem(TestKeys::rsa(2047)['pem'])), 'RS256 requires an RSA private key of at least 2048 bits; got RSA of 2047 bits.'],
+]);
+
+it('accepts an RSA key of exactly 2048 bits', function () {
+    $signer = new OpenSslRs256Signer(PrivateKey::fromPem(TestKeys::rsa(2048)['pem']), 'kid-1');
+
+    expect($signer->algorithm())->toBe('RS256')->and(strlen($signer->sign('header.claims')))->toBe(256);
+});
+
+it('shows a signer in a dump without its key: algorithm and key id only', function (Closure $make, string $algorithm) {
+    $signer = $make();
+
+    expect($signer->__debugInfo())->toBe(['algorithm' => $algorithm, 'keyId' => 'KEY1234567', 'key' => '[redacted]']);
+    foreach ([print_r($signer, true), var_export($signer->__debugInfo(), true)] as $dump) {
+        expect($dump)->toContain('[redacted]')->toContain('KEY1234567')->not->toContain('PRIVATE KEY')->not->toContain('MII');
+    }
+    ob_start();
+    var_dump($signer);
+    expect((string) ob_get_clean())->toContain('[redacted]')->not->toContain('PRIVATE KEY')->not->toContain('OpenSSLAsymmetricKey');
+})->with([
+    'ES256' => [fn () => new OpenSslEs256Signer(PrivateKey::fromPem(TestKeys::ec()['pem']), 'KEY1234567'), 'ES256'],
+    'RS256' => [fn () => new OpenSslRs256Signer(PrivateKey::fromPem(TestKeys::rsa()['pem']), 'KEY1234567'), 'RS256'],
+]);
+
 it('normalises literal \n, CRLF, single-line and missing trailing newline PEMs', function () {
     $pem = TestKeys::ec()['pem'];
     $variants = [
