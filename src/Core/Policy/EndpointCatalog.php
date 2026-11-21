@@ -103,6 +103,13 @@ final readonly class EndpointCatalog
             .'/registrations/'.self::segment($registrationId, '/^[A-Za-z0-9_:.-]{1,1024}$/', 'registration id').'/topicSubscriptions';
     }
 
+    /** One topic subscription of one installation: `.../registrations/{id}/topicSubscriptions/{topic}`. */
+    public function fcmTopicSubscriptionItemUrl(string $projectId, #[\SensitiveParameter] string $registrationId, string $topic): string
+    {
+        return $this->fcmTopicSubscriptionUrl($projectId, $registrationId)
+            .'/'.self::segment($topic, '/^[A-Za-z0-9_.~%-]{1,900}$/', 'topic name');
+    }
+
     public function googleTokenUrl(): string
     {
         return $this->origin(EndpointRole::GoogleTokenExchange, null).'/token';

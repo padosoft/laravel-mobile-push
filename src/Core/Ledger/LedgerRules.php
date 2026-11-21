@@ -6,6 +6,7 @@ namespace Padosoft\MobilePush\Core\Ledger;
 
 use Padosoft\MobilePush\Core\Identity\Destination;
 use Padosoft\MobilePush\Core\Identity\Scope;
+use Padosoft\MobilePush\Core\Message\Message;
 use Padosoft\MobilePush\Core\Outcome\Reason;
 use Padosoft\MobilePush\Core\Outcome\ReasonCode;
 use Padosoft\MobilePush\Core\Outcome\SendResult;
@@ -44,6 +45,12 @@ final readonly class LedgerRules
         return hash('sha256', $effectKey);
     }
 
+    /** Whether a stored effect fingerprint (keyed or legacy) belongs to this message in this scope. */
+    public function sameMessage(string $storedFingerprint, Message $message, string $scope): bool
+    {
+        return PayloadFingerprint::matches($storedFingerprint, $message, $this->cipher, self::scope($scope));
+    }
+
     /** Registry device id + generation when the destination has a registry reference, otherwise the HMAC index. */
     public function logicalKey(Destination $destination, string $scope): string
     {
@@ -69,7 +76,7 @@ final readonly class LedgerRules
             'binding_identity' => $intent->binding->identity(),
             'effect_key' => $key,
             'dedupe_key' => self::dedupeKey($key),
-            'fingerprint' => PayloadFingerprint::of($intent->message),
+            'fingerprint' => PayloadFingerprint::keyed($intent->message, $this->cipher, $scope),
             'message' => $this->vault->seal($intent->message, $scope, $id),
             'operation' => $intent->operation->value,
             'replaceable' => $intent->isReplaceable(),

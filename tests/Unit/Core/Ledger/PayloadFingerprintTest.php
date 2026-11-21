@@ -90,3 +90,43 @@ it('refuses messages that are not plain data', function (): void {
 
     expect(fn () => PayloadFingerprint::of($withClosure))->toThrow(InvalidMessageException::class);
 });
+
+it('is keyed and bound to the scope: an OTP cannot be confirmed from the stored value without the key', function (): void {
+    $key = str_repeat("\x01", 32);
+    $cipher = new Padosoft\MobilePush\Core\Privacy\TokenCipher(new Padosoft\MobilePush\Core\Privacy\KeyRing([1 => $key]));
+    $otp = static fn (string $code): PushMessage => PushMessage::make('Your code', $code);
+
+    $stored = PayloadFingerprint::keyed($otp('481516'), $cipher, 'tenant-a');
+
+    // Same message, same scope: same value; the version prefix tells it apart from the legacy form.
+    expect($stored)->toMatch('/^v2:k1:[0-9a-f]{64}$/')
+        ->and(PayloadFingerprint::keyed($otp('481516'), $cipher, 'tenant-a'))->toBe($stored)
+        ->and(PayloadFingerprint::matches($stored, $otp('481516'), $cipher, 'tenant-a'))->toBeTrue()
+        ->and(PayloadFingerprint::matches($stored, $otp('481517'), $cipher, 'tenant-a'))->toBeFalse()
+        // Another scope, or another key, gives an unrelated value.
+        ->and(PayloadFingerprint::keyed($otp('481516'), $cipher, 'tenant-b'))->not->toBe($stored)
+        ->and(PayloadFingerprint::keyed($otp('481516'), new Padosoft\MobilePush\Core\Privacy\TokenCipher(new Padosoft\MobilePush\Core\Privacy\KeyRing([1 => str_repeat("\x02", 32)])), 'tenant-a'))->not->toBe($stored);
+
+    // An attacker holding the database but not the key enumerates all six-digit codes with the unkeyed hash: none matches.
+    $hex = substr($stored, strlen('v2:k1:'));
+    $found = false;
+    for ($i = 481500; $i < 481530; $i++) {
+        $guess = PayloadFingerprint::of($otp(sprintf('%06d', $i)));
+        $found = $found || str_ends_with($guess, $hex);
+    }
+    expect($found)->toBeFalse();
+});
+
+it('still verifies legacy unkeyed values and keeps verifying after a key rotation', function (): void {
+    $old = new Padosoft\MobilePush\Core\Privacy\TokenCipher(new Padosoft\MobilePush\Core\Privacy\KeyRing([1 => str_repeat('a', 32)]));
+    $rotated = new Padosoft\MobilePush\Core\Privacy\TokenCipher(new Padosoft\MobilePush\Core\Privacy\KeyRing([1 => str_repeat('a', 32), 2 => str_repeat('b', 32)]));
+    $dropped = new Padosoft\MobilePush\Core\Privacy\TokenCipher(new Padosoft\MobilePush\Core\Privacy\KeyRing([2 => str_repeat('b', 32)]));
+    $message = PushMessage::make('Hi');
+    $storedWithV1 = PayloadFingerprint::keyed($message, $old, 'default');
+
+    expect(PayloadFingerprint::matches(PayloadFingerprint::of($message), $message, $rotated, 'default'))->toBeTrue()
+        ->and(PayloadFingerprint::matches($storedWithV1, $message, $rotated, 'default'))->toBeTrue()
+        ->and(PayloadFingerprint::keyed($message, $rotated, 'default'))->toStartWith('v2:k2:')
+        ->and(PayloadFingerprint::matches($storedWithV1, $message, $dropped, 'default'))->toBeFalse()
+        ->and(PayloadFingerprint::matches('garbage', $message, $rotated, 'default'))->toBeFalse();
+});

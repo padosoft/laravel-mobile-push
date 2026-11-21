@@ -68,3 +68,22 @@ it('builds URLs on an override origin only outside production with test credenti
 it('validates override origins', function (string $origin) {
     expect(fn () => new EndpointOverride(['apns_send' => $origin], true))->toThrow(ConfigurationException::class);
 })->with(['http://x', 'https://x/path', 'https://u:p@x', 'https://x?q=1', 'ftp://x']);
+
+it('builds the URL of one topic subscription and refuses a topic that would escape its path segment', function (string $topic, ?string $expected) {
+    $c = new EndpointCatalog('production');
+    $call = fn (): string => $c->fcmTopicSubscriptionItemUrl('my-project-1', 'reg:1', $topic);
+
+    if ($expected === null) {
+        expect($call)->toThrow(ConfigurationException::class);
+
+        return;
+    }
+    expect($call())->toBe('https://fcm.googleapis.com/v1/projects/my-project-1/registrations/reg%3A1/topicSubscriptions/'.$expected);
+})->with([
+    'plain' => ['news', 'news'],
+    'every allowed character' => ['a-b_c.d~e%41', 'a-b_c.d~e%2541'],
+    'slash' => ['a/b', null],
+    'query' => ['a?b', null],
+    'dot dot' => ['..', null],
+    'empty' => ['', null],
+]);

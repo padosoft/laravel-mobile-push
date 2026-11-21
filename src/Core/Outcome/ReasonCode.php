@@ -17,6 +17,7 @@ enum ReasonCode: string
     case DestinationMismatch = 'destination_mismatch';           // APNs DeviceTokenNotForTopic, FCM SENDER_ID_MISMATCH
     case DestinationRateLimited = 'destination_rate_limited';    // APNs TooManyRequests (per device)
     case ChannelUnknown = 'channel_unknown';                     // APNs broadcast channel not registered / bad id
+    case ChannelLimitReached = 'channel_limit_reached';          // APNs CannotCreateChannelConfig (channel cap of the app/environment)
 
     // Request and payload
     case PayloadInvalid = 'payload_invalid';

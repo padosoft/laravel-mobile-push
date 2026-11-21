@@ -97,3 +97,34 @@ it('rejects malformed PEM', function (string $input) {
     'garbage' => ['not a certificate'],
     'truncated block' => ["-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----\n"],
 ]);
+
+it('marks every parameter that can carry a PEM, a private key or a passphrase as sensitive', function () {
+    // With zend.exception_ignore_args=Off a trace would otherwise expose a combined cert+key file or the passphrase.
+    $sensitive = ['pem', 'privateKeyPem', 'passphrase', 'blob', 'keyPem', 'certPem'];
+    $unmarked = [];
+    foreach ((new ReflectionClass(ApnsCertificateInspector::class))->getMethods() as $method) {
+        foreach ($method->getParameters() as $parameter) {
+            if (in_array($parameter->getName(), $sensitive, true) && $parameter->getAttributes(SensitiveParameter::class) === []) {
+                $unmarked[] = $method->getName().'($'.$parameter->getName().')';
+            }
+        }
+    }
+
+    expect($unmarked)->toBe([]);
+});
+
+it('replaces a combined certificate+key argument with a SensitiveParameterValue in exception traces', function () {
+    $previous = ini_set('zend.exception_ignore_args', '0');
+    try {
+        (new ApnsCertificateInspector)->fromPem("-----BEGIN PRIVATE KEY-----\nSECRET-KEY-MATERIAL\n-----END PRIVATE KEY-----\n", null, 'pass-phrase-secret');
+        $this->fail('expected exception');
+    } catch (ConfigurationException $e) {
+        $frame = $e->getTrace()[0];
+        expect($frame['function'])->toBe('fromPem')
+            ->and($frame['args'][0] ?? null)->toBeInstanceOf(SensitiveParameterValue::class)
+            ->and($frame['args'][2] ?? null)->toBeInstanceOf(SensitiveParameterValue::class)
+            ->and(var_export($e->getTrace(), true))->not->toContain('SECRET-KEY-MATERIAL')->not->toContain('pass-phrase-secret');
+    } finally {
+        ini_set('zend.exception_ignore_args', $previous === false ? '1' : $previous);
+    }
+});

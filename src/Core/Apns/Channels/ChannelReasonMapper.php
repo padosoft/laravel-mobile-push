@@ -36,7 +36,7 @@ final class ChannelReasonMapper
 
         return match (true) {
             $raw === 'FeatureNotEnabled' => ReasonCode::FeatureNotEnabled,
-            $raw === 'CannotCreateChannelConfig' => ReasonCode::QuotaExceeded,
+            $raw === 'CannotCreateChannelConfig' => ReasonCode::ChannelLimitReached,
             $raw === 'ExpiredProviderToken' => ReasonCode::AuthTokenExpired,
             $raw === 'InvalidProviderToken', $raw === 'MissingProviderToken' => ReasonCode::AuthTokenInvalid,
             $raw === 'TooManyProviderTokenUpdates' => ReasonCode::AuthTokenThrottled,

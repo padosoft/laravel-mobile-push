@@ -9,7 +9,7 @@ it('maps channel-management answers to reason codes', function (int $status, ?st
     expect(ChannelReasonMapper::reason($status, $raw)->code)->toBe($expected);
 })->with([
     [403, 'FeatureNotEnabled', ReasonCode::FeatureNotEnabled],
-    [400, 'CannotCreateChannelConfig', ReasonCode::QuotaExceeded],
+    [400, 'CannotCreateChannelConfig', ReasonCode::ChannelLimitReached],
     [403, 'ExpiredProviderToken', ReasonCode::AuthTokenExpired],
     [403, 'InvalidProviderToken', ReasonCode::AuthTokenInvalid],
     [429, 'TooManyProviderTokenUpdates', ReasonCode::AuthTokenThrottled],

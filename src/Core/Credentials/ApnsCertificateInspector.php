@@ -33,7 +33,7 @@ final class ApnsCertificateInspector
      * @throws ConfigurationException
      */
     public function fromPem(
-        string $pem,
+        #[\SensitiveParameter] string $pem,
         #[\SensitiveParameter] ?string $privateKeyPem = null,
         #[\SensitiveParameter] ?string $passphrase = null,
     ): CertificateInfo {
@@ -71,7 +71,7 @@ final class ApnsCertificateInspector
         return $this->inspect($cert, $key, null);
     }
 
-    private function inspect(string $certPem, #[\SensitiveParameter] ?string $keyPem, #[\SensitiveParameter] ?string $passphrase): CertificateInfo
+    private function inspect(#[\SensitiveParameter] string $certPem, #[\SensitiveParameter] ?string $keyPem, #[\SensitiveParameter] ?string $passphrase): CertificateInfo
     {
         $cert = self::quietly(static fn () => openssl_x509_read($certPem));
         self::drainErrors();
@@ -162,7 +162,7 @@ final class ApnsCertificateInspector
         return is_string($value) && $value !== '' ? $value : null;
     }
 
-    private static function der(string $certPem): ?string
+    private static function der(#[\SensitiveParameter] string $certPem): ?string
     {
         $body = preg_replace('/-----(?:BEGIN|END) CERTIFICATE-----|\s+/', '', $certPem);
         $der = is_string($body) ? base64_decode($body, true) : false;

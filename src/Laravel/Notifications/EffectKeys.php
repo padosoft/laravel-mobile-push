@@ -35,13 +35,9 @@ final class EffectKeys
 
     public static function keyOf(object $notifiable): string
     {
-        if ($notifiable instanceof Model) {
-            return (string) $notifiable->getKey();
-        }
-        if (method_exists($notifiable, 'getKey')) {
-            return (string) $notifiable->getKey();
-        }
-        $id = $notifiable->id ?? null;
+        $id = $notifiable instanceof Model || method_exists($notifiable, 'getKey')
+            ? $notifiable->getKey()
+            : ($notifiable->id ?? null);
 
         return is_scalar($id) ? (string) $id : '';
     }

@@ -209,7 +209,7 @@ it('types the documented failures', function (int $status, string $reason, Reaso
     throw new LogicException('expected an exception');
 })->with([
     'feature not enabled' => [403, 'FeatureNotEnabled', ReasonCode::FeatureNotEnabled],
-    'limit reached' => [400, 'CannotCreateChannelConfig', ReasonCode::QuotaExceeded],
+    'limit reached' => [400, 'CannotCreateChannelConfig', ReasonCode::ChannelLimitReached],
     'bad channel id' => [400, 'BadChannelId', ReasonCode::ChannelUnknown],
     'invalid token' => [403, 'InvalidProviderToken', ReasonCode::AuthTokenInvalid],
     'too many requests' => [429, 'TooManyRequests', ReasonCode::QuotaExceeded],

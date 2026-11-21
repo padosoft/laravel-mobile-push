@@ -133,7 +133,7 @@ final class QueueWorld
         return unserialize($command);
     }
 
-    /** A distinct APNs device token per number (SendKit::apnsToken() pads with 'a', so 10 and 170 collide). */
+    /** A distinct APNs device token per number (offset by one from SendKit::apnsToken(), which is distinct as well). */
     public static function token(int $i): ApnsDeviceToken
     {
         return ApnsDeviceToken::of(sprintf('%064x', $i + 1));

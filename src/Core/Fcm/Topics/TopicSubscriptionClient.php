@@ -345,10 +345,13 @@ final class TopicSubscriptionClient
         return $url;
     }
 
-    /** The catalog builds `.../topicSubscriptions`; the item path `.../topicSubscriptions/{topic}` appends one encoded segment. */
+    /** The item path `.../topicSubscriptions/{topic}`, built and validated by the catalog. */
     private function itemUrl(#[\SensitiveParameter] FcmToken|FcmFid $installation, FcmTopic $topic): string
     {
-        return $this->collectionUrl($installation).'/'.rawurlencode($topic->value());
+        $url = $this->endpoints->fcmTopicSubscriptionItemUrl($this->projectId, $installation->value(), $topic->value());
+        $this->endpoints->assertOfficial($url, EndpointRole::FcmApi);
+
+        return $url;
     }
 
     /**

@@ -65,7 +65,7 @@ final class ApnsReasonCatalog
             $r('BadRequestParams', 400, Code::PayloadInvalid, 'The JSON body contains an attribute APNs does not recognise: remove it.'),
             $r('BadRequestPayload', 400, Code::PayloadInvalid, 'The JSON body could not be parsed by APNs: report this as a package bug.'),
             $r('MissingPushType', 400, Code::RequestInvalid, 'apns-push-type is missing: broadcast requests require LiveActivity.'),
-            $r('CannotCreateChannelConfig', 400, Code::QuotaExceeded, 'The app reached the maximum number of broadcast channels: delete channels no longer used before creating new ones.'),
+            $r('CannotCreateChannelConfig', 400, Code::ChannelLimitReached, 'The app reached the maximum number of broadcast channels: delete channels no longer used before creating new ones.'),
             // 403 — credentials
             $f('BadCertificate', 403, Code::AuthCertificateInvalid, 'The client certificate is invalid: renew or replace it.', credential: Cred::ReportAuthFailure),
             $f('BadCertificateEnvironment', 403, Code::AuthCertificateInvalid, 'The client certificate is for the other environment: use the matching certificate or endpoint.', credential: Cred::ReportAuthFailure),
