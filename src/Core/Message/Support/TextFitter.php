@@ -23,9 +23,12 @@ final class TextFitter
             while (($overflow = $measure($fields) - $limit) > 0 && $fields[$name] !== '') {
                 $target = strlen($fields[$name]) - $overflow;
                 $shorter = Truncator::truncateToBytes($fields[$name], max(0, $target), $ellipsis);
+                // Progress guard: the truncation is always shorter when the overflow is positive; emptying the field
+                // otherwise is what guarantees the loop ends whatever the measure callback does.
                 $fields[$name] = strlen($shorter) < strlen($fields[$name]) ? $shorter : '';
             }
 
+            // Same answer as the final return, one field earlier: it only saves measuring again for the others.
             if ($measure($fields) <= $limit) {
                 return $fields;
             }

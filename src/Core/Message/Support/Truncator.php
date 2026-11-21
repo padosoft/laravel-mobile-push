@@ -118,6 +118,8 @@ final class Truncator
         while ($start < $length) {
             $next = 0;
             $grapheme = grapheme_extract($text, 1, GRAPHEME_EXTR_COUNT, $start, $next);
+            // Termination guard: with valid UTF-8 (checked by graphemes()) ICU always returns a non-empty cluster
+            // and advances, so this never fires; it is what keeps a misbehaving ICU from looping a worker forever.
             if ($grapheme === false || $grapheme === '' || ! is_int($next) || $next <= $start) {
                 break;
             }

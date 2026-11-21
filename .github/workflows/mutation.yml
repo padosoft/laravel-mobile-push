@@ -40,13 +40,28 @@ jobs:
           - name: guards
             classes: 'Padosoft\MobilePush\Core\Guard\RateLimiter,Padosoft\MobilePush\Core\Guard\AuthBreaker,Padosoft\MobilePush\Core\Guard\DestinationQualityBreaker,Padosoft\MobilePush\Core\Guard\ThrottleGate'
             tests: tests/Unit/Core/Guard tests/Scenario/Guard tests/Scenario/Send
+          - name: apns-compile
+            classes: 'Padosoft\MobilePush\Core\Apns\ApnsCompiler,Padosoft\MobilePush\Core\Apns\ApnsPayloadLimits,Padosoft\MobilePush\Core\Apns\TopicResolver'
+            tests: tests/Unit/Core/Apns tests/Scenario/Apns/Compile
+          - name: fcm-compile
+            classes: 'Padosoft\MobilePush\Core\Fcm\FcmCompiler,Padosoft\MobilePush\Core\Fcm\FcmPayloadLimits'
+            tests: tests/Unit/Core/Fcm/Message tests/Scenario/Fcm/Compile
+          - name: transport-parsers
+            classes: 'Padosoft\MobilePush\Core\Transport\Curl\HeaderParser,Padosoft\MobilePush\Core\Transport\Curl\CurlErrorClassifier'
+            tests: tests/Unit/Core/Transport
+          - name: ledger-core
+            classes: 'Padosoft\MobilePush\Core\Ledger\LedgerRules,Padosoft\MobilePush\Core\Ledger\InMemoryLedger'
+            tests: tests/Unit/Core/Ledger tests/Scenario/Ledger
+          - name: ledger-database
+            classes: 'Padosoft\MobilePush\Laravel\Ledger\DatabaseLedger'
+            tests: tests/Unit/Laravel/Ledger tests/Scenario/Laravel/Ledger
     name: Mutation · ${{ matrix.name }}
     steps:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'
-          extensions: curl, openssl, json, intl
+          extensions: curl, openssl, json, intl, pdo_sqlite
           coverage: pcov
       - uses: actions/setup-node@v4
         with:
