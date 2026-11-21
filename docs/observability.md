@@ -6,7 +6,7 @@ here is optional and **off by default** unless the table says otherwise.
 | Piece | Switch | Migration tag |
 |---|---|---|
 | Send log, `log` sink (a Laravel log channel) | `mobile-push.log.sinks` contains `log` (env `MOBILE_PUSH_LOG_SINKS=log`) | none |
-| Send log, `database` sink | `log.sinks` contains `database` | `php artisan vendor:publish --tag=mobile-push-migrations-logs` |
+| Send log, `database` sink | `log.sinks` contains `database` | `php artisan vendor:publish --tag=mobile-push-migrations-logs` then `php artisan migrate` (or `mobile-push:install`; with `MOBILE_PUSH_MIGRATIONS_AUTOLOAD=true` `migrate` loads the package file and nothing is published) |
 | Send log, `otel` sink | `log.sinks` contains `otel` and `open-telemetry/api` installed | none |
 | Pulse card | `mobile-push.pulse.enabled` (env `MOBILE_PUSH_PULSE_ENABLED=true`) | none (views: `--tag=mobile-push-views`) |
 | Telescope entries | `mobile-push.telescope.enabled` = `auto` (default), `true`, `false` (env `MOBILE_PUSH_TELESCOPE_ENABLED`) | none |
@@ -148,8 +148,9 @@ created_at)`, `(status, created_at)` and `(campaign_id, status)`). `PushLog` is 
 | `sampled` | every non-routine record plus a random share (`sample_rate`, 0 to 1) of the routine ones |
 
 Prune with `php artisan mobile-push:logs:prune [--days=N] [--pretend] [--json]` (default `log.database.retention_days`).
-The package does **not** schedule it; add it to your scheduler. The command skips with a warning when the `database` sink
-is not enabled.
+The package schedules it daily while the `database` sink is enabled (see [commands](commands.md#what-the-package-schedules-by-itself));
+run it yourself with `--days=` for another retention. The command skips with a warning when the `database` sink is not
+enabled.
 
 ### The `otel` sink (OpenTelemetry)
 
@@ -359,8 +360,9 @@ warning. The sending itself uses `Notification::route()` and `notifyNow()`.
 
 Circuit and failover alerts are raised while sending (the manager's observer calls the alerter). The periodic ones
 (error rate, ledger backlog, failing sinks) come from `OpsAlerter::evaluate()`, which `IntegrationModule` schedules
-**every minute** while `alerts.enabled` is true (the event is named `mobile-push:alerts`, without overlapping; check with
-`php artisan schedule:list`). Your scheduler must run `schedule:run` every minute.
+**every minute** while `alerts.enabled` is true (the event is named `mobile-push:alerts`, without overlapping, not `onOneServer()`; check with
+`php artisan schedule:list`). Your scheduler must run `schedule:run` every minute: see
+[commands](commands.md#what-the-package-schedules-by-itself) for everything the package schedules.
 
 ## Credential monitoring
 
@@ -374,4 +376,6 @@ raises `credential_expiring` / `credential_expired` alerts. Exit code **0 ok, 1 
 connections of the push manager (bound by `IntegrationModule`); a connection whose secret cannot be read is reported as an
 error finding, and if no source is available it says that credentials cannot be verified from here instead of reporting
 ok. `mobile-push:doctor` gives a wider environment check. Apple's certificate extensions are decoded best-effort and were not verified against real certificates.
-Schedule it daily: the package does not.
+The package schedules it daily (at `maintenance.daily_at`, default 03:17, unless `maintenance.schedule` is false), so the
+expiry alerts need only the scheduler running and `alerts.enabled`. With alerts off the scheduled run sends nothing: it only
+computes the findings (see its exit code, and `mobile-push:health`).

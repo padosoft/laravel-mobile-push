@@ -6,7 +6,7 @@ Receipts let the app tell your server that a push **reached it** ("received") or
 | | |
 |---|---|
 | Enable | `mobile-push.receipts.enabled` = `true` (env `MOBILE_PUSH_RECEIPTS_ENABLED=true`) **and** `mobile-push.delivery.profile` = `durable` (env `MOBILE_PUSH_DELIVERY_PROFILE=durable`) |
-| Migration tag | the ledger migrations: `php artisan vendor:publish --tag=mobile-push-migrations-ledger` then `php artisan migrate` (the third file adds the receipt columns `message_id`, `receipt_marker` and the client event columns) |
+| Migration tag | the ledger migrations: `php artisan vendor:publish --tag=mobile-push-migrations-ledger` then `php artisan migrate` (or `php artisan mobile-push:install`; with `MOBILE_PUSH_MIGRATIONS_AUTOLOAD=true` nothing is published and `migrate` loads the package files). The third file adds the receipt columns `message_id`, `receipt_marker` and the client event columns; all migrations are idempotent |
 | Route | `POST {prefix}/receipts`, default `POST /mobile-push/receipts` |
 
 With `receipts.enabled = true` but the light profile, **no route is registered** and no marker is issued: receipts write to

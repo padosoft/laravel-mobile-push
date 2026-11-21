@@ -161,10 +161,10 @@ At load time every connection is **inspected** (`mobile-push:doctor`, `mobile-pu
 is EC P-256, a certificate is not expired and belongs to the declared team, a service-account file is valid. The
 inspection never contacts a provider. Secret values are held in objects that redact themselves.
 
-**KMS / HSM.** The core library has a `Signer` interface (`algorithm()`, `keyId()`, `sign()`) so that the private key
-need never leave a KMS: the token providers only need signatures. **The config-driven connection does not accept a
-custom signer today**: `ConnectionFactory` always builds an OpenSSL signer from the PEM it reads. A KMS-backed signer
-means assembling the driver yourself from the core classes; there is no configuration key for it.
+**KMS / HSM.** An APNs token connection can name a `signer` (a class or container binding implementing the core `Signer`
+interface) instead of a `key`, so that the private key never leaves the KMS: the package then only receives signatures
+and reads no key file. See [APNs credentials](credentials-apns.md#keeping-the-key-in-a-kmshsm). There is no `signer` for
+FCM; use Application Default Credentials there.
 
 ## Protecting the endpoints the package can expose
 

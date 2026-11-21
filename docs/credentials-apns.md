@@ -89,7 +89,65 @@ The secret is read when the connection is first used in a process, and the resol
 
 ### Keeping the key in a KMS/HSM
 
-`Padosoft\MobilePush\Core\Auth\Signer` is the interface the token providers sign through (`algorithm()`, `keyId()`, `sign($signingInput)`, which for ES256 must return the raw 64-byte `R||S`). An implementation backed by a KMS never needs the key material. **The Laravel connection config has no key to plug in a custom `Signer` today**: the configured APNs connection always signs with the built-in OpenSSL signer from the `key` source. Using a KMS signer currently means building the core `ApnsTokenProvider` and driver yourself, outside the facade.
+`Padosoft\MobilePush\Core\Auth\Signer` is the interface the token providers sign through. For an APNs token connection you can point the connection at a class that implements it, so that the private key never reaches the application: the class asks your KMS/HSM to sign.
+
+```php
+'ios' => [
+    'driver' => 'apns',
+    'auth' => 'token',
+    'team_id' => env('MOBILE_PUSH_APNS_TEAM_ID'),
+    'signer' => App\Push\KmsApnsSigner::class,   // a class or a container binding name; no `key`, `key_id` is optional
+    'bundle_id' => env('MOBILE_PUSH_APNS_BUNDLE_ID'),
+    'environment' => env('MOBILE_PUSH_APNS_ENVIRONMENT', 'production'),
+],
+```
+
+`signer` is accepted in the primary block and in `secondary` (same rules for both). The value must be a string (a closure would break `config:cache`); the container builds it, so the class can take its KMS client in the constructor, and a binding name works as well as a class name.
+
+What the class must satisfy:
+
+- `algorithm()` returns `ES256`. Any other algorithm is refused.
+- `keyId()` returns the 10-character APNs key id: it goes into the `kid` header of the provider token. An empty id is refused. If the connection also sets `key_id`, it must be equal to the signer's, otherwise the connection fails (remove `key_id`, the signer provides it).
+- `sign($signingInput)` returns the **raw 64-byte `R||S`** signature of ES256 (JOSE format), not the DER form most KMS APIs return. Convert the DER answer before returning it.
+
+What is and is not read: with `signer` set, the `key` source is **not read** (it is not even required to exist) and nothing is inspected locally, so the "EC P-256" check does not run: the key is the KMS's business. `team_id` and `bundle_id` stay required. `signer` applies to `auth => token` only; with `auth => certificate` it is ignored. The signer is resolved once per resolved connection (it is cached per process like any connection), and it is called when a provider token is minted, not once per push: the token is renewed by a single process at a time and shared through the cache as described above.
+
+Errors, all raised as a `ConfigurationException` naming the config key when the connection is first used and before any request: the value is not a string, the container cannot resolve it, it resolves to something that is not a `Signer`, it signs with another algorithm, it reports no key id, or its key id differs from `key_id`.
+
+An illustrative skeleton (it cannot run as it is: the KMS client and its method names are yours):
+
+```php
+namespace App\Push;
+
+use Padosoft\MobilePush\Core\Auth\Signer;
+
+final class KmsApnsSigner implements Signer
+{
+    public function __construct(private KmsClient $kms) {}   // your own client, injected by the container
+
+    public function algorithm(): string
+    {
+        return 'ES256';
+    }
+
+    public function keyId(): ?string
+    {
+        return config('services.apns.key_id');                // the 10-character APNs key id
+    }
+
+    public function sign(string $signingInput): string
+    {
+        $der = $this->kms->signEcdsaSha256($signingInput);    // the KMS hashes and signs; usually answers DER
+        return $this->derToRawRs($der);                       // 64 bytes: R and S, 32 bytes each, left-padded
+    }
+}
+```
+
+How the credential checks report it: `mobile-push:doctor`, `mobile-push:connections`, `mobile-push:health` and `mobile-push:credentials:check` do not report a credential error for a `signer` connection; they print an `ok` finding that says "External signer: expiry not verifiable (the key is held outside this application, in a KMS / HSM)". The package cannot warn you before the key is revoked or rotated in the KMS; `doctor --live` still proves the whole chain with APNs.
+
+Not verified: the signer path is tested with a signer that wraps a key generated at runtime and verified against its public key. It has **not been run against a real KMS or HSM**, nor against APNs with a KMS-made signature (a KMS signature is plain ECDSA P-256, which is what ES256 needs, but this project has not tested one).
+
+There is **no `signer` for FCM**: the Google credential is an RSA service-account key that the core signs itself, and the connection does not accept a custom signer. If the key must not be exportable on the Android side, use Application Default Credentials or Workload Identity Federation through `google/auth` (see [FCM credentials](credentials-fcm.md#option-2-application-default-credentials-googleauth)).
 
 ## Certificate authentication (mTLS)
 
@@ -139,7 +197,7 @@ Connection "ios"
   ✓ apns: com.example.shop (sandbox, team ABCDE12345, key id TEST123456), generation cedf01e7fd19.
 ```
 
-A missing or unreadable key, a key that is not P-256, an expired certificate, a key that does not match its certificate, or a secondary of another team is a failure with a remedy. What it cannot know offline (the Key ID really belongs to the Team ID, the key covers the bundle id, the environment is right) needs a real request: `php artisan mobile-push:doctor --live` sends **one real push per APNs connection to an obviously invalid device token**. APNs answering `BadDeviceToken` proves the authentication works; an authentication error is reported as a failure. The probe is refused when the effective mode is `simulate`, and outside production it is skipped unless the connection allows live sending to that destination; in practice, run it from production or with `MOBILE_PUSH_MODE=live`.
+A missing or unreadable key (not applicable to a connection with an external `signer`), a key that is not P-256, an expired certificate, a key that does not match its certificate, or a secondary of another team is a failure with a remedy. What it cannot know offline (the Key ID really belongs to the Team ID, the key covers the bundle id, the environment is right) needs a real request: `php artisan mobile-push:doctor --live` sends **one real push per APNs connection to an obviously invalid device token**. APNs answering `BadDeviceToken` proves the authentication works; an authentication error is reported as a failure. The probe is refused when the effective mode is `simulate`, and outside production it is skipped unless the connection allows live sending to that destination; in practice, run it from production or with `MOBILE_PUSH_MODE=live`.
 
 `php artisan mobile-push:credentials:check` lists the same findings per connection (codes such as `apns.key.valid`, `apns.certificate.expiring`, `apns.certificate.key_mismatch`), never contacts Apple, can raise the expiry alerts (`--no-alert` to only report), supports `--json`, and exits 0 (ok), 1 (warnings, for example a certificate close to expiry) or 2 (errors). Schedule it daily if you use certificates.
 

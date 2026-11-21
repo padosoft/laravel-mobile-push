@@ -29,7 +29,9 @@ php artisan mobile-push:install
 
 It asks which optional modules you want (device registry, Live Activities, database send log, campaigns, receipts) and which delivery profile (`light`: best effort, no tables; `durable`: every delivery recorded in a ledger before it is sent). For a first try answer **no** to every module and choose **light**: you can enable them later. Non-interactive form: `php artisan mobile-push:install --profile=light` (`--modules=devices,logs`, `--force` to overwrite published files).
 
-It publishes `config/mobile-push.php` (and the migrations of the modules you chose), then prints the `.env` variables to set, the queue worker setup, and the next command to run.
+It publishes `config/mobile-push.php` (and the migrations of the modules you chose, which are safe to run twice), then prints the `.env` variables to set, the queue worker setup, and the next command to run. It does not run `php artisan migrate`: do that when you want the tables. Migrations are published, not loaded from `vendor/`, unless you set `MOBILE_PUSH_MIGRATIONS_AUTOLOAD=true` (config `migrations.autoload`): then nothing is published and `migrate` loads the files of the enabled modules instead. Use one way or the other; a published copy always wins, so a table is never created twice.
+
+**The scheduler.** The package registers a few scheduled tasks itself (sweepers and alerts when they are enabled, and a daily maintenance run: the prune commands of the modules you enabled and a credentials check at `03:17`). They only run if your host runs Laravel's scheduler: add the standard cron entry `* * * * * php artisan schedule:run` (or use `php artisan schedule:work` locally). With the default light profile and no optional module the only scheduled entry is the daily credentials check. The full list, conditions and switches: [commands](commands.md#what-the-package-schedules-by-itself).
 
 ## 3. Create the APNs key (iOS)
 
@@ -128,7 +130,7 @@ What each section checks:
 | Connection "…" | Each connection's credentials, read and checked locally (key type, certificate dates, key/certificate match, service-account fields, secondary of the same team/project); a summary line with app id, environment and credential identity | The finding says what is wrong and how to fix it. Nothing is sent to Apple or Google. |
 | Cache | The cache store used for provider tokens, breakers and rate limits is reachable and takes locks | Point `MOBILE_PUSH_CACHE_STORE` to a shared, lock-capable store (redis, memcached, database, dynamodb) in production. |
 | Queue timeouts | The time-budget chain transport timeout < chunk deadline < job timeout < worker timeout < `retry_after` (SQS: visibility timeout) | A violation means a slow send could be redelivered to a second worker and sent twice. "Not verifiable" means the worker timeout cannot be read: declare it (`queue.worker_timeout`). See [queues-and-horizon.md](queues-and-horizon.md). |
-| Database | The tables of the enabled modules exist | Publish and run the migrations it names. |
+| Database | The tables of the enabled modules exist | Publish the migrations it names (`mobile-push:install` or the module's publish tag) and run `php artisan migrate`; with `migrations.autoload` just run `migrate`. |
 | Clock | Information only | Keep NTP running. |
 
 Symbols: `✓` ok, `i` information, `! warning:`, `! not verifiable:` (a check that could not be performed is never reported as a pass), `✗ failed:`. Exit code: 0 everything fine, 1 warnings or something not verifiable, 2 at least one failure. `--json` prints the same as JSON; `php artisan mobile-push:doctor ios` checks one connection.

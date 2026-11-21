@@ -113,9 +113,9 @@ Same family: the two environments have different tokens and different endpoints,
 
 ### `Guard state is too contended to update`
 
-**Cause.** The shared cache store cannot do the compare-and-set the breakers and the rate limiter need: the store is `file` on several hosts, `null`, unreachable, or has no lock support.
+**Cause.** The shared cache store is alive but the compare-and-set that the breakers and the rate limiter need keeps losing (many workers writing the same keys, or a store that is very slow). The destinations are `Deferred` with `quota_exceeded` and nothing is sent. This is **not** what a dead cache looks like: when the store is unreachable the guards fail open, sending continues without cross-process limits and the log shows the warning "mobile-push cache unavailable: behaving as an empty store." (at most once a minute; the backend is retried after 5 seconds). See [retries and limits](/reliability/retries-and-limits#retries-limits-and-circuit-breakers-rate-limit-messages-per-provider-account-when-the-cache-behind-the-guards-is-down).
 
-**Remedy.** Point `cache.store` (`MOBILE_PUSH_CACHE_STORE`) at `redis`, `memcached`, `database` or `dynamodb`. `doctor` reports "The cache store cannot take locks".
+**Remedy.** Point `cache.store` (`MOBILE_PUSH_CACHE_STORE`) at `redis`, `memcached`, `database` or `dynamodb` (not `file` across several hosts, not `array` or `null`), and reduce the number of workers writing the same account if the store is saturated. `doctor` reports "The cache store cannot take locks". If the cache warning appears in the log, fix the cache server: until then the rate limit and the breakers do not protect you across processes.
 
 ### `table "mobile_push_effects" already exists` when migrating
 

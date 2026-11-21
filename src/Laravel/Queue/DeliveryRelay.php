@@ -8,11 +8,8 @@ use Padosoft\MobilePush\Core\Driver\MessageIds;
 use Padosoft\MobilePush\Core\Driver\SendItem;
 use Padosoft\MobilePush\Core\Exceptions\UnknownConnectionException;
 use Padosoft\MobilePush\Core\Exceptions\ValidationException;
-use Padosoft\MobilePush\Core\Identity\BindingRef;
 use Padosoft\MobilePush\Core\Ledger\ClaimedDelivery;
-use Padosoft\MobilePush\Core\Ledger\DeliveryBatches;
 use Padosoft\MobilePush\Core\Ledger\Effect;
-use Padosoft\MobilePush\Core\Ledger\Lease;
 use Padosoft\MobilePush\Core\Ledger\Ledger;
 use Padosoft\MobilePush\Core\Ledger\LedgerTime;
 use Padosoft\MobilePush\Core\Ledger\RecordedDestination;
@@ -35,7 +32,8 @@ use Psr\Clock\ClockInterface;
  *  2. per effect: load the effect and its message snapshot; a missing effect or an erased snapshot is recorded as
  *     Skipped(Cancelled) and nothing is sent; a connection that no longer resolves is Skipped(BindingMismatch);
  *  3. registry devices are resolved in one query per chunk; an ineligible device is Skipped(PolicyIneligible);
- *  4. markAttemptStarted() right before the Sender takes the item; an item whose lease was lost is not sent;
+ *  4. markAttemptStarted() for exactly the requests the Sender is about to hand to the transport (RelayRecorder is a
+ *     TransmitObserver; one statement per pass); a request whose lease was lost is withheld, not sent;
  *  5. PushDispatcher::send() with the default options of the binding plus the effect's traffic class, effect key,
  *     absolute expiry, the receipt marker callback (when the receipts module is present) and a per-call
  *     observer that records every result with its final budget as it arrives;
@@ -171,31 +169,21 @@ final readonly class DeliveryRelay
             $this->skip($c, $reason, $recorder);
         }
 
-        $handed = $lost = 0;
-        $window = $this->window($effect->binding, $options->window);
-        $items = function () use ($toSend, $recorder, $window, &$handed, &$lost): \Generator {
-            // The Sender pulls one window of items, sends it, then pulls the next: the batch of `$window` items is
-            // marked started in one statement when its first item is pulled, and the results of the previous window
-            // are written right then (before this window reaches the network).
-            foreach (array_chunk($toSend, $window) as $batch) {
-                $recorder->flushWindow();
+        $items = function () use ($toSend, $recorder): \Generator {
+            // The attempt is marked started by the recorder (a TransmitObserver) when the Sender is about to hand the
+            // requests to the transport: an item still waiting in the Sender's window when the worker dies stays
+            // leased, i.e. simply due again after the lease, with no attempt counted and no unknown outcome.
+            foreach ($toSend as [$c, $destination]) {
                 if ($recorder->hasFailures()) {
                     return; // the ledger is not taking writes: leave the rest leased, not started (requeued on expiry)
                 }
-                $started = $this->markStarted(array_map(static fn (array $pair): ClaimedDelivery => $pair[0], $batch));
-                foreach ($batch as [$c, $destination]) {
-                    if (! isset($started[$c->id()])) {
-                        $lost++;
+                $recorder->expect($c->id(), $c->effectId(), $c->lease);
 
-                        continue;
-                    }
-                    $recorder->expect($c->id(), $c->effectId(), $c->lease);
-                    $handed++;
-
-                    yield new SendItem($destination, $c->budget(), $c->id(), self::resumedMessageId($c));
-                }
+                yield new SendItem($destination, $c->budget(), $c->id(), self::resumedMessageId($c));
             }
         };
+        $startedBefore = $recorder->started;
+        $lostBefore = $recorder->lost;
 
         try {
             $report = $this->dispatcher->send($effect->binding, $message, $items(), $options);
@@ -216,41 +204,7 @@ final readonly class DeliveryRelay
             }
         }
 
-        return [$handed, $lost];
-    }
-
-    /**
-     * markAttemptStarted() for a batch: one statement with a ledger that supports it.
-     *
-     * @param  list<ClaimedDelivery>  $claimed
-     * @return array<string, true> delivery ids that may be sent
-     */
-    private function markStarted(array $claimed): array
-    {
-        if ($this->ledger instanceof DeliveryBatches) {
-            return array_fill_keys($this->ledger->markAttemptsStarted(array_map(static fn (ClaimedDelivery $c): Lease => $c->lease, $claimed)), true);
-        }
-        $started = [];
-        foreach ($claimed as $c) {
-            if ($this->ledger->markAttemptStarted($c->lease)) {
-                $started[$c->id()] = true;
-            }
-        }
-
-        return $started;
-    }
-
-    /** The Sender's window for this binding (how many items it pulls before sending): the batch size of the relay. */
-    private function window(BindingRef $binding, ?int $window): int
-    {
-        if ($window !== null) {
-            return max(1, $window);
-        }
-        try {
-            return max(1, $this->dispatcher->driver($binding)->window());
-        } catch (\Throwable) {
-            return 1;
-        }
+        return [$recorder->started - $startedBefore, $recorder->lost - $lostBefore];
     }
 
     private function message(string $scope, string $effectId): ?Message

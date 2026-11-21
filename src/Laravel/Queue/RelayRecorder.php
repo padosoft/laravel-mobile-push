@@ -8,6 +8,7 @@ use Padosoft\MobilePush\Core\Driver\AttemptReport;
 use Padosoft\MobilePush\Core\Driver\GuardTransition;
 use Padosoft\MobilePush\Core\Driver\SendItem;
 use Padosoft\MobilePush\Core\Driver\SendObserver;
+use Padosoft\MobilePush\Core\Driver\TransmitObserver;
 use Padosoft\MobilePush\Core\Identity\BindingRef;
 use Padosoft\MobilePush\Core\Ledger\DeliveryBatches;
 use Padosoft\MobilePush\Core\Ledger\DeliveryStore;
@@ -32,7 +33,7 @@ use Padosoft\MobilePush\Core\Retry\RetryBudget;
  * results of the window it had just finished, which the lease-expiry rule then ends as unknown outcomes, exactly
  * as for a worker that died one statement earlier.
  */
-final class RelayRecorder implements SendObserver
+final class RelayRecorder implements SendObserver, TransmitObserver
 {
     /** @var array<string, Lease> delivery id => lease, for the deliveries handed to the Sender */
     private array $leases = [];
@@ -56,6 +57,15 @@ final class RelayRecorder implements SendObserver
     public array $byStatus = [];
 
     public int $ignored = 0;
+
+    /** Deliveries whose attempt was marked started (handed to the transport). */
+    public int $started = 0;
+
+    /** Deliveries withheld right before transmission because their lease was lost. */
+    public int $lost = 0;
+
+    /** @var array<string, true> delivery ids marked started in this chunk */
+    private array $startedIds = [];
 
     public function __construct(private readonly DeliveryStore $ledger) {}
 
@@ -129,13 +139,66 @@ final class RelayRecorder implements SendObserver
     }
 
     /**
+     * The Sender is about to hand these requests to the transport: write the outcomes of the previous window, then
+     * mark exactly these attempts started (one statement with a DeliveryBatches ledger). A request whose lease was
+     * lost is withheld (not sent) and nothing is written for it. When the ledger is not taking writes every request
+     * is withheld: an attempt whose start cannot be recorded must not leave.
+     */
+    public function beforeTransmit(array $items): array
+    {
+        $this->flushWindow();
+
+        $toStart = $withheld = [];
+        foreach ($items as $requestId => $item) {
+            $id = $item->deliveryId;
+            $lease = $id === null ? null : ($this->leases[$id] ?? null);
+            if ($id === null || $lease === null || isset($this->startedIds[$id])) {
+                continue;   // not ours, or already started (an in-process retry of the same attempt plan)
+            }
+            if ($this->hasFailures()) {
+                $this->done[$id] = true;
+                $withheld[] = (string) $requestId;
+
+                continue;
+            }
+            $toStart[(string) $requestId] = $lease;
+        }
+        if ($toStart === []) {
+            return $withheld;
+        }
+
+        $started = [];
+        if ($this->ledger instanceof DeliveryBatches) {
+            $started = array_fill_keys($this->ledger->markAttemptsStarted(array_values($toStart)), true);
+        } else {
+            foreach ($toStart as $lease) {
+                if ($this->ledger->markAttemptStarted($lease)) {
+                    $started[$lease->deliveryId] = true;
+                }
+            }
+        }
+        foreach ($toStart as $requestId => $lease) {
+            if (isset($started[$lease->deliveryId])) {
+                $this->startedIds[$lease->deliveryId] = true;
+                $this->started++;
+            } else {
+                $this->done[$lease->deliveryId] = true;   // the withheld result is not ours to write
+                $this->lost++;
+                $withheld[] = $requestId;
+            }
+        }
+
+        return $withheld;
+    }
+
+    /**
      * Forget the deliveries of the chunk just finished (their outcomes are stored): one relay run can work through
      * millions of deliveries with flat memory.
      */
     public function release(): void
     {
         if ($this->unsaved === [] && $this->buffered === []) {
-            $this->leases = $this->effects = $this->done = [];
+            $this->leases = $this->effects = $this->done = $this->startedIds = [];
         }
     }
 

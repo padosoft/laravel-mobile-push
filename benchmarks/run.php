@@ -78,7 +78,7 @@ foreach ($names as $name) {
     $say("\n== {$name} ==\n");
     try {
         $result = Scenarios::run($name, $opts);
-    } catch (\Throwable $e) {
+    } catch (Throwable $e) {
         fwrite(STDERR, "Scenario {$name} failed: ".$e::class.': '.$e->getMessage()."\n");
         Scenarios::stopServer();
         exit(1);

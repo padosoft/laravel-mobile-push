@@ -66,7 +66,7 @@ composer require padosoft/laravel-mobile-push
 php artisan mobile-push:install
 ```
 
-It publishes `config/mobile-push.php` and prints the variables and workers you need.
+It publishes `config/mobile-push.php` (and the migrations of the modules you choose; run `php artisan migrate` when you want their tables) and prints the variables and workers you need.
 
 **3. Create the APNs key (iOS).** In your Apple developer account, create a key with the *Apple Push Notifications service* capability and download the `.p8` file (Apple lets you download it only once). Note the **Key ID** and your **Team ID**. Details, key scopes and certificates: [docs/credentials-apns.md](docs/credentials-apns.md).
 
@@ -340,6 +340,7 @@ Optional modules are **off by default** unless the table says otherwise.
 |---|---|---|
 | Direct APNs (HTTP/2, token or certificate auth) and FCM HTTP v1 (service account or ADC) | always on | [sending](docs/sending.md), [credentials APNs](docs/credentials-apns.md), [credentials FCM](docs/credentials-fcm.md) |
 | Unified message, native APNs/FCM messages, capability matrix, size limits, truncation | always on | [messages](docs/messages.md) |
+| External signer for APNs token auth (key kept in a KMS / HSM; not verified against a real KMS) | `connections.<name>.signer` (unset) | [credentials-apns](docs/credentials-apns.md#keeping-the-key-in-a-kmshsm) |
 | Execution modes and safe mode outside production | `MOBILE_PUSH_MODE` (`auto`) | [safe-mode](docs/safe-mode.md) |
 | Retry budget, provider delays, rate limits, circuit breakers, secondary credentials | always on (`retry.*`, `guards.*`) | [retries-and-limits](docs/retries-and-limits.md) |
 | Durable profile: ledger, outbox, relay, sweeper, deduplication | `MOBILE_PUSH_DELIVERY_PROFILE` (`light`) | [delivery-profiles](docs/delivery-profiles.md) |
@@ -349,7 +350,7 @@ Optional modules are **off by default** unless the table says otherwise.
 | Notification channels `push` / `apns` / `fcm` | always registered | [notifications-and-fallback](docs/notifications-and-fallback.md) |
 | Fallback to another notification channel | `MOBILE_PUSH_FALLBACK_ENABLED` (`true`, acts only for notifications that implement `pushFallback()`) | [notifications-and-fallback](docs/notifications-and-fallback.md) |
 | Live Activities and broadcast channels | `MOBILE_PUSH_LIVE_ACTIVITIES_ENABLED` (`false`) | [live-activities](docs/live-activities.md) |
-| FCM topic subscriptions | used on demand (`mobile-push:fcm:topic-subscription`) | [topics](docs/topics.md) |
+| FCM topic subscriptions: `MobilePush::topicSubscriptions()` and the command, behind safe mode | used on demand (`mobile-push:fcm:topic-subscription`) | [topics](docs/topics.md) |
 | Consent hook (`eligibleUsing()`) | always on when registered | [policies](docs/policies.md) |
 | Frequency cap per person and policy | `MOBILE_PUSH_FREQUENCY_ENABLED` (`false`) | [policies](docs/policies.md) |
 | Server-side badge counter | `MOBILE_PUSH_BADGE_ENABLED` (`true`, acts only for messages with `incrementBadge()`) | [policies](docs/policies.md) |
@@ -360,6 +361,7 @@ Optional modules are **off by default** unless the table says otherwise.
 | Health (liveness/readiness), `spatie/laravel-health` check | `health.spatie.register` (`true`, when the package is installed) | [observability](docs/observability.md) |
 | Operational alerts by mail / Slack | `MOBILE_PUSH_ALERTS_ENABLED` (`false`) | [observability](docs/observability.md) |
 | Laravel Pulse card, Telescope entries | `MOBILE_PUSH_PULSE_ENABLED` (`false`), `MOBILE_PUSH_TELESCOPE_ENABLED` (`auto`) | [observability](docs/observability.md) |
+| Daily maintenance: prune commands of the enabled modules and a credentials check, scheduled by the package (needs `schedule:run`) | `MOBILE_PUSH_MAINTENANCE_SCHEDULE` (`true`), `MOBILE_PUSH_MAINTENANCE_DAILY_AT` (`03:17`) | [commands](docs/commands.md#what-the-package-schedules-by-itself) |
 | Encryption at rest, HMAC index, redaction, `forget` / `export` | always on (`privacy.*`) | [security-and-privacy](docs/security-and-privacy.md) |
 | Testing fakes | `MobilePush::fake()`, `MobilePush::fakeTransport()` | [testing](docs/testing.md) |
 
@@ -420,6 +422,8 @@ Every command is described, with its options and exit codes, in [docs/commands.m
     ],
 ],
 ```
+
+Two keys worth knowing early: an APNs token connection can name a `signer` (a class implementing the core `Signer`) instead of `key`, to keep the private key in a KMS or HSM ([docs](docs/credentials-apns.md#keeping-the-key-in-a-kmshsm)); and `migrations.autoload` (`MOBILE_PUSH_MIGRATIONS_AUTOLOAD`, default `false`) makes the enabled modules hand their migrations to `php artisan migrate` instead of publishing them with `mobile-push:install`. The package also schedules a few tasks itself (sweepers, alerts and a daily maintenance run), so your host must run Laravel's scheduler (`* * * * * php artisan schedule:run`).
 
 Each connection is validated the first time it is used: a missing key, an expired certificate or a secondary credential of another team throws a `ConfigurationException` that says how to fix it, before any request.
 

@@ -42,6 +42,34 @@ Related pages: [safe mode](/reliability/safe-mode), [troubleshooting](/operation
 | [`live-activity:start`](/operations/commands#artisan-commands-live-activity-and-channel-commands) ... | Live Activities and broadcast channels (11) | 0, 1, 2 | "nothing was sent and nothing was written", 0 |
 | [`campaign:list`](/operations/commands#artisan-commands-campaign-commands) ... | Campaigns: list, status, pause, resume, cancel, reconcile, sweep, prune (8) | 0, 1, 2 | local (they read and change campaign rows; nothing is sent) |
 
+## What the package schedules by itself
+
+The package adds entries to Laravel's scheduler, so **the host must run the scheduler**: the usual cron entry `* * * * * php artisan schedule:run` (or `php artisan schedule:work` in development). Without it none of the entries below runs. `php artisan schedule:list` shows what is registered on a host. The entries are added when the scheduler is first resolved, from the configuration at that moment.
+
+Every minute:
+
+| Name | What it does | Condition | Overlap |
+|---|---|---|---|
+| `mobile-push:sweep-ledger` | Dispatches `SweepLedgerJob` (relay sweeper) on the push queue | `delivery.profile = durable` and `queue.sweeper.schedule` (default `true`, env `MOBILE_PUSH_QUEUE_SWEEPER`) | none (it queues a job) |
+| `mobile-push:sweep-campaigns` | Dispatches `SweepCampaignsJob` on the bulk queue | `campaigns.enabled`, durable profile and `campaigns.sweeper.schedule` (default `true`) | none |
+| `mobile-push:alerts` | `OpsAlerter::evaluate()`: error rate, ledger backlog, failing sinks | `alerts.enabled` (default `false`) | `withoutOverlapping()`, not `onOneServer()` |
+| `mobile-push:live-activities-flush` | `ActivityManager::flushDue()`: coalesced updates and planned retries | `live_activities.enabled` (default `false`) | `withoutOverlapping()`, not `onOneServer()` |
+
+Once a day, at `maintenance.daily_at` (default `03:17`, `HH:MM`, in the scheduler's time zone; env `MOBILE_PUSH_MAINTENANCE_DAILY_AT`), unless `maintenance.schedule` (default `true`, env `MOBILE_PUSH_MAINTENANCE_SCHEDULE`) is `false`. Each is a separate event named `mobile-push:maintenance:<command>`:
+
+| Command | Scheduled when |
+|---|---|
+| [`deliveries:prune`](/operations/commands#artisan-commands-mobile-pushdeliveriesprune) | `delivery.profile = durable` |
+| [`devices:prune`](/operations/commands#artisan-commands-mobile-pushdevicesprune) | `devices.enabled` |
+| [`logs:prune`](/operations/commands#artisan-commands-mobile-pushlogsprune) | the `database` log sink is among `log.sinks` |
+| `live-activity:prune` | `live_activities.enabled` |
+| `campaign:prune` | `campaigns.enabled` and the durable profile |
+| [`credentials:check`](/operations/commands#artisan-commands-mobile-pushcredentialscheck) | always. With `alerts.enabled` off it sends nothing: it only computes the findings, which show in its exit code (a failed scheduled task on warnings or errors) and in `mobile-push:health` |
+
+Each daily event runs `withoutOverlapping(60)` (the lock is released after an hour, so a crashed run cannot block the next day) and also `onOneServer()` **only when the default cache store (`cache.default`) is one every server shares**: the `redis`, `memcached`, `database` or `dynamodb` driver. On a `file` or `array` store the schedule lock is local to the server and `onOneServer()` would not be global, so it is not applied: on a multi-server deployment without a shared cache, run the scheduler on one server only. The prune commands use the retention of their own module (see each command); the schedule passes no options. An invalid `maintenance.daily_at` is a `ConfigurationException` when the schedule is built.
+
+Not scheduled by the package: `mobile-push:channels:sync --cleanup --force` (delete unused broadcast channels), `mobile-push:relay`, `mobile-push:sweep` (the manual form of the sweeper) and `mobile-push:devices:probe-environment`. Add them to your own schedule if you want them. See also [queues and Horizon](/reliability/queues-and-horizon#queues-workers-horizon-and-the-scheduler-what-to-run-the-scheduler).
+
 ## `mobile-push:install`
 
 ```
@@ -53,7 +81,7 @@ mobile-push:install
 
 A guided first setup. Interactive, it asks which optional modules and which delivery profile; non-interactive it works from `--modules` and `--profile` alone (defaults: no module, light profile). `receipts` with the light profile is refused (receipts need the ledger).
 
-It **publishes** `config/mobile-push.php` (kept if it exists, unless `--force`) and the migrations of the modules and profile you chose, then prints three things: the `.env` variables for one APNs and one FCM connection plus the module switches; the Horizon supervisors and the plain `queue:work` commands for your queue settings (the text in [queues and Horizon](/reliability/queues-and-horizon#queues-workers-horizon-and-the-scheduler-what-to-run)); and the next step, `php artisan mobile-push:doctor`. It also reminds you that until `MOBILE_PUSH_MODE=live` (or `APP_ENV=production`) every send is simulated.
+It **publishes** `config/mobile-push.php` (kept if it exists, unless `--force`) and the migrations of the modules and profile you chose, then prints three things: the `.env` variables for one APNs and one FCM connection plus the module switches; the Horizon supervisors and the plain `queue:work` commands for your queue settings (the text in [queues and Horizon](/reliability/queues-and-horizon#queues-workers-horizon-and-the-scheduler-what-to-run)); and the next step, `php artisan mobile-push:doctor`. It tells you to run `php artisan migrate` when you are ready to create the tables (it does not run it). With `migrations.autoload` on it publishes no migrations and says so: the enabled modules hand their own files to `migrate`. It also reminds you that until `MOBILE_PUSH_MODE=live` (or `APP_ENV=production`) every send is simulated.
 
 | Exit | Meaning |
 |---|---|

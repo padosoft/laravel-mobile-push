@@ -26,6 +26,37 @@
 
 **Payload fingerprint** (decision, W4-I). The effect row stores `v2:k<key version>:<hex>`: HMAC-SHA256 of the canonical message, keyed with a key derived (HKDF, own label) from the encryption key ring (`TokenCipher::digest()`) and bound to the scope, so a short message (an OTP) cannot be confirmed offline from a database dump. Same message, same scope, same key version = same value. Rows written before this change hold the unkeyed `v1:<sha256>` and still match. A keyed value is verified with the key version it names; once that version is removed from the ring the value cannot be verified and a replay of that effect key is a conflict.
 
+## Deduplication window (decision, W5-P)
+
+- An effect key is deduplicated for `ledger.dedupe_seconds` (default 86,400 s; campaigns use `campaigns.retention_days`) from the moment the effect is created. Within the window a replay with the same message returns the same effect (`IntentResult::$created === false`); another message throws `IdempotencyConflictException`.
+- Once the window has passed the key is released and the next call with that key creates a **new** effect. This is deliberate (keys must be reusable eventually, e.g. a daily topic key), and it is explicit: the result then has `created === true` **and** `previousEffectId` = the id of the effect that held the key (`IntentResult::reusedExpiredKey()` is true). A first use of a key has `previousEffectId === null`. The earlier effect is not touched: its deliveries keep going.
+- Retention and window are coherent by construction: `prune()` deletes a delivery only when it is final, older than the retention **and** its effect is past its window, and an effect only when it is past its window and has no delivery left. So an effect is never pruned while its key is still deduplicated, whatever the two settings; a retention shorter than the window simply waits for the window.
+- A campaign planner that finds its key re-owned by another effect (its window ended while it was paused) cancels that new effect and fails the campaign with an explicit error; it never plans into a second effect.
+
+## Logical destination key (decision, W5-P)
+
+- `(effect, logical key)` is unique. For a raw destination the key is the HMAC index of the value; for a registry device it is `dev:<kind>:<device id>` — **without** the device generation.
+- The generation planned is stored in `device_generation` (with the owner) and compared with the registry right before the network: a phone re-registered after the delivery was written (new owner, logout/login, reactivation) is `Skipped` (`generation_changed` / `owner_changed`), so a message planned for the previous holder never reaches the new one ("phone changed hands"). The new holder does not get a second row in the same effect: a crashed campaign slice that runs again after the re-registration writes nothing new, and `planned` counts each device once.
+- Rows written before this change carry `dev:<kind>:<id>:<generation>`. A replay of an existing effect also checks that form (one indexed query per chunk), so an intent replayed across the upgrade does not add a second row for the same device and generation. No data migration is needed.
+
+## Worker writes in batches (W5-P)
+
+`DeliveryBatches` (implemented by both ledgers) is the set-based form of the worker protocol: `markAttemptsStarted(list<Lease>)` marks a whole Sender window started in one statement and returns the ids that may be sent; `recordMany()` records a window's outcomes with one read by primary key and the guarded UPDATEs in one short transaction, between two windows (never during a network call). The guards and transitions are exactly those of `markAttemptStarted()` / `record()`. The relay writes a window's outcomes right before it hands over the next window (or when the report ends): a worker that dies in between loses at most the outcomes of the window it just finished, which the lease-expiry rule then ends as `OutcomeUnknown`, as for a worker that died one statement earlier.
+
+## Indexes and query shape (W5-P)
+
+Every hot query reads only the rows it returns, however many final rows the table holds (asserted on SQLite query plans by `tests/Scenario/Laravel/Ledger/ScalingQueryPlansTest.php`):
+
+| Query | Index |
+|---|---|
+| claim of a scope / of one effect: one query per claimable state, in `(next_attempt_at, id)` order, stopped at the limit | `mp_deliveries_claim_idx (scope, state, next_attempt_at, id)`, `mp_deliveries_effect_claim_idx (effect_id, scope, state, next_attempt_at, id)` |
+| claim, start, record, read-back: by primary key only, guarded by `(id, version[, lease_owner])` — every state change bumps the version except leased → sending | primary key |
+| `scopesWithWork()`, scope-less `health()` | `mp_deliveries_work_idx (state, next_attempt_at, scope)` |
+| `SettlementProbe::hasOpenDeliveries()` / `campaignHasOpenDeliveries()` (existence of a pending, deferred, leased or sending row) | `mp_deliveries_effect_claim_idx`, `mp_deliveries_campaign_state_idx` |
+| campaign device audience (keyset) | `mp_devices_audience_idx (scope, binding_identity, state, id)` |
+
+Migrations: `2026_11_21_000013_add_mobile_push_ledger_scaling_indexes.php` (adds the three ledger indexes, drops `mp_deliveries_due_idx` and `mp_deliveries_effect_state_idx`, which are prefixes of the new ones) and `2026_11_21_000002_add_mobile_push_devices_audience_index.php`. Both are idempotent and published with their module's tag. The plans are verified on SQLite only; MySQL and PostgreSQL choose their own plans (the shape — equality prefix plus ordered range, primary-key IN lists without extra indexed conditions — is the one their planners serve with the same indexes, but this is not yet measured there).
+
 ## Delivery states and the write order
 
 Stored states (`Ledger\DeliveryState`): non-terminal `pending`, `deferred`, `leased` (a worker holds it, no request has left), `sending` (the request is about to leave: from here an expired lease means the outcome is unknown); terminal `accepted`, `rejected`, `failed`, `outcome_unknown`, `expired`, `skipped`, `simulated`, `validated`, plus `cancelled` (a tombstone written by cancel and forget). A row still waiting or in flight reads as `Deferred` in the public `SendStatus`; a cancelled row reads as `Skipped` with `ReasonCode::Cancelled`. A terminal row is never overwritten (`DeliveryStateMachine`).

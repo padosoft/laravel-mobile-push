@@ -4,8 +4,9 @@ declare(strict_types=1);
 
 namespace Padosoft\MobilePush\Benchmarks;
 
+use Composer\InstalledVersions;
+use Padosoft\MobilePush\Core\Identity\Destination\ApnsDeviceToken;
 use Padosoft\MobilePush\Core\Message\PushMessage;
-use Padosoft\MobilePush\Core\Policy\ExecutionMode;
 use Padosoft\MobilePush\Core\Transport\Curl\CurlPoolRegistry;
 use Padosoft\MobilePush\Core\Transport\Curl\CurlTransport;
 use Padosoft\MobilePush\Tests\Support\H2Mock\MockServer;
@@ -240,8 +241,8 @@ final class Compare
 
     private static function pushokVersion(): string
     {
-        $v = \Composer\InstalledVersions::getPrettyVersion('edamov/pushok');
-        $r = \Composer\InstalledVersions::getReference('edamov/pushok');
+        $v = InstalledVersions::getPrettyVersion('edamov/pushok');
+        $r = InstalledVersions::getReference('edamov/pushok');
 
         return ($v ?? '?').' ('.substr((string) $r, 0, 10).')';
     }
@@ -335,7 +336,7 @@ final class Compare
         $out = [];
         foreach ($sender->send($driver, $message, (function () use ($tokens) {
             foreach ($tokens as $t) {
-                yield \Padosoft\MobilePush\Core\Identity\Destination\ApnsDeviceToken::of($t);
+                yield ApnsDeviceToken::of($t);
             }
         })(), Kit::options())->results() as $r) {
             $t = $r->destination->value();
@@ -496,7 +497,7 @@ final class Compare
             $out .= "\n* {$c['name']}\n";
             foreach (['ours', 'pushok'] as $who) {
                 $out .= "  {$who}: ".json_encode(array_diff_key($c[$who], ['server_counts' => 1]), JSON_UNESCAPED_SLASHES)."\n";
-                $out .= "     server: ".json_encode($c[$who]['server_counts'], JSON_UNESCAPED_SLASHES)."\n";
+                $out .= '     server: '.json_encode($c[$who]['server_counts'], JSON_UNESCAPED_SLASHES)."\n";
             }
         }
 

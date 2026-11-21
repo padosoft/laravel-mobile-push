@@ -72,6 +72,14 @@ $fake->assertSentTimes(2);
 consent**: the registry eligibility gate and your `MobilePush::eligibleUsing()` callback still run, and an opted-out user
 still receives nothing. A cap is a courtesy limit; consent is a rule.
 
+### Which destinations the gates see
+
+Checks registered with `MobilePush::eligibleUsing()` receive **every destination kind**, Live Activity tokens, topics and
+conditions included: the callback gets the typed destination and decides (for a Live Activity transition, a topic or a
+broadcast, return `true` unless you have a rule for it). The device-registry eligibility gate and the frequency cap, on the
+other hand, apply to registry device kinds only (APNs and VoIP device tokens, FCM tokens and FIDs), because only those can
+be looked up in the devices table or belong to a person.
+
 ### Configuration
 
 ```php
@@ -156,9 +164,18 @@ and a retry must not add one more.
   are serialised by a compare-and-set (no lost update).
 - An explicit `->badge(n)` wins and never touches the counter.
 - Only registry devices with an owner take part. Destinations without an owner (raw tokens) keep the message exactly as it is.
-- The increment happens when the message is resolved for the owner, **before** the gates run: a device later skipped (not
-  eligible, capped) has still moved the counter. The counter is the server's idea of "unread", not a count of delivered
-  pushes.
+- **When it is incremented.** Once per owner per send, and **only if at least one of the owner's devices passes the
+  device-registry eligibility check and every check registered with `MobilePush::eligibleUsing()`**. An owner whose devices
+  are all refused by those two does not consume an increment (their devices come back `Skipped`, and the counter stays as it
+  was). With the registry off, only the `eligibleUsing()` checks are asked.
+- **What is not asked at that point.** The frequency cap, safe mode, the guards (rate limiter, breakers) and gates added
+  with `withGate()` consume budget or depend on the moment of the send, so they are not evaluated before the increment: a
+  device that is later skipped by the frequency cap, by safe mode or by the guards **has already counted**. The counter is
+  the server's idea of "unread", not a count of delivered pushes.
+- **Your checks run twice.** For a badge send the `eligibleUsing()` callbacks are called once to decide the increment and
+  again when the send itself passes the gates, so they must be **free of side effects** (no counters, no writes, no
+  "consent asked" markers). A callback that throws counts as "may pass" for the increment, and the send then decides and
+  reports it.
 - If the counter store is unavailable the message is sent **unchanged** (no badge change on the device is better than a
   wrong number).
 - The markers that make the increment idempotent expire after 3 days and only the newest 256 per owner are kept: a retry

@@ -171,30 +171,28 @@ php artisan queue:work redis --queue=push-bulk --tries=1 --timeout=55 --memory=2
 
 The durable profile **needs the scheduler**: add the standard Laravel cron entry (`* * * * * php artisan schedule:run`) or run `schedule:work`.
 
-What the package registers itself (each only when enabled, all `everyMinute()`):
+What the package registers itself (each only when its condition holds). The full list, with the daily maintenance, is in [commands](/operations/commands#artisan-commands-what-the-package-schedules-by-itself); in short:
 
-| Name | What | Registered when |
-|---|---|---|
-| `mobile-push:sweep-ledger` | Dispatches `SweepLedgerJob` on the push queue | `delivery.profile = durable` and `queue.sweeper.schedule` (default true) |
-| `mobile-push:sweep-campaigns` | Dispatches `SweepCampaignsJob` on the bulk queue | campaigns enabled, durable profile, `campaigns.sweeper.schedule` |
-| `mobile-push:alerts` | Evaluates the operational alerts (`withoutOverlapping()`: needs a cache lock) | `alerts.enabled` |
-| `mobile-push:live-activities-flush` | Sends the Live Activity updates that are due (`withoutOverlapping()`) | `live_activities.enabled` |
+| Name | What | Registered when | Frequency |
+|---|---|---|---|
+| `mobile-push:sweep-ledger` | Dispatches `SweepLedgerJob` on the push queue | `delivery.profile = durable` and `queue.sweeper.schedule` (default true) | every minute |
+| `mobile-push:sweep-campaigns` | Dispatches `SweepCampaignsJob` on the bulk queue | campaigns enabled, durable profile, `campaigns.sweeper.schedule` | every minute |
+| `mobile-push:alerts` | Evaluates the operational alerts (`withoutOverlapping()`: needs a cache lock) | `alerts.enabled` | every minute |
+| `mobile-push:live-activities-flush` | Sends the Live Activity updates that are due (`withoutOverlapping()`) | `live_activities.enabled` | every minute |
+| `mobile-push:maintenance:<command>` | The prune commands of the enabled modules and `credentials:check` | `maintenance.schedule` (default true) | daily at `maintenance.daily_at` (default `03:17`) |
 
-What **you** should add (the package does not schedule these, and nothing prunes automatically):
+The daily maintenance runs `deliveries:prune` (durable profile), `devices:prune` (devices module), `logs:prune` (database log sink), `live-activity:prune` (Live Activities), `campaign:prune` (campaigns, durable profile) and `credentials:check` (always; it sends expiry alerts only when `alerts.enabled`). Each runs `withoutOverlapping()`, and `onOneServer()` too when the default cache store is shared between servers. Set `maintenance.schedule` to `false` to schedule them yourself, and run `php artisan schedule:list` to see what is registered on a host.
+
+What the package does **not** schedule: `mobile-push:channels:sync --cleanup --force` (broadcast channels: delete the unused ones), which you may add yourself:
 
 ```php
 // routes/console.php (Laravel 11+) or app/Console/Kernel.php
 use Illuminate\Support\Facades\Schedule;
 
-Schedule::command('mobile-push:deliveries:prune')->daily();          // durable profile; --days= or ledger.retention_days
-Schedule::command('mobile-push:devices:prune')->daily();             // devices module
-Schedule::command('mobile-push:logs:prune')->daily();                // database log sink
-Schedule::command('mobile-push:credentials:check')->dailyAt('07:30'); // exit 1 = warning, 2 = error; sends expiry alerts unless --no-alert
-Schedule::command('mobile-push:live-activity:prune')->daily();       // Live Activities
-Schedule::command('mobile-push:channels:sync --cleanup --force')->dailyAt('03:30'); // broadcast channels: delete unused ones
+Schedule::command('mobile-push:channels:sync --cleanup --force')->dailyAt('03:30');
 ```
 
-Each prune command is safe to schedule on a profile or module that is off: it prints a notice and exits 0. `credentials:check` needs a connections source (`ManagerCredentialsSource` is bound by the package); it never contacts a provider. Command details: [commands](/operations/commands).
+Each prune command is safe to run on a profile or module that is off: it prints a notice and exits 0. `credentials:check` needs a connections source (`ManagerCredentialsSource` is bound by the package); it never contacts a provider. Command details: [commands](/operations/commands).
 
 ### The cache store
 

@@ -132,7 +132,7 @@ $loads = [];
 foreach ($reports as $name => $r) {
     $loads[$name] = $r['env']['loadavg_at_start'][0];
 }
-$md .= "**The machine was not idle.** The 1-minute load average at the start of each run was (".implode(', ', array_map(fn ($k, $v) => "{$k}: ".n($v, 1), array_keys($loads), $loads))."), on ".$env['cpu_cores']." cores, so the Node mock server, PHP and other processes on the host competed for CPU during every measurement. Treat absolute figures as indicative and compare numbers only within one table (same run, same conditions). Cells that show `spread N%` varied by more than 15% between repeated runs; for those the range, not the median, is the finding.\n\n";
+$md .= '**The machine was not idle.** The 1-minute load average at the start of each run was ('.implode(', ', array_map(fn ($k, $v) => "{$k}: ".n($v, 1), array_keys($loads), $loads)).'), on '.$env['cpu_cores']." cores, so the Node mock server, PHP and other processes on the host competed for CPU during every measurement. Treat absolute figures as indicative and compare numbers only within one table (same run, same conditions). Cells that show `spread N%` varied by more than 15% between repeated runs; for those the range, not the median, is the finding.\n\n";
 
 $md .= "## Command lines\n\n```\n";
 foreach ($reports as $name => $r) {
@@ -198,7 +198,7 @@ if (isset($reports['many-tenants'])) {
         foreach ($run['extra']['series'] as $p) {
             $rows[] = [$p['tenants_done'], $p['pools'], $p['evictions'], $p['fds'], mib($p['memory_bytes']), $p['server_open_connections'], $p['server_connections_total']];
         }
-        $md .= "**{$c['label']}** (fds before the run: {$run['fds']['before']}; after `close()`: {$run['extra']['after_close']['fds']}, server open connections after close: {$run['extra']['after_close']['server_open_connections']}; PHP memory after gc at the end: ".mib($run['extra']['after_close']['memory_after_gc_bytes'])." MiB, start ".mib($run['mem_start_bytes'])." MiB)\n\n";
+        $md .= "**{$c['label']}** (fds before the run: {$run['fds']['before']}; after `close()`: {$run['extra']['after_close']['fds']}, server open connections after close: {$run['extra']['after_close']['server_open_connections']}; PHP memory after gc at the end: ".mib($run['extra']['after_close']['memory_after_gc_bytes']).' MiB, start '.mib($run['mem_start_bytes'])." MiB)\n\n";
         $md .= md(['tenants done', 'pools in registry', 'evictions', 'open fds', 'PHP memory MiB', 'server: open connections', 'server: connections opened in total'], $rows);
     }
     $md .= caseTable($r['scenarios'][0]['cases']);

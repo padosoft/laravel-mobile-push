@@ -11,8 +11,11 @@ carrying tokens around. It is optional and **off by default**.
 | Model | `mobile-push.devices.model` (default `Padosoft\MobilePush\Laravel\Devices\PushDevice`; yours must extend it) |
 | Pruning | `mobile-push.devices.prune.invalidated_days` (30), `mobile-push.devices.prune.inactive_days` (365) |
 
-When the module is enabled the package also loads its migration by itself; publishing it is for apps that keep their
-migrations under version control (the usual case).
+The migration is **published** into your `database/migrations` (by `mobile-push:install` or the tag above), not loaded
+from `vendor/`, and it is idempotent (it skips a table or column that already exists). With
+`mobile-push.migrations.autoload` = `true` the enabled module registers its package file with `migrate` instead and no
+publish tag exists; a copy you already published always wins, so the table is never created twice. You need one way or the
+other, never both.
 
 What was and was not verified: the registry is covered by scenario tests on SQLite. MySQL and PostgreSQL were not
 exercised, and nothing has been run against real APNs or FCM or a real device.
@@ -306,9 +309,9 @@ php artisan mobile-push:devices:prune --invalidated-days=14 --inactive-days=180
 ```
 
 It deletes invalidated rows whose state changed more than `invalidated_days` ago and rows (any state) not seen for
-`inactive_days` (`last_seen_at`, or `registered_at` when never seen), in chunks of 500. The package does **not**
-schedule it: add it to your scheduler (`Schedule::command('mobile-push:devices:prune')->daily();`). It skips with a
-warning when the module is disabled. Programmatic use: `DevicePruner::prune(?int $invalidatedOlderThanDays, ?int $inactiveOlderThanDays, bool $dryRun)`.
+`inactive_days` (`last_seen_at`, or `registered_at` when never seen), in chunks of 500. The package schedules it daily
+while the devices module is enabled (`maintenance.schedule`, at `maintenance.daily_at`; see
+[commands](commands.md#what-the-package-schedules-by-itself)). It skips with a warning when the module is disabled. Programmatic use: `DevicePruner::prune(?int $invalidatedOlderThanDays, ?int $inactiveOlderThanDays, bool $dryRun)`.
 
 For privacy requests, `mobile-push:export` and `mobile-push:forget` handle a whole owner (see
 [security and privacy](security-and-privacy.md) and [commands](commands.md)).

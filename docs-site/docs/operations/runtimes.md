@@ -11,7 +11,7 @@ All measurements: PHP 8.3.6 CLI (NTS) with `pcntl`/`posix`, libcurl 8.5.0 (nghtt
 
 ## What "connection reuse" means here
 
-`CurlTransport` keeps one persistent `curl_multi` handle per **pool key** (credential identity + endpoint role + environment + TLS/proxy profile + generation) in a **per-process** registry (`CurlPoolRegistry::process()`, a static). A connection is therefore reused only by later sends **in the same OS process**: across jobs of one queue worker, across requests of one long-lived HTTP worker. Nothing is shared between processes. The registry holds at most 32 pools (LRU; the evicted pool is closed), closes a pool idle longer than its `max_idle_seconds`, and abandons inherited pools when it notices a PID change. The manager keeps at most `mobile-push.connection_cache.size` (default 64) resolved connections and closes the pools of the one it evicts. See [transport.md](/reference/transport).
+`CurlTransport` keeps one persistent `curl_multi` handle per **pool key** (credential identity + endpoint role + environment + TLS/proxy profile + generation) in a **per-process** registry (`CurlPoolRegistry::process()`, a static). A connection is therefore reused only by later sends **in the same OS process**: across jobs of one queue worker, across requests of one long-lived HTTP worker. Nothing is shared between processes. The registry holds at most 32 pools by default (`transport.max_pools`; LRU; the evicted pool is closed), closes a pool idle longer than its `max_idle_seconds`, and abandons inherited pools when it notices a PID change. The manager keeps at most `mobile-push.connection_cache.size` (default 64) resolved connections and closes the pools of the one it evicts. See [transport.md](/reference/transport).
 
 ## Matrix
 
@@ -60,7 +60,7 @@ They need Node ≥ 18 (mock server), `pcntl`/`posix` (fork scenarios) and, for t
 
 - Transport: 200 pool keys in sequence, then all again: the server never saw more than **32** open connections (the registry limit) after each send, 400 connections in total (an LRU cycle longer than the limit reconnects every revisit), 368 evictions, each evicted pool closed (server-side close observed), process sockets = 32, descriptors and memory flat between the first and the second pass. A working set under the limit (8 tenants × 3 passes) → 8 connections, no eviction. Soak (`slow`): 10 passes.
 - Laravel: 200 tenants registered at runtime (`MobilePush::register(..., scope)`), each with its own APNs key, served twice: with `connection_cache.size` 16 the server never saw more than **16** open connections (the manager closes the pools of the drivers it evicts); with the default 64 above the registry's 32, never more than **32**. 400/400 accepted, memory growth on the second pass < 512 KiB, descriptors equal; `MobilePush::flush()` closes all.
-- The registry limit (32) is not configurable from the Laravel config: `SendingModule` builds `new CurlTransport` on the process registry.
+- The registry limit (32) is configurable: `transport.max_pools` (env `MOBILE_PUSH_TRANSPORT_MAX_POOLS`, an integer of at least 1). With the default value `SendingModule` builds `new CurlTransport` on the shared per-process registry. With any other value it gives the `Transport` singleton **a dedicated registry** of that size: its pools are no longer shared with other `CurlTransport` instances of the process, and live as long as that singleton. Raise it when one process serves many distinct connections or tenants (one pool per provider endpoint, credential and settings); the numbers measured above are for the default of 32 and have not been repeated for other values.
 
 ### 4. Overlapping sends in one process (simulated coroutines)
 
@@ -76,11 +76,11 @@ Two "requests" (PHP Fibers) each iterate their own `send()` on the **same pool**
 
 **Shared app** (the app booted once, the same container for every request — a queue worker, or an Octane worker where the manager was resolved at boot), 40 tenants in a row, each request with `scopeUsing()`, a tenant resolver, its own key and device (`RequestIsolationTest`): every request sent only with its own scope, its own team/key JWT, to its own device; the `PushBatchCompleted` event and the log record carried its scope; the log buffer was empty after `terminate()`; one bearer per tenant, never another tenant's. A tenant whose key is refused trips **its** auth breaker only (shared store, keyed by account): the next tenant is accepted, the refused tenant stays off the wire in its next request (`Skipped` / `CircuitOpen`).
 
-Pinned limitations of a shared manager (the API is process-level, not request-level):
+Pinned limitations of a shared manager (the API is process-level, not request-level). The recommended pattern stays **configure once, at boot**; each of these has an undo for the cases where that is not possible:
 
-- a request that does not call `scopeUsing()` **inherits the previous request's scope** → call `scopeUsing()` once at boot with a resolver that reads the current request (`fn () => app(CurrentTenant::class)->id ?? 'default'`);
-- `eligibleUsing()` called per request **accumulates**: every earlier check keeps running in later requests (`FallbackPolicy::when()` of the notifications module has the same shape) → register checks once, at boot;
-- `register()` keeps every runtime connection (with its key material) for the life of the process, with no way to remove it → for many tenants use `resolveConnectionUsing()` (resolved on demand, the drivers bounded by the cache).
+- a request that does not call `scopeUsing()` **inherits the previous request's scope** → call `scopeUsing()` once at boot with a resolver that reads the current request (`fn () => app(CurrentTenant::class)->id ?? 'default'`). To remove a resolver, call `MobilePush::scopeUsing(null)` or `MobilePush::forgetScopeResolver()` (the scope then falls back to `mobile-push.scope`);
+- `eligibleUsing()` called per request **accumulates**: every earlier check keeps running in later requests (`FallbackPolicy::allowUsing()` of the notifications module has the same shape) → register checks once, at boot. To remove one, pass the same callable to `MobilePush::forgetEligibility($check)` (it returns how many registrations it removed; a closure must be the very same instance). `FallbackPolicy::forget($check)` (same rules, returns the count removed) and `FallbackPolicy::flush()` (removes all) do the same for the fallback checks registered with `allowUsing()`;
+- `register()` keeps every runtime connection (with its key material) for the life of the process → for many tenants use `resolveConnectionUsing()` (resolved on demand, the drivers bounded by the cache). To drop one, call `MobilePush::unregister($name, $scope)` (it also drops the cached driver and closes its pools; a configured connection of the same name is used again from the next send); to drop a connection resolver, `MobilePush::forgetConnectionResolver()` (drivers already resolved through it stay cached until `forgetConnection($name)` or `flush()`).
 
 **Octane sandbox** (`OctaneSandboxTest`; Octane's mechanism reproduced: `clone $app` per request, the clone bound as container and facade root, cloned config, `terminate()` at the end; Octane itself not installed):
 
@@ -93,12 +93,12 @@ Singletons registered by the package and what a long-lived process must know abo
 
 | Singleton | Shared state | Classification |
 |---|---|---|
-| `Transport` (`CurlTransport`) | pools in the static per-process registry | **share** (designed to be shared; the registry survives even a per-request transport) |
+| `Transport` (`CurlTransport`) | pools in the static per-process registry | **share** (designed to be shared; with the default `transport.max_pools` the registry survives even a per-request transport, with another value the pools belong to the singleton) |
 | `SendingSettings`, `HealthSettings`, `LiveActivitiesConfig`, `FrequencyLimits`, `EndpointCatalog` | config snapshot at first resolution | share; a config change at runtime needs `forgetInstance()` (as with any Laravel singleton) |
 | `TokenIndex`, `TokenCipher`, `Redactor`, `ReceiptMarker` | key rings from config | share |
 | `TokenStore` (`CacheTokenStore`), `GuardStore` (`CacheGuardStore`), `CacheHealth` | none (refresh locks only during a call; warning throttle) | share; the **cache store** behind them must be shared across processes (not `array`) |
 | `Senders`, `Guards`, `Sender`, `SafeModeGuard`, `ConnectionFactory` | no per-request state (guard state is in the store) | share |
-| `PushManager` (`PushDispatcher`, facade `MobilePush`) | scope resolver, tenant resolver, runtime registrations, consent checks, bounded connection cache | **needs care**: configure at boot only (see above); per-request calls to `scopeUsing()` / `eligibleUsing()` / `register()` leak or accumulate. With Octane, either resolve it at boot and configure it once, or flush it per request (Octane `flush` list: `Padosoft\MobilePush\Laravel\Sending\PushManager` — but then connections are rebuilt per request; pools survive in the registry) |
+| `PushManager` (`PushDispatcher`, facade `MobilePush`) | scope resolver, tenant resolver, runtime registrations, consent checks, bounded connection cache | **needs care**: configure at boot only (see above); per-request calls to `scopeUsing()` / `eligibleUsing()` / `register()` leak or accumulate unless you undo them with `forgetScopeResolver()` / `forgetEligibility()` / `unregister()` (and `FallbackPolicy::forget()` / `flush()`). With Octane, either resolve it at boot and configure it once, or flush it per request (Octane `flush` list: `Padosoft\MobilePush\Laravel\Sending\PushManager` — but then connections are rebuilt per request; pools survive in the registry) |
 | `SinkManager` | buffered log records, sink stats; static `$extensions` | flushed when the application (or the Octane sandbox) terminates and after each queued job; share |
 | `LogRecordFactory`, `LogPruner`, `DevicePruner`, `ActivityPruner`, `MessageVault`, `Rows` | none | share |
 | `DatabaseLedger`, `DeviceRegistrar`, `DeviceOutcomeApplier`, `DeviceEligibility`, `ReceiptRecorder`, `ReceiptFunnelReader` | none in PHP (state in the database) | share |
@@ -108,7 +108,7 @@ Singletons registered by the package and what a long-lived process must know abo
 | `MetricsRecorder` | 60 s memo of known/rejected connection labels | share |
 | `OpsAlerter` | local alert cooldowns, last seen sink failures | share (process-level by design) |
 | `CredentialMonitor`, `HealthInspector`, `PrometheusExporter`, `MobilePushRecorder` (Pulse), `PushWatcher` (Telescope) | counters of their own failures | share |
-| `FallbackPolicy` (notifications) | list of checks added by `when()` | **needs care**: register at boot only (accumulates) |
+| `FallbackPolicy` (notifications) | list of checks added by `allowUsing()` | **needs care**: register at boot only (accumulates); undo with `forget($check)` / `flush()` |
 | `ConnectionCredentialsSource` (integration) | closures over the manager | share |
 | `TestingSession`, `StdinReader`, `XcrunRunner` | testing / console only | n/a |
 

@@ -25,6 +25,18 @@ A scope is a string such as `acme` or `tenant:42` (letters, digits, `.`, `_`, `:
 
 **The scope always comes from your code, never from client input.** Do not derive it from a request header or payload. `scopeUsing()` is one callback per process: set it in a service provider (so queue workers have it too) and make it read the current tenant from something you control.
 
+In a long-lived process (Octane, a queue worker) the manager is shared by every request, so configure it **once, at boot**. When a per-request setup cannot be avoided, each registration has an undo:
+
+| Set with | Undone with |
+|---|---|
+| `MobilePush::scopeUsing($resolver)` | `MobilePush::scopeUsing(null)` or `MobilePush::forgetScopeResolver()`: the scope is `mobile-push.scope` again |
+| `MobilePush::register($name, $config, $scope)` | `MobilePush::unregister($name, $scope)`: the runtime connection is removed, its cached driver dropped and its pools closed; a configured connection of the same name is used again |
+| `MobilePush::resolveConnectionUsing($resolver)` | `MobilePush::forgetConnectionResolver()`: drivers already resolved stay cached until `forgetConnection($name)` or `flush()` |
+| `MobilePush::eligibleUsing($check)` | `MobilePush::forgetEligibility($check)`: removes the registrations of that very callable (the same closure instance) and returns how many |
+| `FallbackPolicy::allowUsing($check)` | `FallbackPolicy::forget($check)` or `FallbackPolicy::flush()` |
+
+See [runtimes](/operations/runtimes#runtime-compatibility-scenario-results-5-state-between-requests-octane-style) for what was tested.
+
 ### What a scope separates
 
 | Separated by scope | Shared across scopes |

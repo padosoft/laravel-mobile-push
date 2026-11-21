@@ -62,6 +62,8 @@ composer require google/auth
 
 The package asks `Google\Auth\ApplicationDefaultCredentials` for a credential with the FCM scope and caches its tokens like the service-account ones. Without `google/auth` installed, or when no default credentials are found, the connection fails with a `ConfigurationException` that says what to do. ADC has only been tested in this project through the library's interfaces, not on Google Cloud.
 
+This is also what to use when the key must not be exportable: unlike APNs (see the `signer` key in [APNs credentials](/get-started/credentials-apns#apns-credentials-where-to-put-the-key-secret-sources-keeping-the-key-in-a-kmshsm)), an FCM connection has no custom `signer` setting, so a KMS/HSM-held Google key is reached through the attached service account or Workload Identity Federation, not through the package's own signing.
+
 ## Secondary credential and rotation
 
 ```php

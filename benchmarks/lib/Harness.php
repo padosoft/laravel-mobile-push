@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Padosoft\MobilePush\Benchmarks;
 
+use Composer\InstalledVersions;
 use Padosoft\MobilePush\Core\Transport\Exchange;
 use Padosoft\MobilePush\Tests\Support\H2Mock\MockServer;
 
@@ -230,10 +231,10 @@ final class Harness
             }
         }
         $commit = trim((string) @shell_exec('git -C '.escapeshellarg(dirname(__DIR__, 2)).' rev-parse --short HEAD 2>/dev/null'));
-        $pushok = class_exists(\Composer\InstalledVersions::class) && \Composer\InstalledVersions::isInstalled('edamov/pushok')
+        $pushok = class_exists(InstalledVersions::class) && InstalledVersions::isInstalled('edamov/pushok')
             ? [
-                'version' => \Composer\InstalledVersions::getPrettyVersion('edamov/pushok'),
-                'reference' => \Composer\InstalledVersions::getReference('edamov/pushok'),
+                'version' => InstalledVersions::getPrettyVersion('edamov/pushok'),
+                'reference' => InstalledVersions::getReference('edamov/pushok'),
             ] : null;
 
         return [

@@ -353,6 +353,11 @@ final class SendRun
             return [];
         }
 
+        [$groups, $byId] = $this->beforeTransmit($groups, $byId, $results);
+        if ($byId === []) {
+            return [];
+        }
+
         $exchanges = $this->exchange($groups, $byId);
 
         // Classify everything first, feed the guards, then plan: a failover decided by any answer of this pass
@@ -565,6 +570,62 @@ final class SendRun
         $this->emit($work, $work->budget->unknownOutcomeSeen ? SendStatus::OutcomeUnknown : SendStatus::Failed,
             Reason::of(ReasonCode::RequestInvalid, null, sprintf('The request could not be prepared (%s: %s). Nothing was sent.', $e::class, $hint)),
             $work->lastDecision, null, $results);
+    }
+
+    /**
+     * W5-P: ask the per-call TransmitObservers which of the requests about to leave must be withheld (see that
+     * interface). Withheld items get their one result here and are removed from the pass.
+     *
+     * @param  array<string, array{profile: ConnectionProfile, requests: list<Request>}>  $groups
+     * @param  array<string, WorkItem>  $byId
+     * @param  array<int, SendResult>  $results
+     * @return array{0: array<string, array{profile: ConnectionProfile, requests: list<Request>}>, 1: array<string, WorkItem>}
+     */
+    private function beforeTransmit(array $groups, array $byId, array &$results): array
+    {
+        $withheld = [];
+        foreach ($this->options->observers as $observer) {
+            if (! $observer instanceof TransmitObserver) {
+                continue;
+            }
+            $items = [];
+            foreach ($byId as $id => $work) {
+                if (! isset($withheld[$id])) {
+                    $items[$id] = $work->item;
+                }
+            }
+            if ($items === []) {
+                break;
+            }
+            foreach ($observer->beforeTransmit($items) as $id) {
+                $withheld[$id] = true;
+            }
+        }
+        if ($withheld === []) {
+            return [$groups, $byId];
+        }
+
+        foreach (array_keys($withheld) as $id) {
+            $work = $byId[$id] ?? null;
+            if ($work === null) {
+                continue;
+            }
+            unset($byId[$id]);
+            $work->request = null;
+            $this->emit($work, $work->budget->unknownOutcomeSeen ? SendStatus::OutcomeUnknown : SendStatus::Skipped,
+                Reason::of(ReasonCode::Cancelled, null, 'Withheld right before transmission by the caller (its lease or slot was no longer valid); this attempt was not sent.'),
+                $work->lastDecision, null, $results);
+        }
+        foreach ($groups as $key => $group) {
+            $group['requests'] = array_values(array_filter($group['requests'], static fn (Request $r): bool => ! isset($withheld[$r->id])));
+            if ($group['requests'] === []) {
+                unset($groups[$key]);
+            } else {
+                $groups[$key] = $group;
+            }
+        }
+
+        return [$groups, $byId];
     }
 
     /**

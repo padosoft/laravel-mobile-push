@@ -362,8 +362,9 @@ your activities, because past it nothing more leaves the server.
 
 The prune command is therefore housekeeping, not part of the rule: it marks as `expired` the open rows nobody touched
 since their expiry (tidier lists and channel cleanup) and **deletes closed rows** older than `closed_after_days`
-(default 7). Nothing in the package schedules it, so schedule it **daily**, for example
-`Schedule::command('mobile-push:live-activity:prune')->daily();`.
+(default 7). The package schedules it daily while Live Activities are enabled
+(`maintenance.schedule`, at `maintenance.daily_at`; see [commands](commands.md#what-the-package-schedules-by-itself)),
+so you only need your scheduler running.
 
 ## Broadcast channels
 
@@ -462,7 +463,7 @@ Connection key `broadcast_host` (`standard` default, or `api-broadcast`) chooses
 | `mobile-push:live-activity:end {activity} [--state= --dismiss= --json]` | end |
 | `mobile-push:live-activity:list [--owner= --type= --state= --scope= --limit=50 --json]` | rows, tokens masked |
 | `mobile-push:live-activity:flush [--limit=100 --json]` | send due pending transitions |
-| `mobile-push:live-activity:prune [--days= --pretend --json]` | delete old closed rows, mark untouched rows past their expiry `expired` (schedule it daily) |
+| `mobile-push:live-activity:prune [--days= --pretend --json]` | delete old closed rows, mark untouched rows past their expiry `expired` (scheduled daily by the package) |
 | `mobile-push:channels:list [--connection= --scope= --state= --json]` | local rows (nothing is sent) |
 | `mobile-push:channels:create [--connection= --scope= --storage=none\|recent --label= --type=]` | create at APNs |
 | `mobile-push:channels:delete {channel} [--force]` | delete at APNs (irreversible) |

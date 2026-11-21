@@ -216,7 +216,11 @@ peer limit. Real APNs/FCM latency (tens of ms) is what makes the window matter.
 - One `CurlMultiHandle` per pool key. Different keys never share a connection, even to the same host and port
   (`ConnectionPoolTest`: two keys → two server-side sessions).
 - `CurlPoolRegistry::process()` is the shared per-process registry; pass your own to isolate (tests, Octane workers).
-- Global limit (default 32) with LRU eviction; the evicted pool is closed (server sees the connection close). Pools in
+  In Laravel, `transport.max_pools` set to its default (32) keeps the shared registry; any other value makes the
+  `Transport` singleton use a **dedicated registry** of that size, whose pools are not shared with other `CurlTransport`
+  instances of the process. Raise it when one process serves many distinct connections (multi-tenant); only 32 has been
+  measured.
+- Global limit (default 32, `transport.max_pools` in the Laravel config, env `MOBILE_PUSH_TRANSPORT_MAX_POOLS`, at least 1) with LRU eviction; the evicted pool is closed (server sees the connection close). Pools in
   use by a running `send()` are never evicted; the registry may exceed the limit only while more sends than the limit
   run at once.
 - Idle expiry: a pool unused for more than its `$maxIdleSeconds` is closed on the next registry access.

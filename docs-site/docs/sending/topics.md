@@ -90,39 +90,44 @@ php artisan mobile-push:fcm:topic-subscription list --token=TOKEN1 --json
 printf '%s\n' TOKEN1 'fid=FID2' | php artisan mobile-push:fcm:topic-subscription subscribe breaking-news --stdin
 ```
 
-Arguments and options: `{action}` (`subscribe`, `unsubscribe`, `list`), `{topic?}` (required except for `list`), `--connection=` (default: the only FCM connection), `--token=*` and `--fid=*` (repeatable), `--stdin` (one installation per line, a token, or `fid=<id>`), `--scope=`, `--json`. The table shows masked installations; an invalid value is reported without being repeated. Exit code 1 when any installation failed, 0 otherwise; in simulation mode it prints that nothing was sent.
+Arguments and options: `{action}` (`subscribe`, `unsubscribe`, `list`), `{topic?}` (required except for `list`), `--connection=` (default: the only FCM connection), `--token=*` and `--fid=*` (repeatable), `--stdin` (one installation per line, a token, or `fid=<id>`), `--scope=`, `--json`. The table shows masked installations; an invalid value is reported without being repeated. The command is a thin layer over `MobilePush::topicSubscriptions()` (below), so it goes through the same connection choice and the same safe-mode gate. Exit code 1 when any installation failed, 0 otherwise; in simulation mode it prints that nothing was sent.
 
 ### From code
 
-The package does **not** bind a `TopicSubscriptionClient` in the container: the command builds one on demand, and so must you. The following mirrors what the command does (illustrative; it needs a real FCM connection):
+`MobilePush::topicSubscriptions(?string $connection = null, ?string $scope = null)` returns a `TopicSubscriptionClient` (the same one the command uses). It is built with the connection's OAuth credential, the package transport, the endpoint catalog and the **same safe-mode gate as a send**.
+
+- The connection is the FCM route of the scope when `$connection` is null (`mobile-push.routes` / `default`; the only FCM connection is picked, and several FCM connections without a route throw a `ConfigurationException` that says how to choose), or the name you pass. An APNs connection throws a `ConfigurationException` ("is not an FCM connection"): topic subscriptions exist only on FCM. An unknown name throws `UnknownConnectionException`. Both are raised before any request.
+- `$scope` is the [multi-tenancy](/operations/multi-tenancy) scope; null means the current one.
 
 ```php
-use Padosoft\MobilePush\Core\Fcm\Topics\TopicSubscriptionClient;
 use Padosoft\MobilePush\Core\Identity\Destination\FcmToken;
 use Padosoft\MobilePush\Core\Identity\Destination\FcmTopic;
-use Padosoft\MobilePush\Core\Policy\EndpointCatalog;
-use Padosoft\MobilePush\Core\Policy\EndpointRole;
-use Padosoft\MobilePush\Core\Transport\Transport;
 use Padosoft\MobilePush\Laravel\Facades\MobilePush;
 
-$binding = MobilePush::binding('android');
-$driver = MobilePush::driver($binding);
-$options = MobilePush::defaultOptions($binding);
+$topics = MobilePush::topicSubscriptions('android');
 
-$client = new TopicSubscriptionClient(
-    app(Transport::class),
-    $driver->connectionProfile(EndpointRole::FcmApi, 0),
-    new EndpointCatalog($options->applicationEnvironment ?? ''),
-    $binding->appId,                      // the Firebase project id
-    $driver->tokenProvider(0),
-    // optional gate: a Closure(OperationKind, Destination): SafeModeDecision (what the command passes);
-    // without it the caller has already decided that the call may be made
-);
+$topics->subscribe(FcmToken::of($token), FcmTopic::of('breaking-news'));
 
-$subscription = $client->subscribe(FcmToken::of($token), FcmTopic::of('breaking-news'));
+// $installations: a list of FcmToken (or FcmFid) objects
+
+foreach ($topics->subscribeMany($installations, FcmTopic::of('breaking-news')) as $i => $result) {
+    if (! $result->ok) {
+        logger()->warning('Topic subscription failed', ['position' => $i, 'reason' => $result->reason->code->value]);
+    }
+}
 ```
 
-Pass a gate built on `SafeModeGuard` if you want safe mode and simulation to apply as they do for the command (the command asks the guard with `OperationKind::TopicSubscription` and the installation as destination, using the binding's default send options); without a gate **real requests are made even in simulation mode**.
+This example is not run by the documentation tests: `MobilePush::fake()` does not replace the topic client, so it would need a real connection and transport.
+
+The result objects:
+
+- `subscribe()`, `get()` and `patch()` return a `TopicSubscription` (the topic name, and for `subscribe()` the `alreadyExisted` flag); `unsubscribe()` returns nothing; `list()` yields `TopicSubscription`s page by page.
+- `subscribeMany()` / `unsubscribeMany()` return a `list<TopicBatchResult>` in the order of the input: `ok`, `alreadyInState` (the subscription already existed, for subscribe), `status` (HTTP status, `0` when no response exists: transport failure, simulation or a block) and `reason` (a `Reason`, `ReasonCode::None` when ok). They never carry the registration token and never throw per installation.
+- Single calls throw `TopicApiException` on failure, including when safe mode simulated or blocked the call (its `reason` says which); `isNotFound()` is true for HTTP 404.
+
+**Safe mode.** Every call asks the safe-mode guard first, with the operation `TopicSubscription` and the installation as destination, using the connection's default send options. In `simulate` mode nothing is sent and the result carries `ReasonCode::Simulated`. Outside production the call is blocked (`ReasonCode::PolicySafeMode`, no request made) unless the connection has `live.allow`, `live.allow_topics` **and** the installation in `live.only_to`. In production with the effective mode `live` it goes through. A blocked or simulated call is therefore not a failure of FCM: check the reason before suspecting the provider. The pages [safe mode](/reliability/safe-mode) and the table above give the full rules.
+
+The package does not bind a `TopicSubscriptionClient` in the container: ask the manager for one each time (it is cheap, and it follows the connection's current credentials). It also makes no local record of subscriptions.
 
 ## Safe mode rules
 

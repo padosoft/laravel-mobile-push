@@ -103,10 +103,7 @@ final class PulseModule implements Module
 
         $app->afterResolving('livewire', $register);
         if ($app->resolved('livewire')) {
-            $livewire = $app->make('livewire');
-            if (is_object($livewire)) {
-                $register($livewire);
-            }
+            $register($app->make('livewire'));
         }
     }
 

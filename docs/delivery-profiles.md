@@ -332,8 +332,9 @@ Table names and the database connection: `ledger.tables.effects` (`MOBILE_PUSH_L
 
 Nothing prunes automatically. `php artisan mobile-push:deliveries:prune` deletes **terminal** deliveries whose last
 change is older than the retention **and** whose effect is past its deduplication window, in chunks, then the effects
-left without deliveries. Rows that are not finished are never deleted. Schedule it (see
-[queues and Horizon](queues-and-horizon.md#the-scheduler)). Until it runs, the **encrypted message snapshot** and the
+left without deliveries. Rows that are not finished are never deleted. On the durable profile the package schedules it once a day itself
+(`maintenance.schedule`, see [commands](commands.md#what-the-package-schedules-by-itself)); the Laravel scheduler must be
+running. Until it runs, the **encrypted message snapshot** and the
 masked outcome data stay in the table. `--pretend` counts without deleting.
 
 For one person's data use `mobile-push:forget` ([security and privacy](security-and-privacy.md#forget-and-export)):

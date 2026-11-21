@@ -36,11 +36,11 @@ use Padosoft\MobilePush\Core\Policy\SafeModeGuard;
 use Padosoft\MobilePush\Core\Privacy\KeyRing;
 use Padosoft\MobilePush\Core\Privacy\TokenIndex;
 use Padosoft\MobilePush\Core\Retry\RetryPolicy;
+use Padosoft\MobilePush\Core\Transport\ConnectionProfile;
 use Padosoft\MobilePush\Core\Transport\Exchange;
 use Padosoft\MobilePush\Core\Transport\FakeTransport;
 use Padosoft\MobilePush\Core\Transport\Response;
 use Padosoft\MobilePush\Core\Transport\Transport;
-use Padosoft\MobilePush\Core\Transport\ConnectionProfile;
 use Padosoft\MobilePush\Tests\Support\H2Mock\MockServer;
 
 /** Transport decorator that feeds every Exchange to a Recorder (one extra generator layer, no copying). */

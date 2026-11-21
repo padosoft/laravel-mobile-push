@@ -153,6 +153,15 @@ How it behaves:
 - When the bucket is empty the destinations that did not get a permit are **not sent** and come back `Deferred` with reason code `quota_exceeded` and a `nextAttemptAt` computed from the refill rate. A window can be partly granted: some destinations go, the rest are `Deferred`.
 - The bucket state lives in the shared cache (`cache.store`); with more than one worker, use a lock-capable store (see [queues and Horizon](/reliability/queues-and-horizon#queues-workers-horizon-and-the-scheduler-what-to-run-the-cache-store)).
 
+### When the cache behind the guards is down
+
+The rate limiter, the throttle gate and the circuit breakers keep their state in the shared cache store. That state is a protection, not a prerequisite, so the package never lets a cache problem stop or break a send. Two different situations are told apart:
+
+- **The cache store is unreachable** (the server is down, the connection is refused, the store cannot take locks). The guards **fail open**: sending continues, the limits and breakers are **not enforced across processes** (each process decides only on what it can see, normally nothing), and nothing throws. The package logs a warning ("mobile-push cache unavailable: behaving as an empty store.") **at most once a minute per process**, and leaves the backend alone for **5 seconds** after a failure before trying it again, so a dead cache server does not cost a connection timeout on every send. While it is down you have no shared rate limit: a burst can exceed the provider's limits, and a failing credential cannot trip its breaker for the other workers.
+- **The cache store is alive but too contended** (many workers keep winning the same compare-and-set, so a guard cannot update its state). The guard gives up and **grants nothing**: the destinations come back `Deferred` with reason code `quota_exceeded`, a hint that says the shared state was too contended, no request is made and the retry planner picks them up again later. This is a deliberate refusal to send without a limit, not an error.
+
+Neither case throws out of a send. Both are covered by `GuardStoreOutageTest` against in-memory stores that imitate an unreachable and a contended backend; the real adapter (`CacheGuardStore`) was exercised on the array driver and has **not been tried against a real Redis, Memcached or database cache** going down under load.
+
 ## The throttle gate
 
 The throttle gate is a shared "paused until" instant per provider account. It is set when a final classification says the provider as a whole is slowing down (`throttleProvider`): APNs `ServiceUnavailable`, FCM `QUOTA_EXCEEDED`, `RESOURCE_EXHAUSTED` and `UNAVAILABLE`. The pause lasts `max(60 s, the provider's minimum delay)` (so 15 minutes after an APNs 503) and a later pause never shortens an earlier one. While paused, every destination for that account is `Deferred` with reason code `quota_exceeded`, **without any request**, until `nextAttemptAt`.
