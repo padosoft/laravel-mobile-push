@@ -74,7 +74,7 @@ function removeTree(string $dir): void
  * Start the contenders together and collect their JSON lines.
  *
  * @param  array<string, mixed>  $args
- * @return list<array{signatures: int, token: string, granted: int}>
+ * @return list<array{signatures: int, token: string, granted: int, contended: int}>
  */
 function runContenders(array $args): array
 {
@@ -144,9 +144,16 @@ it('eight processes on a cold shared store agree on one provider token and stay 
     }
 
     $granted = array_sum(array_column($results, 'granted'));
+    $contended = array_sum(array_column($results, 'contended'));
+    if (getenv('MP_RUNTIME_REPORT') !== false) {
+        fwrite(STDERR, sprintf("[%s] signatures=%d granted=%d contended=%d\n", $store, array_sum(array_column($results, 'signatures')), $granted, $contended));
+    }
     expect($results)->toHaveCount(CONTENDERS)
         ->and(array_unique(array_column($results, 'token')))->toHaveCount(1)       // one token in use by everybody
         ->and(array_sum(array_column($results, 'signatures')))->toBeGreaterThanOrEqual(1)
         ->and($granted)->toBeLessThanOrEqual(BUDGET)                                // never above the budget
+        ->and($granted + $contended)->toBeLessThanOrEqual(CONTENDERS * TAKES_EACH)
         ->and($granted)->toBeGreaterThan(BUDGET / 2);                               // and the budget is really used
+    // Under this hot loop (8 processes, back-to-back takes, no network in between) some takes may give up with
+    // "Guard state is too contended to update" on redis: measured and reported in docs/runtimes.md.
 })->with(['redis', 'database', 'file']);

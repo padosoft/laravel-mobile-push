@@ -10,7 +10,7 @@ declare(strict_types=1);
  *   1. asks an ApnsTokenProvider (real CacheTokenStore) for the provider token, counting the signatures it makes;
  *   2. takes permits one at a time from a RateLimiter (real CacheGuardStore) with a frozen clock.
  * It prints one JSON line: the number of signatures, a hash of the token it ended up using (never the token) and the
- * permits granted.
+ * permits granted (and how many takes gave up because the guard state was too contended).
  *
  * Argument: JSON {store, redisPort?, sqlitePath?, cacheDir?, keyPath, appKey, startAt, now, takes, rate}
  */
@@ -33,7 +33,9 @@ require dirname(__DIR__, 4).'/vendor/autoload.php';
 /** @var array{store: string, redisPort?: int, sqlitePath?: string, cacheDir?: string, keyPath: string, appKey: string, startAt: float, now: string, takes: int, rate: int} $args */
 $args = json_decode($argv[1] ?? '{}', true, 8, JSON_THROW_ON_ERROR);
 
-$app = Testbench::create(null, static function (Application $app) use ($args): void {
+$app = Testbench::create(null, null, ['extra' => ['providers' => [MobilePushServiceProvider::class]]]);
+// Every store, connection and package singleton below is resolved lazily, after this configuration.
+(static function (Application $app) use ($args): void {
     $config = $app->make('config');
     $config->set('app.key', $args['appKey']);
     $config->set('database.redis.client', 'phpredis');
@@ -47,7 +49,7 @@ $app = Testbench::create(null, static function (Application $app) use ($args): v
     $config->set('cache.stores.shared-database', ['driver' => 'database', 'connection' => 'shared', 'table' => 'cache', 'lock_connection' => 'shared', 'lock_table' => 'cache_locks']);
     $config->set('cache.stores.shared-file', ['driver' => 'file', 'path' => $args['cacheDir'] ?? sys_get_temp_dir(), 'lock_path' => $args['cacheDir'] ?? sys_get_temp_dir()]);
     $config->set('mobile-push.cache.store', 'shared-'.$args['store']);
-}, ['extra' => ['providers' => [MobilePushServiceProvider::class]]]);
+})($app);
 
 $signer = new class(new OpenSslEs256Signer(PrivateKey::fromPem((string) file_get_contents($args['keyPath'])), 'KEY1111111')) implements Signer
 {
@@ -55,11 +57,11 @@ $signer = new class(new OpenSslEs256Signer(PrivateKey::fromPem((string) file_get
 
     public function __construct(private readonly Signer $inner) {}
 
-    public function sign(string $data): string
+    public function sign(string $signingInput): string
     {
         $this->signatures++;
 
-        return $this->inner->sign($data);
+        return $this->inner->sign($signingInput);
     }
 
     public function algorithm(): string
@@ -83,8 +85,13 @@ while (microtime(true) < $args['startAt']) {
 
 $token = $provider->token();
 $granted = 0;
+$contended = 0;
 for ($i = 0; $i < $args['takes']; $i++) {
-    $granted += $limiter->acquire('apns|team:TEAM123456', 1, TrafficClass::Transactional);
+    try {
+        $granted += $limiter->acquire('apns|team:TEAM123456', 1, TrafficClass::Transactional);
+    } catch (RuntimeException) {
+        $contended++; // StateCell gave up after its compare-and-set attempts: nothing was granted
+    }
 }
 
-echo json_encode(['signatures' => $signer->signatures, 'token' => hash('sha256', $token->value), 'granted' => $granted]), "\n";
+echo json_encode(['signatures' => $signer->signatures, 'token' => hash('sha256', $token->value), 'granted' => $granted, 'contended' => $contended]), "\n";

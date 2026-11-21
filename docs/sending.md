@@ -225,6 +225,7 @@ With `eligibleUsing($check, batch: true)` the callback receives `(GateContext $c
 
 `send()` returns a `Padosoft\MobilePush\Core\Outcome\SendReport`. It is a **streaming cursor**, not an array: results are pulled from the pipeline as you read them, and only the first 1000 are kept in memory, so a send to a million devices stays flat.
 
+> [!WARNING]
 > **Consume the report.** The first window of requests leaves when `send()` is called, the rest as you read the report. A report you never read leaves later windows unsent. Call `counts()`, `count()`, iterate it, or call `each()`.
 
 | Method | What it gives |
