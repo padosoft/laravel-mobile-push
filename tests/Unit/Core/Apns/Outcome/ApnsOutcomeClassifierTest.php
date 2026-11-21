@@ -221,6 +221,10 @@ it('never copies the transport error message (it may contain the URL with the de
 });
 
 it('records for every catalog reason the HTTP status Apple documents (shown by mobile-push:explain)', function (int $http, string $reason): void {
+    // The table is built once per process and cached: rebuild it here, so that this is the test that executes every
+    // row (mutation testing runs, for a changed row, only the tests that executed it).
+    (new ReflectionProperty(ApnsReasonCatalog::class, 'entries'))->setValue(null, null);
+
     expect(ApnsReasonCatalog::find($reason)?->documentedStatus)->toBe($http);
 })->with('apns reasons');
 
