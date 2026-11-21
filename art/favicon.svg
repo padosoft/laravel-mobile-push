@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="Laravel Mobile Push">
+  <defs>
+    <linearGradient id="beam" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#FF5D6C"/>
+      <stop offset="1" stop-color="#FFA26B"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="#0B0E22"/>
+  <!-- phone -->
+  <rect x="17" y="9" width="26" height="46" rx="7" fill="#1F2449" stroke="#F5F6FF" stroke-width="4"/>
+  <!-- notification card on the screen -->
+  <rect x="22" y="22" width="16" height="7" rx="3.5" fill="#46E0CF"/>
+  <rect x="22" y="33" width="12" height="4" rx="2" fill="#F5F6FF" fill-opacity="0.35"/>
+  <!-- incoming push badge -->
+  <circle cx="45" cy="15" r="11" fill="#0B0E22"/>
+  <circle cx="45" cy="15" r="8" fill="url(#beam)"/>
+</svg>

@@ -12,6 +12,10 @@ use Padosoft\MobilePush\Core\Driver\Driver;
 use Padosoft\MobilePush\Core\Driver\SendItem;
 use Padosoft\MobilePush\Core\Driver\SendOptions;
 use Padosoft\MobilePush\Core\Exceptions\ConfigurationException;
+use Padosoft\MobilePush\Core\Exceptions\InvalidDestinationException;
+use Padosoft\MobilePush\Core\Exceptions\PayloadTooLargeException;
+use Padosoft\MobilePush\Core\Exceptions\UnsupportedCapabilityException;
+use Padosoft\MobilePush\Core\Exceptions\ValidationException;
 use Padosoft\MobilePush\Core\Exceptions\UnknownConnectionException;
 use Padosoft\MobilePush\Core\Guard\TrafficClass;
 use Padosoft\MobilePush\Core\Identity\BindingRef;
@@ -19,6 +23,7 @@ use Padosoft\MobilePush\Core\Identity\Destination;
 use Padosoft\MobilePush\Core\Identity\Platform;
 use Padosoft\MobilePush\Core\Identity\Provider;
 use Padosoft\MobilePush\Core\Identity\Scope;
+use Padosoft\MobilePush\Core\Message\CompileContext;
 use Padosoft\MobilePush\Core\Message\Message;
 use Padosoft\MobilePush\Core\Outcome\Reason;
 use Padosoft\MobilePush\Core\Outcome\ReasonCode;
@@ -47,6 +52,7 @@ use Padosoft\MobilePush\Laravel\Sending\Events\PushBatchCompleted;
 use Padosoft\MobilePush\Laravel\Sending\Gates\ConsentGate;
 use Padosoft\MobilePush\Laravel\Sending\Gates\DeviceEligibilityGate;
 use Padosoft\MobilePush\Laravel\Sending\Gates\DeviceKindsOnly;
+use Psr\Clock\ClockInterface;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -551,6 +557,71 @@ final class PushManager implements PushDispatcher
         }
 
         return $this->app->make(QueuedSender::class);
+    }
+
+    /**
+     * @internal Pre-flight of one connection of a send, before anything of the send reaches the network or the queue:
+     * the message is compiled against one sample destination with the connection's own compiler (no receipt marker,
+     * no message id, nothing kept, no request). Returns the message-level validation error the send would raise for
+     * this connection, or null. Destination-level problems (an invalid destination, an oversized payload for one
+     * destination) are left to the send, which reports them per destination.
+     */
+    public function preflight(BindingRef $binding, Message $message, Destination $sample, bool $validateOnly = false): ?ValidationException
+    {
+        $current = $this->current($binding);
+        if (! $current instanceof ResolvedConnection) {
+            return null; // reported as a binding mismatch by the send itself
+        }
+        $driver = $current->driver;
+        try {
+            if (! $driver->compiler()->supports($message)) {
+                throw new ValidationException(sprintf('The %s driver cannot send a message of type %s.', $current->binding->provider->value, $message::class));
+            }
+            if ($validateOnly && ! $driver->supportsValidateOnly()) {
+                throw new UnsupportedCapabilityException(sprintf('The %s provider has no validate-only (dry run) mode.', $current->binding->provider->value));
+            }
+            $driver->compiler()->compile($message, $sample, new CompileContext($current->binding, $this->now(), validateOnly: $validateOnly));
+        } catch (InvalidDestinationException|PayloadTooLargeException) {
+            return null;
+        } catch (ValidationException $e) {
+            return $e;
+        }
+
+        return null;
+    }
+
+    /**
+     * @internal Rejected results for the destinations of a connection whose message failed the pre-flight (see
+     * preflight()): reason PayloadInvalid with the validation message as hint, recorded in the send log and the
+     * events like any result. Nothing is sent and nothing is queued for them.
+     *
+     * @param  iterable<Destination|SendItem>  $destinations
+     */
+    public function refused(BindingRef $binding, ValidationException $error, iterable $destinations, TrafficClass $trafficClass): SendReport
+    {
+        $observer = new SendingObserver(
+            $binding, $trafficClass, false, $this->settings->perResultEvents, $this->events(), $this->index,
+            null, $this->sinks(), static fn (): array => [], $this->logger(),
+        );
+        $operations = $this->operations($binding, $trafficClass);
+        $reason = Reason::of(ReasonCode::PayloadInvalid, null, sprintf('Not sent on the %s connection "%s": %s', $binding->provider->value, $binding->name, $error->getMessage()));
+
+        $results = (static function () use ($destinations, $reason, $observer, $operations): \Generator {
+            foreach ($destinations as $value) {
+                $item = SendItem::of($value);
+                $result = new SendResult($item->destination, SendStatus::Rejected, $reason, deliveryId: $item->deliveryId);
+                $observer->record($result, $item);
+                $operations?->record($result);
+                yield $result;
+            }
+        })();
+
+        return new SendReport($results);
+    }
+
+    private function now(): \DateTimeImmutable
+    {
+        return $this->app->bound(ClockInterface::class) ? $this->app->make(ClockInterface::class)->now() : new \DateTimeImmutable;
     }
 
     /**

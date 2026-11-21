@@ -19,7 +19,8 @@ use PHPUnit\Framework\Assert;
 /**
  * Verifies INTENT: what the application asked the package to send or queue.
  *
- * Nothing is compiled for the wire, nothing touches the network or the queue. Every send is recorded as
+ * Nothing compiled is kept and nothing touches the network or the queue (the real compilers only VALIDATE each
+ * message, see withoutValidation()). Every send is recorded as
  * SentPush objects (one per destination) and answered with a scripted outcome (default: Accepted), through the real
  * manager, routing, gates and report, so application code that reads the report keeps working.
  *
@@ -46,6 +47,8 @@ final class PushFake
     private ?\Closure $connector = null;
 
     private bool $active = true;
+
+    private bool $validates = true;
 
     public function __construct()
     {
@@ -130,6 +133,25 @@ final class PushFake
         ($this->connector)($name, $driver, $appId, $scope);
 
         return $this;
+    }
+
+    /**
+     * Stop running the providers' real compilers on faked sends. By default every faked send is still compiled by
+     * the APNs / FCM compiler (validation only: nothing is kept, no receipt marker, no request), so a message the
+     * real path would refuse (an iOS-only field to Android, an oversized payload) fails the test as it would fail in
+     * production: an exception for a message invalid for every connection of the send, a Rejected result otherwise.
+     */
+    public function withoutValidation(): static
+    {
+        $this->validates = false;
+
+        return $this;
+    }
+
+    /** @internal Whether faked sends are validated by the real compilers. */
+    public function validates(): bool
+    {
+        return $this->validates;
     }
 
     // ---------------------------------------------------------------- reading

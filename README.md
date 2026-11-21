@@ -3,7 +3,7 @@
 [![tests](https://github.com/padosoft/laravel-mobile-push/actions/workflows/tests.yml/badge.svg)](https://github.com/padosoft/laravel-mobile-push/actions/workflows/tests.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-![Laravel Mobile Push — APNs, FCM & Live Activities for Laravel](resources/laravel-mobile-push-banner.png)
+![Laravel Mobile Push banner: one line of Laravel code, MobilePush::to($user)->send(...), sends two beams labelled APNs and FCM to an iPhone-style phone showing a Live Activity and an Android-style phone showing a notification. Tagline: APNs, FCM & Live Activities for Laravel.](resources/laravel-mobile-push-banner.png)
 
 > **APNs, FCM and Live Activities for Laravel: send push notifications directly to Apple and Google over HTTP/2, and always know what happened to each one.** One call reaches a user's iPhone through APNs and their Android phone through FCM HTTP v1, with no intermediate service, and returns one explicit result per device: accepted, rejected, deferred, or honestly unknown.
 

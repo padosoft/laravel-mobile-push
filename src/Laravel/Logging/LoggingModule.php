@@ -11,13 +11,13 @@ use Illuminate\Database\ConnectionResolverInterface;
 use Illuminate\Queue\Events\JobExceptionOccurred;
 use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Queue\Events\JobProcessed;
-use Illuminate\Support\ServiceProvider;
 use OpenTelemetry\API\Globals;
 use OpenTelemetry\API\Metrics\MeterProviderInterface;
 use OpenTelemetry\API\Trace\TracerProviderInterface;
 use Padosoft\MobilePush\Core\Exceptions\ConfigurationException;
 use Padosoft\MobilePush\Core\Privacy\Redactor;
 use Padosoft\MobilePush\Core\Privacy\TokenIndex;
+use Padosoft\MobilePush\Laravel\Integration\ModuleMigrations;
 use Padosoft\MobilePush\Laravel\Module;
 use Psr\Clock\ClockInterface;
 
@@ -87,25 +87,7 @@ final class LoggingModule implements Module
         $events = $app->make(Dispatcher::class);
         $events->listen([JobProcessed::class, JobFailed::class, JobExceptionOccurred::class], $flush);
 
-        $migration = self::migrationPath();
-
-        if (in_array('database', $names, true) && $app->bound('migrator')) {
-            // A single file path is accepted by the migrator, so other modules' migrations are not loaded by accident.
-            $app->make('migrator')->path($migration);
-        }
-
-        if ($app->runningInConsole()) {
-            $target = $app->databasePath('migrations/'.date('Y_m_d_His').'_create_mobile_push_logs_table.php');
-
-            (new class($app) extends ServiceProvider
-            {
-                /** @param  array<string, string>  $paths */
-                public function publishTagged(array $paths, string $tag): void
-                {
-                    $this->publishes($paths, $tag);
-                }
-            })->publishTagged([$migration => $target], self::PUBLISH_TAG);
-        }
+        ModuleMigrations::wire($app, [self::migrationPath()], self::PUBLISH_TAG, in_array('database', $names, true));
     }
 
     public static function migrationPath(): string

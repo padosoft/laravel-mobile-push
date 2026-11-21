@@ -1,0 +1,303 @@
+{
+  "title": "Laravel Mobile Push",
+  "description": "APNs, FCM and Live Activities for Laravel: send push notifications directly to Apple and Google over HTTP/2, and always know what happened to each one.",
+  "url": "https://doc.laravel-mobile-push.padosoft.com",
+  "src": "docs",
+  "out": "_site",
+  "base": "/",
+  "favicon": "assets/favicon.svg",
+  "copyCode": true,
+  "pageNavigation": true,
+  "minify": true,
+  "markdown": {
+    "breaks": false
+  },
+  "theme": {
+    "name": "default",
+    "appearance": "system",
+    "primaryColor": "#4f46e5",
+    "customCss": [
+      "assets/custom.css"
+    ]
+  },
+  "layout": {
+    "spa": true,
+    "header": {
+      "enabled": true
+    },
+    "sidebar": {
+      "enabled": true,
+      "collapsible": true
+    },
+    "footer": {
+      "style": "minimal",
+      "content": "Built by Padosoft. MIT."
+    },
+    "menubar": {
+      "enabled": true,
+      "left": [
+        {
+          "title": "Docs",
+          "path": "/"
+        },
+        {
+          "title": "GitHub",
+          "url": "https://github.com/padosoft/laravel-mobile-push"
+        },
+        {
+          "title": "Packagist",
+          "url": "https://packagist.org/packages/padosoft/laravel-mobile-push"
+        }
+      ],
+      "right": [
+        {
+          "title": "Padosoft",
+          "url": "https://padosoft.com"
+        }
+      ]
+    }
+  },
+  "footer": {
+    "style": "minimal",
+    "content": "laravel-mobile-push documentation. Built by Padosoft under the MIT licence."
+  },
+  "navigation": [
+    {
+      "title": "Get started",
+      "children": [
+        {
+          "title": "Overview",
+          "path": "/"
+        },
+        {
+          "title": "Getting started",
+          "path": "/get-started/getting-started"
+        },
+        {
+          "title": "APNs credentials",
+          "path": "/get-started/credentials-apns"
+        },
+        {
+          "title": "FCM credentials",
+          "path": "/get-started/credentials-fcm"
+        },
+        {
+          "title": "Configuration reference",
+          "path": "/get-started/configuration"
+        }
+      ]
+    },
+    {
+      "title": "Sending",
+      "children": [
+        {
+          "title": "Sending",
+          "path": "/sending/sending"
+        },
+        {
+          "title": "Messages",
+          "path": "/sending/messages"
+        },
+        {
+          "title": "Notifications and fallback",
+          "path": "/sending/notifications-and-fallback"
+        },
+        {
+          "title": "FCM topics",
+          "path": "/sending/topics"
+        },
+        {
+          "title": "Testing",
+          "path": "/sending/testing"
+        }
+      ]
+    },
+    {
+      "title": "Reliability",
+      "children": [
+        {
+          "title": "Outcomes",
+          "path": "/reliability/outcomes"
+        },
+        {
+          "title": "Retries and limits",
+          "path": "/reliability/retries-and-limits"
+        },
+        {
+          "title": "Delivery profiles",
+          "path": "/reliability/delivery-profiles"
+        },
+        {
+          "title": "Queues and Horizon",
+          "path": "/reliability/queues-and-horizon"
+        },
+        {
+          "title": "Safe mode",
+          "path": "/reliability/safe-mode"
+        }
+      ]
+    },
+    {
+      "title": "Modules",
+      "children": [
+        {
+          "title": "Devices",
+          "path": "/modules/devices"
+        },
+        {
+          "title": "Live Activities",
+          "path": "/modules/live-activities"
+        },
+        {
+          "title": "Campaigns",
+          "path": "/modules/campaigns"
+        },
+        {
+          "title": "Receipts",
+          "path": "/modules/receipts"
+        },
+        {
+          "title": "Policies",
+          "path": "/modules/policies"
+        },
+        {
+          "title": "Observability",
+          "path": "/modules/observability"
+        }
+      ]
+    },
+    {
+      "title": "Operations",
+      "children": [
+        {
+          "title": "Commands",
+          "path": "/operations/commands"
+        },
+        {
+          "title": "Troubleshooting",
+          "path": "/operations/troubleshooting"
+        },
+        {
+          "title": "Multi-tenancy",
+          "path": "/operations/multi-tenancy"
+        },
+        {
+          "title": "Security and privacy",
+          "path": "/operations/security-and-privacy"
+        },
+        {
+          "title": "Runtimes",
+          "path": "/operations/runtimes"
+        },
+        {
+          "title": "Upgrading",
+          "path": "/operations/upgrading"
+        }
+      ]
+    },
+    {
+      "title": "Reference and background",
+      "children": [
+        {
+          "title": "Comparison",
+          "path": "/reference/comparison"
+        },
+        {
+          "title": "HTTP/2 transport",
+          "path": "/reference/transport"
+        },
+        {
+          "title": "Architecture contracts",
+          "children": [
+            {
+              "title": "Overview",
+              "path": "/reference/contracts/overview"
+            },
+            {
+              "title": "Outcomes",
+              "path": "/reference/contracts/outcomes"
+            },
+            {
+              "title": "Identity",
+              "path": "/reference/contracts/identity"
+            },
+            {
+              "title": "Ledger",
+              "path": "/reference/contracts/ledger"
+            },
+            {
+              "title": "Classification",
+              "path": "/reference/contracts/classification"
+            },
+            {
+              "title": "Retry and breakers",
+              "path": "/reference/contracts/retry"
+            },
+            {
+              "title": "Execution modes",
+              "path": "/reference/contracts/modes"
+            },
+            {
+              "title": "Messages and limits",
+              "path": "/reference/contracts/messages"
+            }
+          ]
+        },
+        {
+          "title": "Benchmarks",
+          "path": "/reference/benchmarks"
+        },
+        {
+          "title": "Migrating from Pushok",
+          "path": "/reference/migrating-from-pushok"
+        },
+        {
+          "title": "Migrating from notification-channels/apn",
+          "path": "/reference/migrating-from-notification-channels-apn"
+        },
+        {
+          "title": "Changelog",
+          "path": "/reference/changelog"
+        },
+        {
+          "title": "Contributing",
+          "path": "/reference/contributing"
+        },
+        {
+          "title": "Security policy",
+          "path": "/reference/security-policy"
+        }
+      ]
+    }
+  ],
+  "plugins": {
+    "seo": {
+      "titleTemplate": "%s | Laravel Mobile Push",
+      "description": "APNs, FCM and Live Activities for Laravel: send push notifications directly to Apple and Google over HTTP/2, and always know what happened to each one.",
+      "author": "Padosoft"
+    },
+    "sitemap": {
+      "defaultChangefreq": "weekly",
+      "defaultPriority": 0.8,
+      "rootPriority": 1
+    },
+    "mermaid": {},
+    "math": {},
+    "llms": {},
+    "search": {
+      "enabled": true,
+      "semantic": true,
+      "placeholder": "Search the docs…"
+    },
+    "git": {
+      "repo": "https://github.com/padosoft/laravel-mobile-push",
+      "branch": "main",
+      "editLink": false,
+      "lastUpdated": false,
+      "commitHistory": false
+    },
+    "analytics": {
+      "enabled": false
+    }
+  }
+}

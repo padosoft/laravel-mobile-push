@@ -1,0 +1,90 @@
+---
+title: "Upgrading and versioning"
+description: "This page states the rules the package follows between versions, so you know what may change under you and what will not."
+---
+
+# Upgrading and versioning
+
+This page states the rules the package follows between versions, so you know what may change under you and what will
+not. It does not contain a release history: the package has not reached 1.0, and the list of changes lives in
+`CHANGELOG.md` (the "Unreleased" section until a version is tagged).
+
+Related pages: [commands](/operations/commands), [outcomes](/reliability/outcomes), [delivery profiles](/reliability/delivery-profiles),
+[configuration](/get-started/configuration).
+
+## Versioning policy before 1.0
+
+The package follows semantic versioning, read the way semver reads `0.x`: **a minor version may contain breaking
+changes, a patch version does not.** Pin the minor in `composer.json` (`^0.5` means "at least 0.5.0 and below 0.6.0" for a
+0.x package) and read `CHANGELOG.md` before moving to the next minor.
+
+| May change in a minor version before 1.0 | Does **not** change without being called out in `CHANGELOG.md` |
+|---|---|
+| Signatures and constructors of classes that are not part of the contracts below, and anything marked `@internal` | The values of `SendStatus` (`accepted`, `rejected`, `failed`, `deferred`, `outcome_unknown`, `expired`, `skipped`, `simulated`, `validated`) and what each one means |
+| New config keys, new defaults of **optional** modules, renamed keys (with a note) | The **exit codes** of the documented commands (see [commands](/operations/commands)) |
+| New columns and tables (always as new migration files) | The rules in [outcomes](/reliability/outcomes): `Accepted` is not delivery; an unknown outcome starts no fallback and no invalidation |
+| New `ReasonCode` values and new entries in the APNs and FCM reason catalogs | The documented guarantees and their stated limits ([delivery profiles](/reliability/delivery-profiles)) |
+| New events, new fields on an event's view, new options on a command | The names of the facade, the config file (`mobile-push.php`), the commands (`mobile-push:*`), the env prefix `MOBILE_PUSH_*` and the tables (`mobile_push_*`) |
+| Wording of hints and messages | The safe-mode rules: a send outside production is simulated unless explicitly allowed |
+
+Consequences for your code:
+
+- **Do not `match` exhaustively on `ReasonCode`** without a default arm: new codes can appear in any release. Branch on
+  `SendStatus` (stable), and use the reason code for logging, counting and fine-tuning.
+- **Test the exit codes**, not the text, in scripts around the commands.
+- A removed or renamed public method, option or key is mentioned in the changelog of the release that does it. It is not
+  silently re-purposed.
+
+At 1.0 the contracts above become the stable public API in the strict semver sense: breaking changes only in a major
+version, with deprecation first.
+
+## Configuration across versions
+
+- **New keys always have a default that preserves the old behaviour.** Optional modules stay **off** by default.
+- The package reads every key with an explicit default, and Laravel's `mergeConfigFrom()` is documented to merge only
+  the first level of the config array. If your published `config/mobile-push.php` defines a whole section (for example `queue`), keys that a later
+  version adds to that section are not merged into your array: they take their built-in default. Nothing breaks, but you
+  do not see the new key in your file. Diff your file against the new `config/mobile-push.php` after an upgrade.
+- [`docs/configuration.md`](configuration.md) is **generated** from the config schema of the installed version (key,
+  environment variable, default, allowed values), and a test fails when the schema and the config file disagree. Use it as
+  the reference for the version you run.
+- After changing the configuration or upgrading: `php artisan config:clear` (and `config:cache` again on production), then
+  `php artisan mobile-push:doctor`.
+
+## Migrations across versions
+
+- A schema change ships as a **new migration file** with a later name, never as an edit of one that has been released.
+  (Before the first release the files may still be edited; do not build on a pre-release schema.)
+- While a module is enabled, the package registers its own migration directory with the migrator, so `php artisan
+  migrate` after an upgrade picks up the new files with no re-publishing. **If you published the migrations to your own
+  `database/migrations`, the package's copies still register, and the two sets collide** (`table ... already exists`):
+  see the "Known trap" in [delivery profiles](/reliability/delivery-profiles#delivery-profiles-light-and-durable-switching-migrations). If you maintain published copies, publish
+  the new ones yourself and keep both sets consistent.
+- Receipts add columns to the deliveries table through their own migration (`..._create_mobile_push_ledger_receipt_columns`),
+  which is part of the ledger set.
+- Stored data carries format versions where it matters (a stored retry budget has a `v` field; an encrypted value names
+  its key version; a payload fingerprint names its scheme). A version that does not recognise a stored format refuses it
+  instead of guessing. **Downgrading a version with stored ledger rows is not supported.**
+
+## Upgrade checklist
+
+1. Read `CHANGELOG.md` for every version between yours and the target.
+2. Update the package with Composer (your own command: this package never runs it for you).
+3. `php artisan migrate`, and `php artisan config:clear`.
+4. Compare your published config with the new file.
+5. **Restart queue workers** (`php artisan queue:restart`, or `horizon:terminate`). A long-running worker keeps the old
+   code in memory. Let in-flight jobs finish: stopping workers abruptly leaves `outcome_unknown` destinations (see
+   [troubleshooting](/operations/troubleshooting#troubleshooting-by-symptom-unknown-outcomes-after-a-deploy)).
+6. `php artisan mobile-push:doctor`, then send a canary push on a test device.
+7. On the **light** profile, jobs queued by the old version are still run by the new one if their format is unchanged; the
+   changelog says when it is not. If you are unsure, drain the queue before the upgrade.
+
+## Not verified
+
+The upgrade path (running one version's migrations over another's data, with queued jobs in flight) has no automated test
+yet; the plan names migration upgrade tests as a release-quality item. Until it does, treat each minor upgrade of a
+durable-profile installation as something to rehearse on a copy of your database.
+
+---
+
+*This page is generated from [`docs/upgrading.md`](https://github.com/padosoft/laravel-mobile-push/blob/main/docs/upgrading.md). To change it, edit that file in the repository, not this site.*

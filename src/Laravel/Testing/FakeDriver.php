@@ -35,7 +35,7 @@ final class FakeDriver implements Driver
 
     public function __construct(private readonly BindingRef $binding, PushFake $fake)
     {
-        $this->compiler = new FakeCompiler($fake);
+        $this->compiler = new FakeCompiler($fake, $binding->provider);
         $this->classifier = new FakeClassifier($fake);
     }
 

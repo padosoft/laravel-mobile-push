@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace Padosoft\MobilePush\Laravel\Devices;
 
 use Illuminate\Contracts\Foundation\Application;
-use Illuminate\Support\ServiceProvider;
 use Padosoft\MobilePush\Core\Privacy\TokenCipher;
 use Padosoft\MobilePush\Core\Privacy\TokenIndex;
+use Padosoft\MobilePush\Laravel\Integration\ModuleMigrations;
 use Padosoft\MobilePush\Laravel\Module;
 use Psr\Clock\ClockInterface;
 
@@ -33,27 +33,7 @@ final class DevicesModule implements Module
 
     public static function boot(Application $app): void
     {
-        $migration = self::migrationPath();
-
-        // A single file path is accepted by the migrator, so other modules' migrations in the same directory
-        // are not loaded by accident.
-        if ((bool) config('mobile-push.devices.enabled', false) && $app->bound('migrator')) {
-            $app->make('migrator')->path($migration);
-        }
-
-        if ($app->runningInConsole()) {
-            $target = $app->databasePath('migrations/'.date('Y_m_d_His').'_create_mobile_push_devices_table.php');
-
-            // publishes() is protected: a throwaway provider registers the tag without touching the main provider.
-            (new class($app) extends ServiceProvider
-            {
-                /** @param  array<string, string>  $paths */
-                public function publishTagged(array $paths, string $tag): void
-                {
-                    $this->publishes($paths, $tag);
-                }
-            })->publishTagged([$migration => $target], self::PUBLISH_TAG);
-        }
+        ModuleMigrations::wire($app, [self::migrationPath()], self::PUBLISH_TAG, (bool) config('mobile-push.devices.enabled', false));
     }
 
     public static function migrationPath(): string

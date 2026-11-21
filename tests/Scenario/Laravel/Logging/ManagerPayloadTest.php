@@ -160,5 +160,4 @@ it('keeps the default path flat for 100,000 destinations: no payload is built wh
         ->and($logged['growth'])->toBeLessThan(8 * 1024 * 1024)
         // with the log on at level none, memory does not grow more than without any sink
         ->and($logged['growth'] - $quiet['growth'])->toBeLessThan(512 * 1024);
-    fwrite(STDERR, sprintf("growth without sink %d B, with sink at none %d B\n", $quiet['growth'], $logged['growth']));
 });

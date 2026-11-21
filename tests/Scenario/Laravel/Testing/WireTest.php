@@ -166,8 +166,17 @@ it('gives the same pipeline the app gets in production: oversize payloads are re
     $wire->assertNoRequests();
 });
 
-it('does not compile anything with the intent fake: the same oversize send is simply recorded', function (): void {
+it('validates with the real compilers under the intent fake too: the same oversize send is rejected, before any byte', function (): void {
     $push = MobilePush::fake();
+
+    $result = MobilePush::to(new Shopper(7))->send(PushMessage::make('Hi', str_repeat('x', 6000)))->retained()[0];
+
+    expect($result->status)->toBe(SendStatus::Rejected)
+        ->and($result->reason->code)->toBe(ReasonCode::PayloadTooLarge);
+});
+
+it('records the oversize send as accepted when the test opts out of validation', function (): void {
+    $push = MobilePush::fake()->withoutValidation();
 
     $result = MobilePush::to(new Shopper(7))->send(PushMessage::make('Hi', str_repeat('x', 6000)))->retained()[0];
 
