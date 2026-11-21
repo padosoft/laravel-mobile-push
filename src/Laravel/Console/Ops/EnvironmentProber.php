@@ -142,7 +142,7 @@ final class EnvironmentProber
 
         [$target, $why] = $this->target($scope, $device, $to, $connection);
         if ($target === null) {
-            return new ProbeItem($device, $row->with(ProbeOutcome::NoConnection, (string) $why));
+            return new ProbeItem($device, $row->with(ProbeOutcome::NoConnection, $why ?? 'No connection.'));
         }
 
         $options = $this->manager->defaultOptions($target);
@@ -240,11 +240,14 @@ final class EnvironmentProber
             }
         }
 
-        return match (count($matches)) {
-            1 => [$matches[0], null],
-            0 => [null, sprintf('No APNs connection for the app "%s" on the %s environment in scope "%s"%s. The probe needs one (same scope, same bundle id).', $device->app_id, $to->value, $scope, $connection === null ? '' : ' named "'.$connection.'"')],
-            default => [null, sprintf('Several APNs connections match the app "%s" on %s (%s): name one with --connection.', $device->app_id, $to->value, implode(', ', array_map(static fn (BindingRef $b): string => $b->name, $matches)))],
-        };
+        if (count($matches) === 1) {
+            return [$matches[0], null];
+        }
+        if ($matches === []) {
+            return [null, sprintf('No APNs connection for the app "%s" on the %s environment in scope "%s"%s. The probe needs one (same scope, same bundle id).', $device->app_id, $to->value, $scope, $connection === null ? '' : ' named "'.$connection.'"')];
+        }
+
+        return [null, sprintf('Several APNs connections match the app "%s" on %s (%s): name one with --connection.', $device->app_id, $to->value, implode(', ', array_map(static fn (BindingRef $b): string => $b->name, $matches)))];
     }
 
     /** @return list<BindingRef> */

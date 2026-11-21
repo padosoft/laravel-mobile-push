@@ -42,7 +42,7 @@ final class FakeTransportBuilder
     public function __construct()
     {
         $this->transport = new FakeTransport;
-        $this->transport->respondUsing(fn (Request $request, ConnectionProfile $profile): Response|TransportFailure|null => $this->answer($request));
+        $this->transport->respondUsing(fn (Request $request, ConnectionProfile $profile): Response|TransportFailure => $this->answer($request));
     }
 
     /** @internal The transport the pipeline sends through. */
@@ -257,7 +257,7 @@ final class FakeTransportBuilder
 
     // ---------------------------------------------------------------- internals
 
-    private function answer(Request $request): Response|TransportFailure|null
+    private function answer(Request $request): Response|TransportFailure
     {
         if (self::isTokenExchange($request)) {
             return new Response(200, ['content-type' => 'application/json'], (string) json_encode(['access_token' => 'fake-access-token', 'expires_in' => 3600, 'token_type' => 'Bearer']), '1.1');

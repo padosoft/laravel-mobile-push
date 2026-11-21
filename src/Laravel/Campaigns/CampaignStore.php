@@ -110,6 +110,16 @@ final readonly class CampaignStore
             ->update(['sample_at' => $atMs, 'sample_done' => $done, 'throughput' => $throughput]);
     }
 
+    /** @return array{0: int|null, 1: int, 2: float|null} [sampled at (ms), terminal deliveries then, stored pace] */
+    public function sampleOf(Campaign $campaign): array
+    {
+        $row = $this->query()->where('scope', $campaign->scope)->where('id', $campaign->id)->first(['sample_at', 'sample_done', 'throughput']);
+        $row = $row === null ? [] : Millis::row($row);
+        $pace = $row['throughput'] ?? null;
+
+        return [Millis::int($row, 'sample_at'), Millis::int($row, 'sample_done') ?? 0, is_numeric($pace) ? (float) $pace : null];
+    }
+
     /** @return array{0: string, 1: string} [stored type, encrypted parameters] */
     public function sealAudience(Audience $audience, string $scope, string $id): array
     {
