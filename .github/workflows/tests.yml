@@ -109,6 +109,62 @@ jobs:
           tests/Unit/Laravel/Receipts tests/Scenario/Laravel/Receipts
           tests/Scenario/Laravel/Queue tests/Scenario/Laravel/Install
 
+  # The package as a user gets it: required into a freshly created Laravel application, installed with every module,
+  # migrated, and driven through its public surface (commands, facade, helper, device registry, durable queue + worker).
+  # Everything is simulated: no credential exists and nothing leaves the runner.
+  fresh-app:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        laravel: ['12', '13']
+    name: Fresh Laravel ${{ matrix.laravel }} application
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: package
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: curl, openssl, json, intl, pdo_sqlite
+          coverage: none
+      - name: Create the application and require the package
+        run: |
+          composer create-project "laravel/laravel:^${{ matrix.laravel }}.0" app --no-interaction --prefer-dist
+          cd app
+          composer config repositories.mobile-push '{"type":"path","url":"../package","options":{"symlink":false}}'
+          composer require padosoft/laravel-mobile-push:@dev --no-interaction
+      - name: Install, configure, migrate
+        working-directory: app
+        run: |
+          php artisan mobile-push:install --no-interaction --profile=durable --modules=devices,live-activities,logs,campaigns,receipts
+          php ../package/tests/Support/FreshApp/configure.php "$PWD"
+          php artisan migrate --no-interaction
+          php artisan migrate --no-interaction | grep -q 'Nothing to migrate'
+      - name: Commands, health and schedule
+        working-directory: app
+        run: |
+          test "$(php artisan list mobile-push --raw | grep -c '^mobile-push:')" = 38
+          php artisan mobile-push:health
+          php artisan mobile-push:connections
+          test "$(php artisan schedule:list | grep -c 'mobile-push')" = 9
+      - name: Send, queue, work, verify
+        working-directory: app
+        run: |
+          php artisan tinker --execute="$(cat ../package/tests/Support/FreshApp/send.php)" | tee send.txt
+          ! grep -q 'FRESH-APP SMOKE FAILED' send.txt
+          test "$(grep -c '^ok: ' send.txt)" = 6
+          php artisan queue:work database --queue=push,push-bulk --stop-when-empty --tries=1 --timeout=55
+          php artisan tinker --execute="$(cat ../package/tests/Support/FreshApp/verify.php)" | tee verify.txt
+          ! grep -q 'FRESH-APP SMOKE FAILED' verify.txt
+          test "$(grep -c '^ok: ' verify.txt)" = 4
+      - name: The command line reports a simulated send with exit code 3
+        working-directory: app
+        run: |
+          set +e
+          php artisan mobile-push:send cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd --platform=ios --title=CI --body=hello
+          test "$?" = 3
+
   static:
     runs-on: ubuntu-latest
     steps:

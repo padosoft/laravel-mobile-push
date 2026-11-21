@@ -1,0 +1,79 @@
+name: providers
+
+# Checks that need the real provider hosts and NO credentials. They never run on pull requests or pushes: the test
+# suite itself must stay offline. Weekly, and by hand from the Actions tab.
+#
+#  - fcm-discovery: Google's live API description against the snapshot the builders and tests are pinned to; when it
+#    changed, the job fails and an issue is opened (or the open one is updated) with the summary.
+#  - probes: made-up credentials sent through the real pipeline to the APNs sandbox, FCM and Google's token endpoint;
+#    the real refusals must be classified as documented. Nothing can be delivered. From a hosted runner the connection
+#    is direct (no intercepting proxy), so this also exercises TLS and HTTP/2 negotiation with Apple and Google.
+
+on:
+  schedule:
+    - cron: '23 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fcm-discovery:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: curl, json
+          coverage: none
+      - name: Compare the live Discovery document with the snapshot
+        id: drift
+        run: |
+          set +e
+          php tests/Support/Probes/fcm-discovery-drift.php | tee drift.txt
+          echo "code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+      - name: Open or update the issue
+        if: steps.drift.outputs.code == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title='The FCM Discovery document changed'
+          body="$(printf 'The scheduled check found a difference between the live FCM API description and `tests/Fixtures/fcm/discovery-v1.json`.\n\n```\n%s\n```\n\nReview the change, update the FCM message builders if a field the package uses changed, then refresh the snapshot and `discovery-v1.meta.json`.\n' "$(cat drift.txt)")"
+          number="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')"
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --repo "$GITHUB_REPOSITORY" --body "$body"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
+          fi
+      - name: Result
+        run: |
+          case "${{ steps.drift.outputs.code }}" in
+            0) echo "The snapshot is current." ;;
+            1) echo "::error::The FCM Discovery document changed (see the issue)."; exit 1 ;;
+            *) echo "::warning::The Discovery document could not be fetched: nothing concluded." ;;
+          esac
+
+  probes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: curl, openssl, json
+          coverage: none
+      - run: composer update --prefer-dist --no-interaction
+      - name: APNs sandbox with a made-up key
+        run: |
+          php tests/Support/Probes/apns-unauthenticated-probe.php | tee apns.txt
+          test "$(grep -c 'status=failed code=auth_token_invalid raw=InvalidProviderToken http=403 attempts=1 destination_action=none' apns.txt)" = 2
+      - name: FCM and Google OAuth with made-up credentials
+        run: |
+          php tests/Support/Probes/fcm-unauthenticated-probe.php | tee fcm.txt
+          grep -q 'status=deferred code=auth_token_expired raw=UNAUTHENTICATED http=401 attempts=2 destination_action=none' fcm.txt
+          grep -q 'The Google token exchange was refused with HTTP 400 (invalid_grant)' fcm.txt
+          grep -q 'status=failed code=auth_token_invalid raw=- http=- attempts=0 destination_action=none' fcm.txt
