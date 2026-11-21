@@ -18,6 +18,7 @@ use Padosoft\MobilePush\Core\Outcome\SendStatus;
 use Padosoft\MobilePush\Core\Privacy\TokenIndex;
 use Padosoft\MobilePush\Core\Retry\RetryBudget;
 use Padosoft\MobilePush\Laravel\Devices\DeviceOutcomeApplier;
+use Padosoft\MobilePush\Laravel\Logging\PayloadLevel;
 use Padosoft\MobilePush\Laravel\Logging\SinkManager;
 use Padosoft\MobilePush\Laravel\Sending\Events\AuthTokenRefreshed;
 use Padosoft\MobilePush\Laravel\Sending\Events\CircuitClosed;
@@ -37,14 +38,18 @@ use Psr\Log\LoggerInterface;
  * For every result, in this order and each step isolated from the others: the device registry outcome
  * (quarantine / invalidate / last sent, only for destinations with a DestinationRef and only when the devices
  * module is enabled), the send log (SinkManager, with the runtime bearers and this result's receipt marker as
- * `secrets`), the Laravel events. Metrics and operational alerts are a separate observer (OperationsObserver).
+ * `secrets`; with `log.payload` keys | full also the redacted compiled payload of the last attempt under the
+ * `payload` context key, which LogRecordFactory reduces to key names or redacts again), the Laravel events. Metrics and operational alerts are a separate observer (OperationsObserver).
  * Nothing here can change a result or cause a resend: every failure is swallowed, counted and logged by class name
  * only.
  */
 final class SendingObserver implements SendObserver
 {
-    /** @var array<int, array{duration: float, bytes: int|null, push_type: string|null}> per SendItem object id */
+    /** @var array<int, array{duration: float, bytes: int|null, push_type: string|null, payload?: array<array-key, mixed>|null}> per SendItem object id */
     private array $attempts = [];
+
+    /** Whether the send log wants the payload (`log.payload` keys | full); decided once per call. */
+    private ?bool $wantsPayload = null;
 
     private int $failures = 0;
 
@@ -80,6 +85,15 @@ final class SendingObserver implements SendObserver
             'bytes' => is_int($bytes) ? $bytes : $previous['bytes'],
             'push_type' => $pushType ?? $previous['push_type'],
         ];
+        // Only when a sink records payloads: the default (`none`) never decodes or keeps a copy.
+        if ($this->wantsPayload()) {
+            $this->attempts[$id]['payload'] = $this->guard(static fn (): ?array => $attempt->payload()) ?: null;
+        }
+    }
+
+    private function wantsPayload(): bool
+    {
+        return $this->wantsPayload ??= $this->sinks !== null && $this->sinks->isEnabled() && $this->sinks->payloadLevel() !== PayloadLevel::None;
     }
 
     public function resultProduced(SendResult $result, RetryBudget $budget, SendItem $item): void
@@ -182,7 +196,7 @@ final class SendingObserver implements SendObserver
     }
 
     /**
-     * @param  array{duration: float, bytes: int|null, push_type: string|null}|null  $attempt
+     * @param  array{duration: float, bytes: int|null, push_type: string|null, payload?: array<array-key, mixed>|null}|null  $attempt
      * @param  list<string>  $markers
      */
     private function log(SendResult $result, ?array $attempt, array $markers = []): void
@@ -200,6 +214,9 @@ final class SendingObserver implements SendObserver
             $context['duration_ms'] = (int) round($attempt['duration']);
             $context['payload_bytes'] = $attempt['bytes'];
             $context['push_type'] = $attempt['push_type'];
+            if (isset($attempt['payload'])) {
+                $context['payload'] = $attempt['payload'];
+            }
         }
         $binding = $this->binding;
         $this->guard(static function () use ($sinks, $binding, $result, $context): null {

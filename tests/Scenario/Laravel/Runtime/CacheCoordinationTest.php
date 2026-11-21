@@ -79,7 +79,7 @@ function removeTree(string $dir): void
 function runContenders(array $args): array
 {
     $script = __DIR__.'/cache-contender.php';
-    $args['startAt'] = microtime(true) + 3.0; // every contender boots first, then all go at once
+    $args['startAt'] = microtime(true) + 2.0; // every contender boots first, then all go at once
     $procs = [];
     for ($i = 0; $i < CONTENDERS; $i++) {
         $proc = proc_open([PHP_BINARY, $script, json_encode($args, JSON_THROW_ON_ERROR)], [0 => ['file', '/dev/null', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
@@ -157,3 +157,33 @@ it('eight processes on a cold shared store agree on one provider token and stay 
     // Under this hot loop (8 processes, back-to-back takes, no network in between) some takes may give up with
     // "Guard state is too contended to update" on redis: measured and reported in docs/runtimes.md.
 })->with(['redis', 'database', 'file']);
+
+it('KNOWN LIMITATION: with the shared store unreachable, each process uses its own token and the rate limiter gives up with an exception', function (): void {
+    $dir = sys_get_temp_dir().'/mp-cache-down-'.bin2hex(random_bytes(5));
+    mkdir($dir, 0700, true);
+
+    try {
+        file_put_contents($dir.'/apns.p8', SendingWorld::ecPem('race'));
+        $socket = stream_socket_server('tcp://127.0.0.1:0'); // a port with nothing listening once closed
+        $name = (string) stream_socket_get_name($socket, false);
+        fclose($socket);
+        $results = runContenders([
+            'store' => 'redis',
+            'redisPort' => (int) substr($name, strrpos($name, ':') + 1),
+            'keyPath' => $dir.'/apns.p8',
+            'appKey' => 'base64:'.base64_encode(random_bytes(32)),
+            'now' => '2026-11-20T10:00:00Z',
+            'takes' => 3,
+            'rate' => BUDGET,
+        ]);
+    } finally {
+        removeTree($dir);
+    }
+
+    // Designed fallback for the token (local reuse, one signature per process); for the limiter the cache failure
+    // surfaces as StateCell's "Guard state is too contended to update" RuntimeException on every take.
+    expect(array_unique(array_column($results, 'token')))->toHaveCount(CONTENDERS)
+        ->and(array_sum(array_column($results, 'signatures')))->toBe(CONTENDERS)
+        ->and(array_sum(array_column($results, 'granted')))->toBe(0)
+        ->and(array_sum(array_column($results, 'contended')))->toBe(CONTENDERS * 3);
+});

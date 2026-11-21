@@ -11,3 +11,4 @@
 >>> php benchmarks/run.php --scenario=large-batch-memory --million --json --out=benchmarks/results/large-batch-memory.json
 >>> php benchmarks/run.php --scenario=many-tenants --tenants=200 --per-tenant=5 --repeat=3 --json --out=benchmarks/results/many-tenants.json
 >>> php benchmarks/run.php --scenario=compare-pushok --count=5000 --window=100 --server-delay-ms=10 --repeat=7 --json --out=benchmarks/results/compare-pushok-w100.json
+>>> php benchmarks/run.php --scenario=compare-pushok --count=5000 --window=20 --server-delay-ms=10 --repeat=7 --json --out=benchmarks/results/compare-pushok-w20.json

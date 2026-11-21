@@ -336,7 +336,8 @@ final class ApnsMessage implements Message
             $merged->alert = $this->alert === null ? $overlay->alert : $this->alert->mergedWith($overlay->alert);
         }
 
-        $merged->custom = [...$this->custom, ...$overlay->custom];
+        // array_replace keeps integer-like keys ("7"); the spread operator would renumber them.
+        $merged->custom = array_replace($this->custom, $overlay->custom);
         $merged->truncate = $this->truncate || $overlay->truncate;
 
         return $merged;

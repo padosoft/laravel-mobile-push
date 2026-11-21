@@ -32,6 +32,12 @@ final readonly class LogRecordFactory
         private PayloadLevel $payloadLevel = PayloadLevel::None,
     ) {}
 
+    /** How much of the payload the records carry (`mobile-push.log.payload`). */
+    public function payloadLevel(): PayloadLevel
+    {
+        return $this->payloadLevel;
+    }
+
     /**
      * @param  array<string, mixed>  $context
      */
