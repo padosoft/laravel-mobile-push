@@ -22,12 +22,12 @@ require_once __DIR__.'/LiveWorld.php';
 const MATCH_CHANNEL = 'dHN0LXNyY2gtY2hubA==';
 const OTHER_CHANNEL = 'b3RoZXItY2hhbm5lbA==';
 
-function created(string $id): Response
+function channelCreated(string $id): Response
 {
     return new Response(201, ['apns-channel-id' => $id, 'apns-request-id' => '11111111-1111-4111-8111-111111111111']);
 }
 
-function listed(string ...$ids): Response
+function channelList(string ...$ids): Response
 {
     return new Response(200, [], (string) json_encode(['channels' => $ids]));
 }
@@ -38,7 +38,7 @@ function listed(string ...$ids): Response
  */
 it('match day: two updates and an end go to the broadcast route as one publication each; a channel never starts an activity', function (): void {
     $world = LiveWorld::install();
-    $world->channelAnswers = [created(MATCH_CHANNEL)];
+    $world->channelAnswers = [channelCreated(MATCH_CHANNEL)];
 
     $channel = $world->manager()->createChannel(StoragePolicy::NoStorage, 'Derby');
     expect($channel->state)->toBe(ChannelState::Active)
@@ -84,7 +84,7 @@ it('match day: two updates and an end go to the broadcast route as one publicati
 
 it('two goals in the same second on a channel: one publication now, the latest score in the next second', function (): void {
     $world = LiveWorld::install();
-    $world->channelAnswers = [created(MATCH_CHANNEL)];
+    $world->channelAnswers = [channelCreated(MATCH_CHANNEL)];
     $channel = $world->manager()->createChannel(StoragePolicy::MostRecent);
     $world->kit->clock->advance(1);
 
@@ -110,7 +110,7 @@ it('the channel create response was lost: the row is unknown, nothing is retried
     expect(LiveActivity::broadcast($channel)->update(['score' => '0-0'])->send()->status)->toBe(SendStatus::Skipped)
         ->and($world->pushes())->toBe([]);
 
-    $world->channelAnswers = [listed(MATCH_CHANNEL)];
+    $world->channelAnswers = [channelList(MATCH_CHANNEL)];
     $report = $world->channels()->sync($world->binding());
 
     $row = $channel->fresh();
@@ -125,12 +125,12 @@ it('the channel create response was lost: the row is unknown, nothing is retried
 
 it('sync marks a channel deleted at APNs as deleted locally, and resolves an unknown create that never happened', function (): void {
     $world = LiveWorld::install();
-    $world->channelAnswers = [created(MATCH_CHANNEL), created(OTHER_CHANNEL), new TransportFailure(TransportEvidence::Unknown, 92, 'lost')];
+    $world->channelAnswers = [channelCreated(MATCH_CHANNEL), channelCreated(OTHER_CHANNEL), new TransportFailure(TransportEvidence::Unknown, 92, 'lost')];
     $kept = $world->manager()->createChannel();
     $gone = $world->manager()->createChannel();
     $lost = $world->manager()->createChannel();
 
-    $world->channelAnswers = [listed(MATCH_CHANNEL)];
+    $world->channelAnswers = [channelList(MATCH_CHANNEL)];
     $report = $world->channels()->sync($world->binding());
 
     expect($report->deletedLocally)->toBe([OTHER_CHANNEL])
@@ -147,7 +147,7 @@ it('sync never guesses between two unknown creates: both orphans are reported', 
     $a = $world->manager()->createChannel();
     $b = $world->manager()->createChannel();
 
-    $world->channelAnswers = [listed(MATCH_CHANNEL, OTHER_CHANNEL)];
+    $world->channelAnswers = [channelList(MATCH_CHANNEL, OTHER_CHANNEL)];
     $report = $world->channels()->sync($world->binding());
 
     expect($report->adopted)->toBe([])
@@ -161,7 +161,7 @@ it('sync never guesses between two unknown creates: both orphans are reported', 
 
 it('the local cap refuses a create before the network, and cleanup deletes channels no open activity uses', function (): void {
     $world = LiveWorld::install(['channels.max_per_environment' => 2, 'channels.cleanup_after_hours' => 1]);
-    $world->channelAnswers = [created(MATCH_CHANNEL), created(OTHER_CHANNEL)];
+    $world->channelAnswers = [channelCreated(MATCH_CHANNEL), channelCreated(OTHER_CHANNEL)];
     $used = $world->manager()->createChannel();
     $unused = $world->manager()->createChannel();
 
@@ -183,6 +183,6 @@ it('the local cap refuses a create before the network, and cleanup deletes chann
         ->and($used->fresh()->state)->toBe(ChannelState::Active);
 
     // A slot is free again.
-    $world->channelAnswers = [created('dGhpcmQtY2hhbm5lbA==')];
+    $world->channelAnswers = [channelCreated('dGhpcmQtY2hhbm5lbA==')];
     expect($world->manager()->createChannel()->state)->toBe(ChannelState::Active);
 });

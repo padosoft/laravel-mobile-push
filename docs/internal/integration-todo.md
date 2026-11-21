@@ -72,3 +72,24 @@ Health reads `mobile-push.queue.connection` and `mobile-push.queue.timeout` (nam
 
 Receipts wiring: the relay passes `ReceiptMarkerIssuer::callback($scope)` to `SendOptions::withReceiptMarker()` (told to W3-B). Client contract for the docs: `src/Laravel/Receipts/CLIENT_CONTRACT.md`.
 Decision: the ledger assigns each delivery a random UUIDv4 `message_id` at insert (W3-FIX2), used as `apns-id` and as the receipt reference; the ULID-derived UUID path is only a fallback.
+
+### Queue (W3-B)
+| Key | Env | Default | Allowed |
+|---|---|---|---|
+| `queue.connection` | `MOBILE_PUSH_QUEUE_CONNECTION` | null (app default) | queue connection name |
+| `queue.queue` | `MOBILE_PUSH_QUEUE` | `push` | non-empty string |
+| `queue.bulk_queue` | `MOBILE_PUSH_BULK_QUEUE` | `push-bulk` | non-empty string (bulk traffic) |
+| `queue.chunk` | `MOBILE_PUSH_QUEUE_CHUNK` | 500 | 1–10000 |
+| `queue.chunk_bytes` | `MOBILE_PUSH_QUEUE_CHUNK_BYTES` | 98304 | ≥ 4096 |
+| `queue.timeout` | `MOBILE_PUSH_QUEUE_TIMEOUT` | 120 | seconds ≥ 1 |
+| `queue.chunk_deadline` | `MOBILE_PUSH_QUEUE_CHUNK_DEADLINE` | 60 | seconds ≥ 1 |
+| `queue.after_commit` | `MOBILE_PUSH_QUEUE_AFTER_COMMIT` | true | bool |
+| `queue.follow_up_bucket` | `MOBILE_PUSH_QUEUE_FOLLOW_UP_BUCKET` | 60 | seconds ≥ 0 |
+| `queue.worker_timeout` | `MOBILE_PUSH_QUEUE_WORKER_TIMEOUT` | null | seconds (declare when not on Horizon) |
+| `queue.visibility_timeout` | `MOBILE_PUSH_QUEUE_VISIBILITY_TIMEOUT` | null | seconds (SQS) |
+| `queue.sweeper.schedule` | `MOBILE_PUSH_QUEUE_SWEEPER` | true | bool |
+| `queue.sweeper.scopes_per_run` | – | 100 | ≥ 1 |
+
+The queue module reads `transport.timeout_ms` and `connections.*.timeout_ms` (names guessed): align with W3-A's real transport keys.
+
+Queue follow-ups: `SendPushJob::failed()` logs to the default logger, not to the log sinks; `DeviceEligibility::checkMany()` does not return rows so `RegistryResolver` duplicates its rules (add a `resolveMany()` on the devices side); the ledger has no "effects with due work" query (the sweeper dispatches scope-wide relays); `tests/Scenario/Send/SendKit::apnsToken()` pads with 'a' so token 10 equals token 170.

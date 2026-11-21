@@ -37,6 +37,8 @@ use Padosoft\MobilePush\Core\Privacy\TokenCipher;
  * @property CarbonInterface|null $state_changed_at
  * @property CarbonInterface $registered_at
  * @property CarbonInterface|null $last_seen_at
+ * @property CarbonInterface|null $created_at
+ * @property CarbonInterface|null $updated_at
  */
 class PushToStartToken extends Model
 {
