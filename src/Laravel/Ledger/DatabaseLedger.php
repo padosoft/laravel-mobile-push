@@ -114,8 +114,10 @@ final class DatabaseLedger implements ClientReceiptStore, DeliveryBatches, Ledge
                 $effect = $row;
                 $created = true;
             } else {
-                // A concurrent call with the same key won the unique index: behave as the replay we are.
-                $effect = $this->activeEffect($intent, $scope, $now, $previous)
+                // A concurrent call with the same key won the unique index: behave as the replay we are. The winner
+                // committed after this transaction's first read, so the row is read with a lock: at REPEATABLE READ
+                // (MySQL's default) a plain read answers from the transaction's snapshot and does not see it.
+                $effect = $this->activeEffect($intent, $scope, $now, $previous, current: true)
                     ?? throw new \RuntimeException('The effect could not be recorded and no concurrent effect was found.');
                 $previous = null;
             }
@@ -134,13 +136,15 @@ final class DatabaseLedger implements ClientReceiptStore, DeliveryBatches, Ledge
      *
      * @return array<string, mixed>|null
      */
-    private function activeEffect(EffectIntent $intent, string $scope, int $now, ?string &$previous = null): ?array
+    private function activeEffect(EffectIntent $intent, string $scope, int $now, ?string &$previous = null, bool $current = false): ?array
     {
         $key = LedgerRules::dedupeKey($intent->effectKey ?? '');
         $found = $this->effects()
             ->where('scope', $scope)
             ->where('binding_identity', $intent->binding->identity())
             ->where('dedupe_key', $key)
+            // A locking read returns the latest committed row whatever the isolation level (SQLite has no clause).
+            ->when($current, static fn (Builder $q): Builder => $q->sharedLock())
             ->first();
         if ($found === null) {
             return null;
