@@ -80,9 +80,12 @@ final readonly class ActivityRegistry implements TransitionStore
         self::assertApns($binding);
         $key = $this->types->keyOf($this->types->resolve($type));
 
+        // After the unique index refused a write, the rows are read with a lock: that returns the latest committed
+        // version, where a plain read inside the application's REPEATABLE READ transaction answers from its snapshot.
+        $lost = false;
         for ($attempt = 1; $attempt <= self::MAX_ATTEMPTS; $attempt++) {
-            $row = $this->findPushToStart($binding, $key, $token)
-                ?? ($previous === null ? null : $this->findPushToStart($binding, $key, $previous));
+            $row = $this->findPushToStart($binding, $key, $token, $lost)
+                ?? ($previous === null ? null : $this->findPushToStart($binding, $key, $previous, $lost));
 
             try {
                 return $row === null
@@ -92,6 +95,7 @@ final readonly class ActivityRegistry implements TransitionStore
                 if ($attempt === self::MAX_ATTEMPTS) {
                     throw $e;
                 }
+                $lost = true;
             }
         }
 
@@ -141,8 +145,9 @@ final readonly class ActivityRegistry implements TransitionStore
         $resolved = $this->types->resolve($type);
         $key = $this->types->keyOf($resolved);
 
+        $lost = false;
         for ($attempt = 1; $attempt <= self::MAX_ATTEMPTS; $attempt++) {
-            $row = $this->match($binding, $key, $token, $owner, $report);
+            $row = $this->match($binding, $key, $token, $owner, $report, $lost);
 
             try {
                 if ($row === null) {
@@ -157,6 +162,7 @@ final readonly class ActivityRegistry implements TransitionStore
                 if ($attempt === self::MAX_ATTEMPTS) {
                     throw $e;
                 }
+                $lost = true;
             }
         }
 
@@ -646,9 +652,11 @@ final readonly class ActivityRegistry implements TransitionStore
         });
     }
 
-    private function match(BindingRef $binding, string $key, ApnsLiveActivityToken $token, ?Model $owner, ActivityReport $report): ?PushActivity
+    /** `$current`: read with a lock (the latest committed rows), after the unique index refused a write. */
+    private function match(BindingRef $binding, string $key, ApnsLiveActivityToken $token, ?Model $owner, ActivityReport $report, bool $current = false): ?PushActivity
     {
-        $base = fn () => PushActivity::blank()->newQuery()->forBinding($binding)->where('type_key', $key);
+        $base = fn () => PushActivity::blank()->newQuery()->forBinding($binding)->where('type_key', $key)
+            ->when($current, static fn ($q) => $q->lockForUpdate());
 
         $same = $base()->whereIn('update_token_index', $this->index->candidates($token, $binding->scope))->first();
         if ($same instanceof PushActivity) {
@@ -672,7 +680,7 @@ final readonly class ActivityRegistry implements TransitionStore
         $waiting = fn () => $base()->where('state', ActivityState::Requested->value)->whereNull('update_token');
 
         if ($report->pushToStartToken !== null) {
-            $from = $this->findPushToStart($binding, $key, $report->pushToStartToken);
+            $from = $this->findPushToStart($binding, $key, $report->pushToStartToken, $current);
             if ($from !== null) {
                 $byStart = $waiting()->where('push_to_start_id', $from->id)->orderByDesc('created_at')->orderByDesc('id')->first();
                 if ($byStart instanceof PushActivity) {
@@ -737,7 +745,9 @@ final readonly class ActivityRegistry implements TransitionStore
                 $fields += ['owner_type' => $owner->getMorphClass(), 'owner_id' => PushActivity::keyOf($owner)];
             }
 
-            if ($this->rows->cas($current, $fields)) {
+            // In its own transaction (a savepoint inside the application's): on PostgreSQL a refused write would
+            // otherwise abort the application's whole transaction, and the retry that follows with it.
+            if ($current->getConnection()->transaction(fn (): bool => $this->rows->cas($current, $fields))) {
                 return $current;
             }
         }
@@ -775,17 +785,21 @@ final readonly class ActivityRegistry implements TransitionStore
             'created_at' => $now,
             'updated_at' => $now,
         ]);
-        $row->save();
+        // In its own transaction (a savepoint inside the application's): see attachToken().
+        $row->getConnection()->transaction(static function () use ($row): void {
+            $row->save();
+        });
 
         return $row;
     }
 
-    private function findPushToStart(BindingRef $binding, string $key, ApnsPushToStartToken $token): ?PushToStartToken
+    private function findPushToStart(BindingRef $binding, string $key, ApnsPushToStartToken $token, bool $current = false): ?PushToStartToken
     {
         $row = PushToStartToken::blank()->newQuery()
             ->where('binding_identity', $binding->identity())
             ->where('type_key', $key)
             ->whereIn('token_index', $this->index->candidates($token, $binding->scope))
+            ->when($current, static fn ($q) => $q->lockForUpdate())
             ->first();
 
         return $row instanceof PushToStartToken ? $row : null;
@@ -810,7 +824,10 @@ final readonly class ActivityRegistry implements TransitionStore
             'created_at' => $now,
             'updated_at' => $now,
         ]);
-        $row->save();
+        // In its own transaction (a savepoint inside the application's): see attachToken().
+        $row->getConnection()->transaction(static function () use ($row): void {
+            $row->save();
+        });
 
         return $row;
     }

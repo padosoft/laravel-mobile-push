@@ -56,8 +56,9 @@ final readonly class DeviceRegistrar
         $this->assertRegistrable($binding, $destination);
         $fid = $this->fidFrom($binding, $destination, $attributes);
 
+        $lost = false;
         for ($attempt = 1; $attempt <= self::MAX_ATTEMPTS; $attempt++) {
-            $existing = $this->find($binding, $destination);
+            $existing = $this->find($binding, $destination, $lost);
 
             if ($existing === null) {
                 try {
@@ -67,6 +68,7 @@ final readonly class DeviceRegistrar
                     if ($attempt === self::MAX_ATTEMPTS) {
                         throw $e;
                     }
+                    $lost = true;
 
                     continue;
                 }
@@ -183,13 +185,19 @@ final readonly class DeviceRegistrar
         return $fid;
     }
 
-    private function find(BindingRef $binding, Destination $destination): ?PushDevice
+    /**
+     * `$current` is set after the unique index refused our INSERT: the row another request committed is then read
+     * with a lock, which returns the latest committed version. Inside a transaction the application opened at
+     * REPEATABLE READ (MySQL's default) a plain read answers from the transaction's snapshot and does not see it.
+     */
+    private function find(BindingRef $binding, Destination $destination, bool $current = false): ?PushDevice
     {
         $model = $this->newModel();
         $query = $model->newQuery()
             ->where('binding_identity', $binding->identity())
             ->where('kind', $destination->kind()->value)
-            ->whereIn('token_index', $this->index->candidates($destination, $binding->scope));
+            ->whereIn('token_index', $this->index->candidates($destination, $binding->scope))
+            ->when($current, static fn ($q) => $q->lockForUpdate());
 
         $device = $query->first();
 
@@ -198,6 +206,7 @@ final readonly class DeviceRegistrar
             $device = $model->newQuery()
                 ->where('binding_identity', $binding->identity())
                 ->whereIn('fid_index', $this->index->candidates($destination, $binding->scope))
+                ->when($current, static fn ($q) => $q->lockForUpdate())
                 ->first();
         }
 

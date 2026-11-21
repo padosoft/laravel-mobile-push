@@ -539,3 +539,8 @@ Modello di voce:
 - **Contesto:** `DatabaseLedger::recordIntent()` con due chiamate concorrenti sulla stessa effect key, MySQL 8.4 (CI).
 - **Scoperta:** `INSERT IGNORE` vede la riga committata dall'altro (ritorna 0), ma la `SELECT` successiva nella stessa transazione legge dallo snapshot preso alla prima lettura e non la trova. PostgreSQL (READ COMMITTED di default) e SQLite non mostrano il problema: solo il job MySQL lo ha rilevato.
 - **Regola:** dopo un insert-or-ignore perso, rileggere con una lettura bloccante (`sharedLock()` / `lockForUpdate()`): restituisce l'ultima versione committata a qualunque livello di isolamento. Ogni scenario di concorrenza va fatto girare anche su MySQL, non solo su PostgreSQL.
+
+### 2026-11-21 — Le corse vanno provate anche DENTRO una transazione dell'applicazione
+- **Contesto:** registrazione di dispositivi e token Live Activity chiamata dentro `DB::transaction()` dell'app, con un'altra richiesta che scrive la stessa riga.
+- **Scoperta:** i test di corsa esistenti giravano in autocommit e su SQLite e non vedevano due difetti: su MySQL (REPEATABLE READ) ogni rilettura dopo una scrittura persa risponde dallo snapshot (il ciclo di tentativi non converge mai); su PostgreSQL una violazione di indice unico senza savepoint annulla l'intera transazione del chiamante (`25P02`), quindi il tentativo successivo fallisce comunque.
+- **Regola:** (1) ogni scrittura che può violare un indice unico e poi essere ritentata va in `transaction()` (savepoint se annidata); (2) ogni rilettura dopo una scrittura persa è una lettura con lock; (3) per ogni ciclo "leggi, scrivi, ritenta" serve uno scenario con una seconda connessione reale dentro una transazione aperta dal chiamante, eseguito su MySQL e PostgreSQL.

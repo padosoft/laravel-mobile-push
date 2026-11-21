@@ -101,7 +101,10 @@ final readonly class Rows
      */
     public function fresh(Model $row): Model
     {
-        $fresh = $row->newQuery()->whereKey($row->getKey())->first();
+        // A locking read: it returns the latest committed version. Most callers come here after losing a
+        // compare-and-set; inside a transaction the application opened at REPEATABLE READ (MySQL's default) a plain
+        // read would answer from the transaction's snapshot, the next compare-and-set would lose again, and so on.
+        $fresh = $row->newQuery()->whereKey($row->getKey())->lockForUpdate()->first();
 
         if (! $fresh instanceof $row) {
             throw new \RuntimeException('The row disappeared while a transition was being applied.');
