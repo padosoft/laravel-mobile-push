@@ -48,6 +48,13 @@ final class Recorder
         }
     }
 
+    /** For clients that expose no Exchange (e.g. pushok): count one answered request by HTTP status. */
+    public function answered(int $status): void
+    {
+        $this->n++;
+        $this->http[(string) $status] = ($this->http[(string) $status] ?? 0) + 1;
+    }
+
     public function outcome(string $status): void
     {
         $this->outcomes[$status] = ($this->outcomes[$status] ?? 0) + 1;
