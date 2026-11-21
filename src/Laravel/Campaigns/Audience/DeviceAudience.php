@@ -41,7 +41,7 @@ final readonly class DeviceAudience implements Audience
         public ?int $fromId = null,
         public ?int $toId = null,
     ) {
-        if ($scope !== null && preg_match('/^[A-Za-z_][A-Za-z0-9_]{0,63}$/', $scope) !== 1) {
+        if ($scope !== null && preg_match('/^[A-Za-z_][A-Za-z0-9_]{0,63}$/D', $scope) !== 1) {
             throw new \InvalidArgumentException('A device scope must be a method name.');
         }
         if (($fromId !== null && $fromId < 1) || ($toId !== null && $toId < 1) || ($fromId !== null && $toId !== null && $fromId > $toId)) {

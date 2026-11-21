@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Padosoft\MobilePush\Core\Identity\Destination\ApnsDeviceToken;
 use Padosoft\MobilePush\Core\Transport\Request;
@@ -13,6 +14,11 @@ use Padosoft\MobilePush\Tests\Scenario\Laravel\Sending\SendingWorld as W;
 use Padosoft\MobilePush\Tests\Scenario\Send\SendKit;
 
 require_once __DIR__.'/OpsWorld.php';
+
+// The scenarios pin Carbon's clock to the fake clock: put the real one back when the application goes away.
+beforeEach(function (): void {
+    $this->beforeApplicationDestroyed(static fn () => Carbon::setTestNow());
+});
 
 /*
  * Canary: the clear tokens (and the bearer the fake Google endpoint hands out) used by the other scenarios are

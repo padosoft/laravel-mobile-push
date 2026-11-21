@@ -102,3 +102,13 @@ Queue follow-ups: `SendPushJob::failed()` logs to the default logger, not to the
 - Schedule `ActivityManager::flushDue()`; queued job carrying `ActivityTicket`.
 - Commands still to write (later task): `live-activity:{start,update,end,prune}`, `channels:{list,create,delete,sync}`, `campaign:{status,pause,resume,cancel}`.
 - Client contract for the docs is in the W3-L report (progress.md) and must be turned into `docs/live-activities.md`.
+
+### Testing fakes (W4-T) — follow-up after W4-I releases `src/Laravel/Sending`
+- The fakes work through reflection into `PushManager`'s private connection cache and by making `$app->environment()` read `production` while a fake is active (app-wide side effect: host code calling `app()->isProduction()` sees true during a faked test). Replace both with official seams: an execution override on the manager (`forceExecution(?ExecutionMode, ?LiveSettings)`) and a supported way to install/remove a driver for a connection name; then remove the reflection and the environment toggle from `src/Laravel/Testing`.
+- `PendingSend::options()` dropped `SendOptions::$observers` (passed to W4-I as F1).
+- Runtime `register()` cannot be undone (`unregister`), which the fakes need for cleanup.
+- Config key: `testing.allow_fakes` (bool, default false, no env).
+
+### Whole-suite state on 2026-11-21 (2178 tests)
+- `tests/Unit/Laravel/Policies/PoliciesModuleTest` (2 cases) red while W4-I changes the `frequency.enabled` default (passed to W4-I as F2).
+- `tests/Scenario/Laravel/Queue/LightProfileTest` "queue it and forget" fails only in whole-suite runs (passes alone and with every sub-group tried): order- or load-dependent; under investigation.

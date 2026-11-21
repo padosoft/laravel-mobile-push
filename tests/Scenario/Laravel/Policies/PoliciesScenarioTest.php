@@ -16,7 +16,7 @@ use Padosoft\MobilePush\Tests\Scenario\Send\SendKit;
  * and a third one is dropped; each order notification carries the unread count.
  */
 it('caps and counts through the container wiring on the cache store', function () {
-    config(['mobile-push.frequency.limits' => ['default' => ['per_day' => 2]]]);
+    config(['mobile-push.frequency.enabled' => true, 'mobile-push.frequency.limits' => ['default' => ['per_day' => 2]]]);
     $kit = new PolicyKit;
     $gates = $this->app->make(PolicyGates::class)->gates();
     $devices = [PolicyKit::device(1, 'u1'), PolicyKit::device(2, 'u1')];

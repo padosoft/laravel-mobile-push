@@ -43,7 +43,7 @@ final class AudienceRegistry
     /** @param  class-string<Audience>  $class */
     public static function register(string $alias, string $class): void
     {
-        if (preg_match('/^[a-z][a-z0-9_.-]{0,63}$/', $alias) !== 1) {
+        if (preg_match('/^[a-z][a-z0-9_.-]{0,63}$/D', $alias) !== 1) {
             throw new \InvalidArgumentException('An audience alias is 1-64 lowercase characters.');
         }
         self::$registered[$alias] = self::assertAudience($class);
