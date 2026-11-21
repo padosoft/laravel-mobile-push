@@ -8,8 +8,11 @@ use Padosoft\MobilePush\Core\Driver\MessageIds;
 use Padosoft\MobilePush\Core\Driver\SendItem;
 use Padosoft\MobilePush\Core\Exceptions\UnknownConnectionException;
 use Padosoft\MobilePush\Core\Exceptions\ValidationException;
+use Padosoft\MobilePush\Core\Identity\BindingRef;
 use Padosoft\MobilePush\Core\Ledger\ClaimedDelivery;
+use Padosoft\MobilePush\Core\Ledger\DeliveryBatches;
 use Padosoft\MobilePush\Core\Ledger\Effect;
+use Padosoft\MobilePush\Core\Ledger\Lease;
 use Padosoft\MobilePush\Core\Ledger\Ledger;
 use Padosoft\MobilePush\Core\Ledger\LedgerTime;
 use Padosoft\MobilePush\Core\Ledger\RecordedDestination;
@@ -98,6 +101,7 @@ final readonly class DeliveryRelay
 
             // Every outcome of the chunk is stored before the next claim (and before the job is acknowledged).
             $recorder->flush();
+            $recorder->release();
             $slowest = max($slowest, LedgerTime::ms($this->clock->now()) - $now);
         }
 
@@ -154,20 +158,28 @@ final readonly class DeliveryRelay
         }
 
         $handed = $lost = 0;
-        $items = function () use ($toSend, $recorder, &$handed, &$lost): \Generator {
-            foreach ($toSend as [$c, $destination]) {
+        $window = $this->window($effect->binding, $options->window);
+        $items = function () use ($toSend, $recorder, $window, &$handed, &$lost): \Generator {
+            // The Sender pulls one window of items, sends it, then pulls the next: the batch of `$window` items is
+            // marked started in one statement when its first item is pulled, and the results of the previous window
+            // are written right then (before this window reaches the network).
+            foreach (array_chunk($toSend, $window) as $batch) {
+                $recorder->flushWindow();
                 if ($recorder->hasFailures()) {
                     return; // the ledger is not taking writes: leave the rest leased, not started (requeued on expiry)
                 }
-                if (! $this->ledger->markAttemptStarted($c->lease)) {
-                    $lost++;
+                $started = $this->markStarted(array_map(static fn (array $pair): ClaimedDelivery => $pair[0], $batch));
+                foreach ($batch as [$c, $destination]) {
+                    if (! isset($started[$c->id()])) {
+                        $lost++;
 
-                    continue;
+                        continue;
+                    }
+                    $recorder->expect($c->id(), $c->effectId(), $c->lease);
+                    $handed++;
+
+                    yield new SendItem($destination, $c->budget(), $c->id(), self::resumedMessageId($c));
                 }
-                $recorder->expect($c->id(), $c->effectId(), $c->lease);
-                $handed++;
-
-                yield new SendItem($destination, $c->budget(), $c->id(), self::resumedMessageId($c));
             }
         };
 
@@ -191,6 +203,40 @@ final readonly class DeliveryRelay
         }
 
         return [$handed, $lost];
+    }
+
+    /**
+     * markAttemptStarted() for a batch: one statement with a ledger that supports it.
+     *
+     * @param  list<ClaimedDelivery>  $claimed
+     * @return array<string, true> delivery ids that may be sent
+     */
+    private function markStarted(array $claimed): array
+    {
+        if ($this->ledger instanceof DeliveryBatches) {
+            return array_fill_keys($this->ledger->markAttemptsStarted(array_map(static fn (ClaimedDelivery $c): Lease => $c->lease, $claimed)), true);
+        }
+        $started = [];
+        foreach ($claimed as $c) {
+            if ($this->ledger->markAttemptStarted($c->lease)) {
+                $started[$c->id()] = true;
+            }
+        }
+
+        return $started;
+    }
+
+    /** The Sender's window for this binding (how many items it pulls before sending): the batch size of the relay. */
+    private function window(BindingRef $binding, ?int $window): int
+    {
+        if ($window !== null) {
+            return max(1, $window);
+        }
+        try {
+            return max(1, $this->dispatcher->driver($binding)->window());
+        } catch (\Throwable) {
+            return 1;
+        }
     }
 
     private function message(string $scope, string $effectId): ?Message

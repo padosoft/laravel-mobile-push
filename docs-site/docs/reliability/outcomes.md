@@ -1,6 +1,6 @@
 ---
 title: "Outcomes: what a result means and what to do about it"
-description: "Every destination of a send ends with exactly one SendResult. This page says what each status means, what it does not mean, and what your application should do. Read the table once, then keep the rule at the top in mind:"
+description: "Every destination of a send ends with exactly one SendResult. This page says what each status means, what it does not mean, and what your application should do. Read the table once, then keep the rule at the top in mind."
 ---
 
 # Outcomes: what a result means and what to do about it

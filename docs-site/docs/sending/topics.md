@@ -1,6 +1,6 @@
 ---
 title: "FCM topics"
-description: "Two different things, often confused:"
+description: "Two different things, often confused."
 ---
 
 # FCM topics
