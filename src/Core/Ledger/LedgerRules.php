@@ -295,7 +295,9 @@ final readonly class LedgerRules
         $policy = $this->settings->retry;
         $budget = self::budgetOf($row, $policy)->withAttempt()->withUnknownOutcome();
         $now = LedgerTime::date($nowMs);
-        $retry = $policy->unknownOutcome->allows(Row::bool($row, 'replaceable'))
+        // A row whose cancellation was requested is never attempted again: it ends unknown, and is reported so.
+        $retry = ! Row::bool($row, 'cancel_requested')
+            && $policy->unknownOutcome->allows(Row::bool($row, 'replaceable'))
             && $budget->attempts < $policy->maxAttempts
             && $now < $budget->deadline();
 

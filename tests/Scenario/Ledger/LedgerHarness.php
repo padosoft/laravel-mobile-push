@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Padosoft\MobilePush\Tests\Scenario\Ledger;
 
+use Illuminate\Database\ConnectionResolverInterface;
 use Padosoft\MobilePush\Core\Identity\BindingRef;
 use Padosoft\MobilePush\Core\Identity\Destination;
 use Padosoft\MobilePush\Core\Identity\Destination\ApnsDeviceToken;
@@ -28,6 +29,7 @@ use Padosoft\MobilePush\Core\Privacy\TokenCipher;
 use Padosoft\MobilePush\Core\Privacy\TokenIndex;
 use Padosoft\MobilePush\Core\Retry\RetryBudget;
 use Padosoft\MobilePush\Core\Retry\RetryPolicy;
+use Padosoft\MobilePush\Laravel\Ledger\ClaimStrategy;
 use Padosoft\MobilePush\Laravel\Ledger\DatabaseLedger;
 use Padosoft\MobilePush\Tests\Support\FakeClock;
 
@@ -97,6 +99,73 @@ final class LedgerHarness
         }
         $deliveries->setValue($this->ledger, $rows);
         $keys->setValue($this->ledger, $index);
+    }
+
+    /**
+     * The same store (same rows, same clock, same keys) seen through a ledger built with other settings: a scenario
+     * that needs another retry policy, window or receipt hook calls this before its first write.
+     */
+    public function withSettings(LedgerSettings $settings): self
+    {
+        $read = static fn (object $o, string $p): mixed => (new \ReflectionProperty($o, $p))->getValue($o);
+        $rules = $read($this->ledger, 'rules');
+        \assert(is_object($rules));
+        $index = $read($rules, 'index');
+        $cipher = $read($rules, 'cipher');
+        \assert($index instanceof TokenIndex && $cipher instanceof TokenCipher);
+
+        if ($this->ledger instanceof DatabaseLedger) {
+            $db = $read($this->ledger, 'db');
+            \assert($db instanceof ConnectionResolverInterface);
+            $connection = $read($this->ledger, 'connectionName');
+            $effects = $read($this->ledger, 'effectsTable');
+            $deliveries = $read($this->ledger, 'deliveriesTable');
+            $strategy = $read($this->ledger, 'strategy');
+            \assert((is_string($connection) || $connection === null) && is_string($effects) && is_string($deliveries) && $strategy instanceof ClaimStrategy);
+            $ledger = new DatabaseLedger($db, $index, $cipher, $this->clock, $settings, $connection, $effects, $deliveries, $strategy);
+
+            return new self($ledger, $this->clock, $settings, $this->rows, $this->name);
+        }
+
+        $ledger = new InMemoryLedger($index, $cipher, $this->clock, $settings);
+
+        return new self($ledger, $this->clock, $settings, static fn (): array => $ledger->dumpRows(), $this->name);
+    }
+
+    /**
+     * Test hook: overwrite stored columns of one delivery (to stage a legacy row, or a value altered at rest).
+     *
+     * @param  array<string, mixed>  $columns
+     */
+    public function patchDelivery(string $deliveryId, array $columns): void
+    {
+        if ($this->ledger instanceof DatabaseLedger) {
+            $this->ledger->connection()->table('mobile_push_deliveries')->where('id', $deliveryId)->update($columns);
+
+            return;
+        }
+        $deliveries = new \ReflectionProperty($this->ledger, 'deliveries');
+        $rows = $deliveries->getValue($this->ledger);
+        \assert(is_array($rows) && isset($rows[$deliveryId]) && is_array($rows[$deliveryId]));
+        $rows[$deliveryId] = array_replace($rows[$deliveryId], $columns);
+        $deliveries->setValue($this->ledger, $rows);
+    }
+
+    /** @return array<string, mixed> the stored delivery row, as the store returns it */
+    public function deliveryRow(string $deliveryId): array
+    {
+        foreach ($this->rows()['deliveries'] as $row) {
+            if ($row['id'] === $deliveryId) {
+                return $row;
+            }
+        }
+
+        throw new \LogicException("No delivery {$deliveryId}.");
+    }
+
+    public function advanceMs(int $ms): void
+    {
+        $this->clock->set($this->clock->now()->modify(sprintf('%+d milliseconds', $ms)));
     }
 
     /** @return array{effects: list<array<string, mixed>>, deliveries: list<array<string, mixed>>} */

@@ -181,8 +181,11 @@ final class InMemoryLedger implements ClientReceiptStore, DeliveryBatches, Ledge
     public function claimDue(string $scope, string $owner, int $limit, ?string $effectId = null, ?int $leaseSeconds = null): array
     {
         $scope = LedgerRules::scope($scope);
-        $this->reclaimExpiredLeases($scope, max($limit, 1) * 4);
-        $this->expireDue($scope, max($limit, 1) * 4);
+        if ($limit <= 0) {
+            return [];   // nothing asked for: no sweep either (as the database ledger)
+        }
+        $this->reclaimExpiredLeases($scope, $limit * 4);
+        $this->expireDue($scope, $limit * 4);
         $now = $this->nowMs();
 
         $due = array_filter($this->deliveries, static fn (array $row): bool => $row['scope'] === $scope
@@ -292,16 +295,13 @@ final class InMemoryLedger implements ClientReceiptStore, DeliveryBatches, Ledge
         $now = $this->nowMs();
         /** @var array<string, int> $counts */
         $counts = [DeliveryEvent::LeaseLostBeforeSend->value => 0, DeliveryEvent::LeaseLostRetry->value => 0, DeliveryEvent::LeaseLostFinal->value => 0];
-        $seen = 0;
 
-        foreach ($this->deliveries as $id => $row) {
-            if ($seen >= $limit) {
-                break;
-            }
-            if ($row['scope'] !== $scope || ! DeliveryState::from(Row::str($row, 'state'))->isInFlight() || Row::int($row, 'lease_expires_at') > $now) {
-                continue;
-            }
-            $seen++;
+        // The leases that expired first are reclaimed first (as the database ledger), not the rows inserted first.
+        $expired = array_filter($this->deliveries, static fn (array $row): bool => $row['scope'] === $scope
+            && DeliveryState::from(Row::str($row, 'state'))->isInFlight() && Row::int($row, 'lease_expires_at') <= $now);
+        uasort($expired, static fn (array $a, array $b): int => [Row::int($a, 'lease_expires_at'), Row::str($a, 'id')] <=> [Row::int($b, 'lease_expires_at'), Row::str($b, 'id')]);
+
+        foreach (array_slice($expired, 0, max(0, $limit), true) as $id => $row) {
             $lost = $this->rules->leaseLostChanges($row, $now);
             if ($lost !== null) {
                 $this->deliveries[$id] = array_replace($row, $lost[1]);
@@ -405,10 +405,12 @@ final class InMemoryLedger implements ClientReceiptStore, DeliveryBatches, Ledge
                 $scopes[Row::str($row, 'scope')] = true;
             }
         }
-        $scopes = array_keys($scopes);
-        sort($scopes);
+        // PHP turns a numeric scope name used as an array key into an integer: back to strings before sorting, so
+        // that the order is the database's (byte order: "10" before "9").
+        $scopes = array_map('strval', array_keys($scopes));
+        sort($scopes, SORT_STRING);
 
-        return array_slice(array_map('strval', $scopes), 0, $limit);
+        return array_slice($scopes, 0, $limit);
     }
 
     public function deliveryByMessageId(string $scope, string $messageId): ?Delivery
@@ -480,6 +482,9 @@ final class InMemoryLedger implements ClientReceiptStore, DeliveryBatches, Ledge
                 continue;
             }
             $changes = LedgerRules::cancelChanges($row, $now, $hint);
+            if ($changes !== null && ! isset($changes['state']) && Row::bool($row, 'cancel_requested')) {
+                continue;   // an in-flight row that already carries the request: nothing changes, nothing is counted
+            }
             if ($changes !== null) {
                 $this->deliveries[$id] = array_replace($row, $changes);
                 $changed++;

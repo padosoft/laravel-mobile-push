@@ -20,6 +20,8 @@ use Padosoft\MobilePush\Core\Outcome\SendStatus;
 use Padosoft\MobilePush\Core\Receipts\ClientEvidence;
 use Padosoft\MobilePush\Tests\Scenario\Ledger\LedgerHarness as H;
 
+require_once __DIR__.'/LedgerRulesContract.php';
+
 /*
  * The ledger contract: the same stories, run against every implementation (in memory and database).
  * $make is called inside each test and returns a fresh harness.
@@ -407,6 +409,7 @@ function ledgerContract(Closure $make): void
     });
 
     clientReceiptLedgerContract($make);
+    ledgerRulesContract($make);
 }
 
 /*
