@@ -228,13 +228,14 @@ jobs:
           php artisan tinker --execute='echo "logs: ".DB::table("mobile_push_logs")->count()."\n";' | tee logs.txt
           grep -q '^logs: 60$' logs.txt
 
-  # Swoole with its coroutine hooks on (curl included), and requests arriving eight at a time. The transport keeps one
-  # pool per process; with the hooks a second request enters the same pool while the first one waits inside curl.
-  # Observed on 2026-11-21: sequential requests all succeed, concurrent ones mostly fail and the workers restart.
-  # The package does not support this configuration; the doctor warns about it and docs/runtimes.md reports it.
+  # Swoole with its coroutine hooks on (curl included), and requests arriving eight at a time. With the hooks a second
+  # request enters a worker while the first one waits inside curl. Sharing one connection pool between them crashed
+  # the workers (run of 2026-11-21, before transport.reuse existed: 4 to 9 of 60 concurrent requests succeeded). With
+  # transport.reuse = auto, the default, such a send gets its own pool: this job asserts that all 120 requests succeed
+  # and that the mock saw one connection per send.
   swoole-coroutine-hooks:
     runs-on: ubuntu-latest
-    name: Octane on Swoole with coroutine hooks (observation)
+    name: Octane on Swoole with coroutine hooks (no connection reuse)
     steps:
       - uses: actions/checkout@v4
         with:
@@ -287,14 +288,14 @@ jobs:
           echo "--- the first errors of the workers"
           grep -m 6 -E 'Uncaught|Fatal error|cannot be operated|Swoole.Error' octane.log | cut -c1-400 || true
           # With transport.reuse = auto (the default) a send that starts while Swoole hooks curl gets its own
-          # connection pool: the mock must have seen far more than one connection per worker, and no worker may die
-          # inside the shared pool any more. One request at a time must work. The concurrent series is printed:
-          # whether Octane itself survives concurrent requests in one worker is reported in docs/runtimes.md.
+          # connection pool: the mock must have seen far more than one connection per worker, no worker may die
+          # inside a shared pool, and both series must succeed entirely.
           test "$(grep -c '"status":200,"http":"2"' wire.txt)" = 60
+          test "$(grep -c '"status":200,"http":"2"' wire-concurrent.txt)" = 60
           php -r '$s = json_decode(file_get_contents("wire.json.stats"), true); echo "connections: ", $s["connections"], "\n"; exit($s["connections"] >= 60 ? 0 : 1);'
           ! grep -q 'CurlPool.php' octane.log
           php artisan mobile-push:doctor | tee doctor.txt || true
-          grep -q 'curl coroutine hook' doctor.txt
+          grep -q 'do not reuse connections' doctor.txt
 
   beanstalkd:
     runs-on: ubuntu-latest

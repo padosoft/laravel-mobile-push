@@ -625,3 +625,8 @@ Modello di voce:
 - **Contesto:** `src/Laravel/Queue/RelayFollowUps.php`, `tests/Scenario/Laravel/Release/RetriesWithCacheDownTest.php`.
 - **Fatto:** con lo store che lancia, il verso sicuro è «spedisci senza marcatore»: un relay duplicato è innocuo (il claim del ledger lo rende un no-op), uno mancante lascia le `Deferred` ferme. `started()` con store giù non deve bloccare il job. Una classe `readonly` non può tenere lo stato della pausa: tolto `readonly` dalla classe e messo sulle proprietà del costruttore.
 - **Regola:** ogni accesso alla cache sul percorso relay/sweeper passa da un solo helper con try/catch, fallback esplicito, pausa breve (5 s) e warning con il solo nome della classe dell'eccezione (il messaggio può contenere la password del DSN, come nel `DownStore` dei test).
+
+### 2026-11-21 — Swoole con hook di coroutine: il problema era il pool condiviso, e si risolve togliendo il riuso
+- **Contesto:** Octane su Swoole 6.2 con `hook_flags = SWOOLE_HOOK_ALL`, 60 richieste concorrenti (8 alla volta) che usano il trasporto reale verso il mock HTTP/2.
+- **Scoperta (corregge la lezione precedente sullo stesso tema):** con un pool per worker riuscivano 4-9 richieste su 60 e i worker morivano in `curl_multi_exec`; l'errore di Octane `handle() on null` era una CONSEGUENZA del worker morto, non una causa indipendente. Con `transport.reuse = auto` (ogni send sotto hook ha il proprio pool) riescono 120 su 120, il mock conta 120 connessioni e nessun worker muore.
+- **Regola:** quando un runtime non supera il test di riuso si disattiva il riuso (come dice il piano) invece di dichiararlo "non supportato"; e una diagnosi fatta leggendo un log troncato (30 righe) va verificata con un esperimento prima di scriverla come certa.

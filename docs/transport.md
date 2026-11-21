@@ -252,8 +252,9 @@ through that send.
 
 Why: under a curl coroutine hook a coroutine can be switched out *inside* `curl_multi_exec()`, and a second coroutine
 of the same worker then drives the same shared `curl_multi` handle (measured under Octane on Swoole 6.2: a fatal error
-in `curl_multi_exec`, the worker dies). With a private pool per send that handle is never shared. Whether that is
-enough to make such a runtime safe is a separate question (see [runtimes](runtimes.md)).
+in `curl_multi_exec`, the worker dies). With a private pool per send that handle is never shared: the same CI run
+with `auto` then answered all 120 requests, sixty of them eight at a time, on 120 connections (see
+[runtimes](runtimes.md) for what that run does and does not show).
 
 **Cost of `off`**: every send opens a new connection (TCP + TLS handshake) and closes it at the end. Measured on
 loopback against the mock: 200 sends of one request each → **200 connections** with `off` and **1** with `on`; about

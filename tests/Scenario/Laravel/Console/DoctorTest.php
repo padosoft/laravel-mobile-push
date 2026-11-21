@@ -74,23 +74,29 @@ it('warns when live sending is enabled outside production', function () {
     expect($code)->toBe(1)->and($out)->toContain('LIVE sending is enabled outside production');
 });
 
-it('warns when Octane\'s Swoole options turn on the curl coroutine hook, and only then', function (mixed $flags, bool $warns) {
+it('says what Octane\'s Swoole curl coroutine hook means for sending: no reuse by default, a warning when reuse is forced on', function (mixed $flags, string $reuse, ?string $status) {
     config()->set('octane.swoole.options.hook_flags', $flags);
+    config()->set('mobile-push.transport.reuse', $reuse);
 
-    $warnings = array_values(array_filter(app(Doctor::class)->run(), static fn ($check): bool => $check->section === 'Runtime'));
+    $lines = array_values(array_filter(app(Doctor::class)->run(), static fn ($check): bool => $check->section === 'Runtime'));
 
-    expect(count($warnings))->toBe($warns ? 1 : 0);
-    if ($warns) {
-        expect($warnings[0]->status->value)->toBe('warning')
-            ->and($warnings[0]->label)->toContain('curl coroutine hook')
-            ->and($warnings[0]->remedy)->toContain('queue workers');
+    expect(count($lines))->toBe($status === null ? 0 : 1);
+    if ($status === 'info') {
+        expect($lines[0]->status->value)->toBe('info')
+            ->and($lines[0]->label)->toContain('curl coroutine hook')->toContain('do not reuse connections')->toContain('queue workers');
+    }
+    if ($status === 'warning') {
+        expect($lines[0]->status->value)->toBe('warning')
+            ->and($lines[0]->label)->toContain('crashes the worker')
+            ->and($lines[0]->remedy)->toContain('"auto"')->toContain('queue workers');
     }
 })->with([
-    'no Octane config' => [null, false],
-    'every hook (SWOOLE_HOOK_ALL as Swoole 6 defines it)' => [2143287295, true],
-    'the native curl hook alone' => [4096, true],
-    'the older curl hook alone' => [2048, true],
-    'every hook but the two curl ones' => [2143287295 & ~(2048 | 4096), false],
+    'no Octane config' => [null, 'auto', null],
+    'every hook (SWOOLE_HOOK_ALL as Swoole 6 defines it), reuse auto' => [2143287295, 'auto', 'info'],
+    'the native curl hook alone, reuse off' => [4096, 'off', 'info'],
+    'the older curl hook alone, reuse auto' => [2048, 'auto', 'info'],
+    'every hook, reuse forced on' => [2143287295, 'on', 'warning'],
+    'every hook but the two curl ones, reuse on' => [2143287295 & ~(2048 | 4096), 'on', null],
 ]);
 
 it('never reports queue timeouts as ok when they cannot be verified', function () {

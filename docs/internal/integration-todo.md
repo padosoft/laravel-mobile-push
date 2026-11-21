@@ -256,4 +256,4 @@ Deviations kept on purpose:
 - §7 `->queue($msg)->onQueueConnection(...)->onQueue(...)`: the options come BEFORE `queue()`, which is the terminal call and returns the effect id.
 - §8 receipts «Marcatore per evento e destinazione»: one marker per delivery (destination), with the event type in the callback; uniqueness is per `(delivery, event type)`.
 - Light profile «best effort … nei report»: `queue()` returns the effect id, not a report; what can be observed afterwards (events, send-log records with the effect id, `SendPushJob::failed()`) is in `docs/sending.md`.
-- Swoole with curl coroutine hooks: reuse is switched off for such sends by `transport.reuse = auto`; whether Octane itself survives concurrent requests in one worker is reported in `docs/runtimes.md` from the CI run.
+- Swoole with curl coroutine hooks: reuse is switched off for such sends by `transport.reuse = auto`. CI run of 2026-11-21 (`backends`, job "Octane on Swoole with coroutine hooks"): 120 requests, sixty of them eight at a time, all succeeded on 120 connections; before the switch 4 to 9 of 60 concurrent requests succeeded.
