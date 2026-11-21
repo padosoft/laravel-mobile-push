@@ -58,6 +58,7 @@ it('pause after 5 slices: nothing more is written, the 500 written still go out;
 
     $resumed = $this->w->campaigns()->resume('default', $this->id);
     $this->w->drain();
+    $this->w->campaigns()->sweep();   // completion is detected by the sweeper (or any progress() read)
 
     $row = CampaignWorld::row($this->id);
     expect($resumed->status)->toBe(CampaignStatus::Planning)
