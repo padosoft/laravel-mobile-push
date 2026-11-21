@@ -235,7 +235,7 @@ final readonly class CampaignPlanner
             }
 
             // A control (pause, cancel) changed the row meanwhile: the slice is in the ledger, record it anyway.
-            $campaign = $this->store->get($campaign->scope, $campaign->id);
+            $campaign = $this->store->latest($campaign->scope, $campaign->id);
             if ($campaign->sliceOwner !== $owner) {
                 return null;
             }
@@ -253,7 +253,7 @@ final readonly class CampaignPlanner
             if ($this->store->cas($campaign, ['status' => $status->value, 'slice_owner' => null, 'slice_lease_until' => null, 'last_error' => $error], $owner)) {
                 return;
             }
-            $campaign = $this->store->get($campaign->scope, $campaign->id);
+            $campaign = $this->store->latest($campaign->scope, $campaign->id);
             if ($campaign->sliceOwner !== $owner) {
                 return;
             }

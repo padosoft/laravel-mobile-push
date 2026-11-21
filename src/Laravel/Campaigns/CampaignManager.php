@@ -151,7 +151,7 @@ final readonly class CampaignManager
 
                 return $started;
             }
-            $campaign = $this->store->get($scope, $id);
+            $campaign = $this->store->latest($scope, $id);
         }
 
         throw new CampaignStateException('The campaign changed concurrently; try again.');
@@ -329,7 +329,7 @@ final readonly class CampaignManager
 
                 return $changed;
             }
-            $campaign = $this->store->get($scope, $id);
+            $campaign = $this->store->latest($scope, $id);
         }
 
         throw new CampaignStateException('The campaign changed concurrently; try again.');

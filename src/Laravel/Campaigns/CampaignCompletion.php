@@ -62,7 +62,7 @@ final readonly class CampaignCompletion
 
                 return $done;
             }
-            $campaign = $this->store->get($campaign->scope, $campaign->id);
+            $campaign = $this->store->latest($campaign->scope, $campaign->id);
         }
 
         return $campaign;

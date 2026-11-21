@@ -57,6 +57,20 @@ final readonly class CampaignStore
         return $this->find($scope, $id) ?? throw new CampaignNotFoundException('No campaign '.$id.' in scope '.Scope::normalize($scope).'.');
     }
 
+    /**
+     * The campaign as last committed, read with a lock. For the re-read that follows a lost compare-and-set: inside
+     * a transaction the application opened at REPEATABLE READ (MySQL's default) a plain read answers from the
+     * transaction's snapshot, the next compare-and-set would lose again, and the loop would never converge.
+     */
+    public function latest(string $scope, string $id): Campaign
+    {
+        $row = $this->query()->where('scope', Scope::normalize($scope))->where('id', $id)->lockForUpdate()->first();
+
+        return $row === null
+            ? throw new CampaignNotFoundException('No campaign '.$id.' in scope '.Scope::normalize($scope).'.')
+            : Campaign::fromRow($row);
+    }
+
     /** @param  array<string, mixed>  $row */
     public function insert(array $row): void
     {
