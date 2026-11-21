@@ -8,7 +8,6 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
-use Padosoft\MobilePush\Core\Driver\SendOptions;
 use Padosoft\MobilePush\Core\Identity\BindingRef;
 use Padosoft\MobilePush\Core\Identity\Destination;
 use Padosoft\MobilePush\Core\Message\PushMessage;
@@ -145,10 +144,5 @@ final class OpsWorld
     public static function device(int|string $id): PushDevice
     {
         return PushDevice::query()->findOrFail($id);
-    }
-
-    public static function options(): SendOptions
-    {
-        return new SendOptions;
     }
 }
