@@ -221,7 +221,7 @@ Remaining (outside W5-P's lane):
 ## State on 2026-11-21 (after the closing pass)
 
 Open:
-- [ ] Query plans on MySQL and PostgreSQL: the scenarios pass on both engines in CI and the whole suite passed on a local PostgreSQL 16, but the plans of the claim, audience and lookup queries are asserted on SQLite only (`ScalingQueryPlansTest`), and no timing was taken on a server engine.
+- [ ] Query plans on MySQL and PostgreSQL: the scenarios pass on both engines in CI and the whole suite passed on a local PostgreSQL 16; the plans of the claim, audience and lookup queries are asserted on SQLite only (`ScalingQueryPlansTest`). Timing: the campaign scaling guard was run on PostgreSQL 16 (25,000 in 29.7 s, 200,000 in 273.6 s, ratio 9.2 for 8x); MySQL was never timed.
 - [ ] Everything past authentication against the real providers (an accepted push, `BadDeviceToken`, `Unregistered`, quota answers, Live Activities, broadcast channels, topic subscriptions): needs the owner's credentials and a device.
 - [ ] Octane, Swoole, RoadRunner, FrankenPHP, Horizon, Vapor, Redis/SQS queues, memcached/dynamodb cache stores, MariaDB, a real KMS, `xcrun` on a Mac, Pulse/Telescope in a browser: never run.
 - [ ] `ExpiredProviderToken` refresh path against the real APNs (not observable without a real key).

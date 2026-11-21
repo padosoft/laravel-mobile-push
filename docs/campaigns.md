@@ -274,8 +274,10 @@ What to know:
 - Measured here, **locally**: on SQLite with the fake transport, in the development container used to build the package,
   500,000 destinations went from `dispatch()` to `completed` in 457 seconds, and the time per 1,000 destinations grew
   about 1.3 times from 25,000 to 200,000 destinations (the audience grew 8 times, the run took 10.3 times as long). The
-  claim, audience and lookup queries read by index and their plans were checked on **SQLite only**, not on MySQL or
-  PostgreSQL (where the scenarios pass, but no timing was taken). These numbers describe this implementation on that setup, not a provider and not your database, and are not a
+  claim, audience and lookup queries read by index and their plans were checked on **SQLite only**. On a local
+  **PostgreSQL 16** the same guard run took 29.7 seconds for 25,000 destinations and 273.6 seconds for 200,000 (9.2
+  times for 8 times the audience: 1.19 and 1.37 seconds per 1,000 destinations). MySQL passes the scenarios in CI but
+  was not timed. These numbers describe this implementation on that setup, not a provider and not your database, and are not a
   promise: size and test your own campaigns before relying on them.
 
 ## Configuration
