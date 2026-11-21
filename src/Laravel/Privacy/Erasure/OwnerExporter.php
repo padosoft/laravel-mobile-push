@@ -55,7 +55,7 @@ final class OwnerExporter
     }
 
     /**
-     * @param  \Closure(): array{rows: list<array<string, mixed>>, truncated: bool}|null  $read
+     * @param  \Closure(): array{rows: list<array<string, mixed>>, truncated: bool}  $read
      * @return array{status: string, truncated?: bool, rows?: list<array<string, mixed>>}
      */
     private function section(\Closure $read): array
@@ -79,18 +79,18 @@ final class OwnerExporter
 
         $rows = [];
         foreach ($this->owned($query, $owner, $scope)->orderBy('id')->limit($limit + 1)->get() as $device) {
-            $kind = (string) $device->getAttribute('kind')->value;
+            $kind = $this->scalar($this->enum($device->getAttribute('kind')));
             $rows[] = [
                 'id' => $device->getKey(),
-                'provider' => $device->getAttribute('provider')->value,
-                'platform' => $device->getAttribute('platform')?->value,
+                'provider' => $this->enum($device->getAttribute('provider')),
+                'platform' => $this->enum($device->getAttribute('platform')),
                 'app_id' => $device->getAttribute('app_id'),
-                'environment' => $device->getAttribute('environment')->value,
+                'environment' => $this->enum($device->getAttribute('environment')),
                 'kind' => $kind,
                 'token' => $this->masked($device->getAttribute('token'), $scope, $kind),
                 'fid' => $device->getAttribute('fid') === null ? null : $this->masked($device->getAttribute('fid'), $scope, DestinationKind::FcmFid->value),
                 'generation' => $device->getAttribute('generation'),
-                'state' => $device->getAttribute('state')->value,
+                'state' => $this->enum($device->getAttribute('state')),
                 'state_reason' => $device->getAttribute('state_reason'),
                 'registered_at' => $this->date($device->getAttribute('registered_at')),
                 'last_seen_at' => $this->date($device->getAttribute('last_seen_at')),
@@ -160,7 +160,7 @@ final class OwnerExporter
                 'kind' => $row->kind,
                 'device_id' => $row->device_id,
                 'state' => $row->state,
-                'attempts' => (int) $row->attempts,
+                'attempts' => is_numeric($row->attempts) ? (int) $row->attempts : 0,
                 'reason_code' => $row->reason_code,
                 'raw_reason' => $row->raw_reason,
                 'http_status' => $row->http_status,
@@ -271,6 +271,11 @@ final class OwnerExporter
     private function ms(mixed $value): ?string
     {
         return is_numeric($value) ? LedgerTime::date((int) $value)->format(DATE_ATOM) : null;
+    }
+
+    private function scalar(mixed $value): string
+    {
+        return is_scalar($value) ? (string) $value : '';
     }
 
     private function enum(mixed $value): mixed

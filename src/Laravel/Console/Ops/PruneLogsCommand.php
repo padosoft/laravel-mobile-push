@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Padosoft\MobilePush\Laravel\Console\Ops;
 
-use Padosoft\MobilePush\Laravel\Logging\LogPruner;
 use Padosoft\MobilePush\Laravel\Logging\LoggingModule;
+use Padosoft\MobilePush\Laravel\Logging\LogPruner;
 
 /**
  * Deletes send-log rows older than the retention (database sink only). Schedulable; without the database sink it is a

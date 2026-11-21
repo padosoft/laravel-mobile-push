@@ -6,9 +6,16 @@ namespace Padosoft\MobilePush\Laravel\Facades;
 
 use Illuminate\Support\Facades\Facade;
 use Padosoft\MobilePush\Laravel\Sending\PushManager;
+use Padosoft\MobilePush\Laravel\Testing\FakeTransportBuilder;
+use Padosoft\MobilePush\Laravel\Testing\PushFake;
+use Padosoft\MobilePush\Laravel\Testing\TestingSession;
 
 /**
  * Facade of the push manager.
+ *
+ * Testing: fake() verifies INTENT (what your code asked to send or queue; assertSent(), assertSentTo(),
+ * assertNothingSent(), assertQueued() ...), fakeTransport() verifies BYTES and behaviour (the real pipeline runs, only
+ * the transport is replaced; assertApnsRequest(), assertFcmRequest() ...). Both work without any credentials.
  *
  * @method static \Padosoft\MobilePush\Laravel\Sending\PendingSend connection(?string $name = null)
  * @method static \Padosoft\MobilePush\Laravel\Sending\PendingSend scope(string $scope)
@@ -35,6 +42,36 @@ use Padosoft\MobilePush\Laravel\Sending\PushManager;
  */
 final class MobilePush extends Facade
 {
+    /**
+     * Switch to the intent fake: nothing is compiled, sent or queued; every send and queue request is recorded
+     * and answered with a scripted outcome (default Accepted). Throws FakeNotAllowedException outside the
+     * `testing` environment unless `$allowOutsideTesting`.
+     */
+    public static function fake(bool $allowOutsideTesting = false): PushFake
+    {
+        return self::testing()->fake($allowOutsideTesting);
+    }
+
+    /**
+     * Keep the real pipeline (compilers, safe-mode guard, guards, classifier, retry planner, events, log sinks,
+     * device registry) and replace only the Transport. Forces live mode with every destination allowed, because
+     * outside production the default mode simulates and would never reach the transport.
+     */
+    public static function fakeTransport(bool $allowOutsideTesting = false): FakeTransportBuilder
+    {
+        return self::testing()->fakeTransport($allowOutsideTesting);
+    }
+
+    private static function testing(): TestingSession
+    {
+        $app = self::getFacadeApplication();
+        if ($app === null) {
+            throw new \RuntimeException('The MobilePush facade has no application: boot the application before activating a fake.');
+        }
+
+        return $app->make(TestingSession::class);
+    }
+
     protected static function getFacadeAccessor(): string
     {
         return PushManager::class;

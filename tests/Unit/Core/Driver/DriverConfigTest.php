@@ -99,3 +99,18 @@ it('validates the FCM config: production environment, distinct secondary, sane w
     expect((new FcmDriver(new FcmConfig(SendKit::fcmBinding(), $provider, http2: false)))->connectionProfile(EndpointRole::FcmApi, 0)->httpVersion)
         ->toBe(HttpVersion::Http11);
 });
+
+it('gives broadcast channel management its own pool with the credential and timeouts of sending', function () {
+    $c = clientCertificate();
+    $driver = new ApnsDriver(new ApnsConfig(SendKit::apnsBinding(), ApnsCredential::certificate(SendKit::TEAM, $c['cert'], $c['key']), timeoutMs: 7000, connectTimeoutMs: 1500));
+    $send = $driver->connectionProfile(EndpointRole::ApnsSend, 0);
+    $manage = $driver->connectionProfile(EndpointRole::ApnsChannelManagement, 0);
+
+    expect($manage->poolKey)->not->toBe($send->poolKey)
+        ->and($manage->poolKey)->not->toBe($driver->connectionProfile(EndpointRole::ApnsBroadcastPublish, 0)->poolKey)
+        ->and($manage->clientCertificatePem)->toBe($c['cert'])
+        ->and($manage->timeoutMs)->toBe(7000)
+        ->and($manage->connectTimeoutMs)->toBe(1500)
+        ->and($manage->requireHttp2)->toBeTrue()
+        ->and($driver->connectionProfile(EndpointRole::ApnsChannelManagement, 0))->toBe($manage);
+});

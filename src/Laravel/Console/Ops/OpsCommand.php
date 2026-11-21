@@ -19,7 +19,7 @@ abstract class OpsCommand extends Command
     {
         try {
             return (int) parent::execute($input, $output);
-        } catch (UsageError $e) {
+        } catch (UsageError $e) { // @phpstan-ignore catch.neverThrown (thrown by the command's handle())
             $this->components->error($e->getMessage());
 
             return self::FAILURE;
@@ -38,6 +38,13 @@ abstract class OpsCommand extends Command
     protected function currentScope(): string
     {
         return (new OwnerStores($this->laravel))->scope($this->stringOption('scope'));
+    }
+
+    protected function stringArgument(string $name): string
+    {
+        $value = $this->argument($name);
+
+        return is_string($value) ? $value : '';
     }
 
     protected function stringOption(string $name): ?string

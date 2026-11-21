@@ -26,7 +26,7 @@ final class ExportCommand extends OpsCommand
     public function handle(OwnerExporter $exporter): int
     {
         try {
-            $owner = OwnerRef::parse((string) $this->argument('owner'));
+            $owner = OwnerRef::parse($this->stringArgument('owner'));
         } catch (\InvalidArgumentException $e) {
             throw new UsageError($e->getMessage());
         }

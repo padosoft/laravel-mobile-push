@@ -26,7 +26,7 @@ final class ForgetCommand extends OpsCommand
     public function handle(OwnerEraser $eraser): int
     {
         try {
-            $owner = OwnerRef::parse((string) $this->argument('owner'));
+            $owner = OwnerRef::parse($this->stringArgument('owner'));
         } catch (\InvalidArgumentException $e) {
             throw new UsageError($e->getMessage());
         }
@@ -49,7 +49,8 @@ final class ForgetCommand extends OpsCommand
             $this->emitJson($report->toArray());
         } else {
             $lines = $report->lines();
-            $this->components->{$report->succeeded() ? 'info' : 'error'}(array_shift($lines));
+            $title = (string) array_shift($lines);
+            $report->succeeded() ? $this->components->info($title) : $this->components->error($title);
             foreach ($lines as $line) {
                 $this->line($line);
             }

@@ -78,6 +78,31 @@ final readonly class CampaignStore
         return $query->update($changes + ['version' => $campaign->version + 1, 'updated_at' => $this->nowMs()]) === 1;
     }
 
+    /**
+     * Note that the planner job for slice number `$slices` + 1 was queued. Monotonic and unversioned: it only ever
+     * raises the marker, so it can race with any other write.
+     */
+    public function markSuccessor(Campaign $campaign, int $slices): void
+    {
+        $this->query()->where('scope', $campaign->scope)->where('id', $campaign->id)
+            ->where(static fn (Builder $q): Builder => $q->whereNull('successor_for')->orWhere('successor_for', '<', $slices))
+            ->update(['successor_for' => $slices]);
+    }
+
+    /** Whether the planner job for the slice after `$slices` is already queued. */
+    public function successorQueued(Campaign $campaign, int $slices): bool
+    {
+        $marker = $this->query()->where('scope', $campaign->scope)->where('id', $campaign->id)->value('successor_for');
+
+        return is_numeric($marker) && (int) $marker >= $slices;
+    }
+
+    /** Unversioned note of the last planner error (class only: no message can carry a destination). */
+    public function noteError(string $scope, string $id, string $error): void
+    {
+        $this->query()->where('scope', Scope::normalize($scope))->where('id', $id)->update(['last_error' => substr($error, 0, 255)]);
+    }
+
     /** Unversioned write of the throughput sample (display data only, never a decision). */
     public function sample(Campaign $campaign, int $atMs, int $done, ?float $throughput): void
     {
