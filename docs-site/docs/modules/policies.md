@@ -15,7 +15,7 @@ Two optional behaviours that decide *how often* and *with what number* a person 
 
 Related pages: [messages](/sending/messages), [sending](/sending/sending), [notifications and fallback](/sending/notifications-and-fallback), [devices](/modules/devices), [configuration](/get-started/configuration), [outcomes](/reliability/outcomes).
 
-What was not verified: both are covered by scenario and unit tests against the in-memory store and the `array` cache. Behaviour on Redis, Memcached or a database cache under real concurrency was not exercised.
+What was not verified: both are covered by scenario and unit tests against the in-memory store and the `array` cache. Behaviour on Redis, Memcached or a database cache under real concurrency was not exercised for these two features (the cache layer they sit on was: eight processes on Redis, memcached, DynamoDB Local, a database and a file store; see [runtimes](/operations/runtimes)).
 
 ## `policy` is not `actionCategory`
 
