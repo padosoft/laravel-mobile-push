@@ -5,9 +5,9 @@
 
 ## Dove siamo
 
-- **Stato:** tutte le ondate di implementazione (1–8) sono rientrate tranne **W5-P** (scalabilità di ledger, relay e campagne). Il codice di ogni milestone è scritto e testato su mock e fixture; **niente è stato provato contro APNs/FCM reali né su un dispositivo**.
-- **Porta corrente:** candidata 1.0 in attesa della verifica sui provider reali (vedi "Non verificato" nel README e `docs/runtimes.md`).
-- **Prossimo passo concreto:** integrare W5-P al rientro → `composer check` completo (Pint, PHPStan max, suite + gruppo `slow`) → risincronizzare `docs-site/` (`node scripts/sync-docs.mjs && npm run build && npm run verify`) → push.
+- **Stato:** tutte le ondate di implementazione e di documentazione sono rientrate e integrate. Ultima verifica completa (2026-11-21): `vendor/bin/pest` 2499 test verdi, 0 rossi (184 s); gruppo `slow` 12 verdi, 8 saltati (profilazioni attivabili con `MOBILE_PUSH_PROFILE=1`), 1314 s; `vendor/bin/pint --test` pulito; PHPStan livello max senza errori; sito docmd: sync rigoroso, build e verifica dei link ok. **Niente è stato provato contro APNs/FCM reali né su un dispositivo.**
+- **Porta corrente:** candidata 1.0 in attesa della verifica sui provider reali (vedi "Project status" nel README e `docs/runtimes.md`).
+- **Prossimo passo concreto:** (a) prova su APNs sandbox e FCM reali con un dispositivo di test; (b) primo giro dei job CI su GitHub (matrice PHP/Laravel, MySQL/PostgreSQL/Redis sperimentali, workflow `docs-site`); (c) pubblicazione del sito su Cloudflare Pages (impostazioni in `docs-site/README.md`) e link nel README; (d) tag della prima pre-release.
 - **Decisioni in attesa del proprietario:** (1) force push per togliere dalla storia git i 114 MB di `docs-site/node_modules` committati per errore in `72b6f37` (già rimossi dall'albero in `c7473fd`); (2) dominio del sito (ipotesi: `https://doc.laravel-mobile-push.padosoft.com`, impostato in entrambi i `docmd.config.json`).
 - **Piano:** `docs/PLAN.md` (v2 approvata il 2026-11-20). Lista di lavoro residua: `docs/internal/integration-todo.md`.
 - **Repository remoto:** `https://github.com/padosoft/laravel-mobile-push` (privato), branch `main`. Push dopo ogni passo integrato.
@@ -22,10 +22,10 @@
 | M2 APNs | fatto | Auth `.p8`/certificato/signer esterno, messaggi, compiler, classificatore, driver, canali broadcast |
 | M3 FCM | fatto | Service account e `google/auth`, messaggi, compiler, classificatore, driver, iscrizioni ai topic |
 | M4 Strato Laravel (profilo leggero) | fatto | Manager, facade, helper, safe mode, fake (intento e byte), comandi |
-| M5 Invio durevole | fatto, **W5-P in corso** | Ledger, outbox, relay, sweeper, dispositivi, eleggibilità, riservatezza, runtime longevi. In corso: scalabilità e rilievi sul ledger |
+| M5 Invio durevole | fatto | Ledger, outbox, relay, sweeper, dispositivi, eleggibilità, riservatezza, runtime longevi; scalabilità misurata su SQLite (500k destinazioni in 457 s) |
 | M6 Live Activities | fatto | Token tipizzati, transizioni serializzate, scadenza locale, canali, 11 comandi |
 | M7 Osservabilità, health, credenziali | fatto | Sink log/database/otel, metriche, Prometheus, health, avvisi, Pulse, Telescope |
-| M8 Campagne, cap, badge, ripiego, ricevute | fatto, **W5-P in corso** | Campagne (pianificatore riavviabile), cap di frequenza, badge, ripiego (anche durevole), ricevute |
+| M8 Campagne, cap, badge, ripiego, ricevute | fatto | Campagne (pianificatore riavviabile), cap di frequenza, badge, ripiego (anche durevole), ricevute |
 | M9 Benchmark, README, docs | fatto | `benchmarks/RESULTS.md`, README, 30 guide in `docs/`, esempi eseguiti da `DocExamplesTest`, `docs/configuration.md` generato |
 | M10 Sito docmd `docs-site/` + banner | fatto, da pubblicare | 42 pagine generate da `docs/` (`sync-docs.mjs`), build e verifica dei link ok; impostazioni Cloudflare Pages in `docs-site/README.md`; banner in `resources/` |
 
@@ -207,3 +207,4 @@ composer check        # pint --test, phpstan max, pest
 - 2026-11-21 [orchestratore] W5-P rientrato: TUTTI GLI AGENTI DI IMPLEMENTAZIONE SONO RIENTRATI. Ledger/relay/campagne: campagna da 500k in 457 s (era 1436 s), nessun percorso quadratico residuo (tempo per 1000 destinazioni ×1,3 da 25k a 200k), piani di query verificati solo su SQLite; tentativi marcati per finestra subito prima del trasporto (crash a metà preparazione = righe di nuovo dovute, non esiti ignoti); chiave logica del dispositivo senza generazione; follow-up dei relay accorpati (10.000 effetti differiti → 21 job); mismatch del binding uniforme tra relay e job leggero; prune delle campagne solo completed/cancelled. Pint e PHPStan max puliti su tutto il repository. Descrizione di queue.follow_up_bucket aggiornata e docs/configuration.md rigenerato. In corso: W9-D (documentazione di queste modifiche) e la suite completa + gruppo slow.
 - 2026-11-21 02:14 [W9-D] done: documentati i cambi di W5-P in campaigns, delivery-profiles (finestra di dedupe, crash per finestra, follow-up raggruppati, chiave dispositivo senza generazione), queues-and-horizon, multi-tenancy, outcomes, devices, commands, upgrading (due migration di indici), README; numeri di scala solo come misure locali; Docs 81 verdi. Non verificato: MySQL/PostgreSQL, provider reali.
 - 2026-11-21 [orchestratore] W9-D rientrato (campagne, profili di consegna, code, multi-tenancy, esiti, dispositivi, comandi, upgrading allineati alle modifiche di W5-P; 81 esempi eseguiti). Sito risincronizzato e ricostruito: 43 pagine, 4098 riferimenti interni, controllo rigoroso ok. CHANGELOG aggiornato. Nessun agente in corso. Resta: esito della suite completa + gruppo slow (in esecuzione).
+- 2026-11-21 [orchestratore] VERIFICA FINALE: pest 2499 verdi / 0 rossi (184 s); gruppo slow 12 verdi, 8 saltati, 1314 s; pint --test pulito; phpstan max senza errori; docs-site sync rigoroso + build + verify ok. Roadmap M0–M10 completata sul codice; resta la verifica sui provider reali e le due decisioni del proprietario (force push per i 114 MB in storia; dominio del sito).
