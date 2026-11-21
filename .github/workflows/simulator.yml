@@ -1,0 +1,63 @@
+name: simulator
+
+# `mobile-push:simulator` on a real Mac: the command builds an .apns payload file and hands it to
+# `xcrun simctl push` for a booted iOS Simulator. Only by hand from the Actions tab: macOS runners are billed at a
+# multiple of Linux ones, and this checks a developer convenience, not the sending path. The payload is addressed to
+# Safari, which every simulator has installed; nothing is sent to Apple and no credential exists.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  simctl-push:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    name: xcrun simctl push through mobile-push:simulator
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: package
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: curl, openssl, json, intl, pdo_sqlite
+          coverage: none
+      - name: Create the application, require the package and install
+        run: |
+          composer create-project "laravel/laravel:^13.0" app --no-interaction --prefer-dist
+          cd app
+          composer config repositories.mobile-push '{"type":"path","url":"../package","options":{"symlink":false}}'
+          composer require padosoft/laravel-mobile-push:@dev --no-interaction
+          php artisan mobile-push:install --no-interaction --profile=light
+          php ../package/tests/Support/FreshApp/configure.php "$PWD"
+      - name: Without a booted simulator the command says so and exits 5
+        working-directory: app
+        run: |
+          xcodebuild -version
+          set +e
+          php artisan mobile-push:simulator --bundle=com.apple.mobilesafari --title="Order shipped" --body="Arrives Friday" --device=00000000-0000-0000-0000-000000000000 | tee no-device.txt
+          code=${PIPESTATUS[0]}
+          set -e
+          echo "exit code: $code"
+          test "$code" = 5
+          grep -q 'xcrun simctl push failed' no-device.txt
+      - name: Boot an iPhone simulator
+        run: |
+          udid="$(xcrun simctl list devices available -j | php -r '$d = json_decode(stream_get_contents(STDIN), true)["devices"]; foreach ($d as $runtime => $list) { if (! str_contains($runtime, "iOS")) { continue; } foreach ($list as $device) { if (str_starts_with($device["name"], "iPhone")) { echo $device["udid"]; exit; } } }')"
+          test -n "$udid"
+          echo "SIM_UDID=$udid" >> "$GITHUB_ENV"
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
+          xcrun simctl list devices booted
+      - name: Push the payload to the booted simulator
+        working-directory: app
+        run: |
+          php artisan mobile-push:simulator --bundle=com.apple.mobilesafari --title="Order shipped" --body="Arrives Friday" --badge=3 --export="$PWD/payload.apns" | tee pushed.txt
+          cat payload.apns
+          grep -q 'Pushed to the simulator (booted)' pushed.txt
+          grep -q '"Simulator Target Bundle": "com.apple.mobilesafari"' payload.apns
+          php artisan mobile-push:simulator --bundle=com.apple.mobilesafari --title="By device id" --body="Same file format" --device="$SIM_UDID" | tee pushed-by-id.txt
+          grep -q "Pushed to the simulator ($SIM_UDID)" pushed-by-id.txt
