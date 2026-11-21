@@ -141,6 +141,8 @@ final class CampaignProfiler
             $lines[] = sprintf('   sql %-22s %9.1f ms %8d stmts  %8.0f dest/s', $phase, $p['ms'], $p['n'], $p['ms'] > 0 ? $destinations / ($p['ms'] / 1000) : 0);
         }
         $lines[] = sprintf('   non-SQL (sender, php)      %9.1f ms', $totalMs - $this->sqlMs());
+        $gc = gc_status();
+        $lines[] = sprintf('   php gc: %d runs, %d collected, %.1f ms collector; peak memory %.1f MB', $gc['runs'], $gc['collected'], ($gc['collector_time'] ?? 0.0) * 1000, memory_get_peak_usage() / 1048576);
 
         return implode("\n", $lines);
     }
