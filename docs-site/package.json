@@ -1,0 +1,28 @@
+{
+  "name": "padosoft-laravel-mobile-push-docs",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Static docmd documentation site for padosoft/laravel-mobile-push.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": "^20.9.0 || ^22.0.0"
+  },
+  "scripts": {
+    "dev": "node scripts/sync-docs.mjs && docmd dev",
+    "sync": "node scripts/sync-docs.mjs",
+    "build": "node scripts/sync-docs.mjs && docmd build",
+    "check": "node scripts/sync-docs.mjs --check && node scripts/check-no-raw-html.mjs && node scripts/check-config.mjs && docmd validate"
+  },
+  "devDependencies": {
+    "@docmd/core": "^0.8.6",
+    "@huggingface/transformers": "^4.2.0",
+    "docmd-search": "0.1.0-alpha.1",
+    "onnxruntime-node": "1.24.3"
+  },
+  "overrides": {
+    "adm-zip": "^0.6.0",
+    "sharp": "^0.35.0",
+    "protobufjs": "^7.6.5"
+  }
+}

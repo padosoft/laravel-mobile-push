@@ -151,3 +151,18 @@ Remaining:
 - [ ] Campaigns: `campaigns.retention_days` default is 30 in `CampaignSettings` (the orchestrator suggested 90): the config file follows the code (30); confirm.
 - [ ] Consent gates (`eligibleUsing`) still see every destination kind, Live Activity tokens included (the callback gets the typed destination and decides); confirm that this is wanted.
 - [ ] Testing seams beyond `forceExecution()` (connection-cache injection, `unregister()`) for the testing module.
+
+### Findings from the module documentation pass (W5-D3), 2026-11-21
+- Live Activities: `local_expires_at` enforced only by the pruner → passed back to the module author (enforce at transition time).
+- `log.payload = keys|full` inert on the manager path; `SendingObserver` passes no `payload`, `effect_id`, `campaign_id`, `origin_*`, `notification` to the sinks → W5-T2 item 5 (extend it to the ids/origin context too).
+- Durable-profile fallback: `PushChannel` never fills `EffectOrigin`, so `EffectSettled::origin` is always null → W5-T2 item 3.
+- `TopicSubscriptionClient` is not bound in the container; built only by the command (without the gate closure it would make real requests in simulation) → bind it with the safe-mode gate in the integration module.
+- Nothing schedules `devices:prune`, `logs:prune`, `deliveries:prune`, `credentials:check`, `live-activity:prune`, `campaign:prune`: decide which the package schedules itself (behind config flags) and which are left to the host app; document either way.
+- The badge counter increments before the gates run: a device later skipped or capped has still moved it. Decide (resolve the badge after the gates, or document).
+- Consent gates still see Live Activity tokens (only the device-only gates were restricted): document or restrict.
+- `DeviceRegistrar::forgetOwner()` is a logout, not an erasure: rename or document.
+- Migration guides: no equivalent here for pushok's `url-args` / `action-loc-key` (Safari/legacy keys) nor for the apn channel's `NotificationFailed` event → consider small additions (`ApnsMessage` already has loc keys? check) or state as intentional.
+
+### M10 — docs site and banner (requested by the owner on 2026-11-21)
+- `docs-site/` built with docmd, modelled on `/home/user/padosoft/laravel-flow` (read-only clone), generated from `README.md` + `docs/*.md` by a sync script with a `--check` mode; Cloudflare Pages settings in `docs-site/README.md`. Owner must confirm the domain.
+- Banner: `art/banner.svg` → `resources/laravel-mobile-push-banner.png`; favicon `art/favicon.svg`.

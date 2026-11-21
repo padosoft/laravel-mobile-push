@@ -20,6 +20,7 @@ use Padosoft\MobilePush\Core\Exceptions\PushException;
 use Padosoft\MobilePush\Core\Identity\Environment;
 use Padosoft\MobilePush\Core\Identity\Provider;
 use Padosoft\MobilePush\Core\Privacy\Redactor;
+use Padosoft\MobilePush\Laravel\Health\ConnectionCredentialsSource;
 use Padosoft\MobilePush\Laravel\Sending\ConfigReader;
 use Padosoft\MobilePush\Laravel\Sending\ConnectionFactory;
 use Padosoft\MobilePush\Laravel\Sending\PushManager;
@@ -29,6 +30,12 @@ use Psr\Clock\ClockInterface;
  * Reads a connection's configuration and inspects its credentials WITHOUT sending anything and without keeping any
  * secret: only non-secret identities (team, key id, certificate fingerprint prefix, service-account e-mail) leave it.
  * Connections registered at runtime or supplied by a resolver are not in the config and cannot be inspected here.
+ *
+ * One source of truth: once a connection resolves, its credential findings and days left are NOT computed here but
+ * taken from the ConnectionCredentialsSource (the facts the push manager collected while resolving it, the same
+ * object `mobile-push:health` and `mobile-push:credentials:check` read) and evaluated with the container's
+ * CredentialCheck, so `doctor`, `connections`, `health` and `credentials:check` cannot disagree. The local
+ * inspection below only explains a connection that does not resolve (which key is missing or unreadable).
  */
 final class ConnectionInspector
 {
@@ -70,10 +77,12 @@ final class ConnectionInspector
         // Full validation exactly as a send would do it (also yields the binding generation).
         try {
             $binding = $this->manager->binding($name, $scope);
+            // The credential verdict is the one health and credentials:check give (same facts, same check).
+            [$findings, $days] = $this->shared($binding->scope, $name) ?? [$info->findings, $info->daysLeft];
 
             return new ConnectionInfo(
                 $info->name, $info->provider, $binding->appId, $binding->environment->value, $info->auth, $info->identity,
-                $binding->generation, $info->daysLeft, $info->findings, $info->notes, null, $info->live, $info->hasSecondary,
+                $binding->generation, $days, $findings, $info->notes, null, $info->live, $info->hasSecondary,
             );
         } catch (PushException $e) {
             return new ConnectionInfo(
@@ -83,13 +92,46 @@ final class ConnectionInspector
         }
     }
 
+    /**
+     * The findings and days left of a resolved connection, from the ConnectionCredentialsSource that the health
+     * report and `credentials:check` read (the facts the manager's ConnectionFactory collected while resolving it),
+     * evaluated by the container's CredentialCheck (`credentials.warn_days`). Null when no source can see it.
+     *
+     * @return array{0: list<Finding>, 1: int|null}|null
+     */
+    private function shared(string $scope, string $name): ?array
+    {
+        if (! $this->container->bound(ConnectionCredentialsSource::class)) {
+            return null;
+        }
+        $source = $this->container->make(ConnectionCredentialsSource::class);
+        if (! $source->available() || $scope !== $this->manager->currentScope()) {
+            return null;
+        }
+        foreach ($source->connections() as $connection) {
+            if ($connection->binding->name !== $name || $connection->error !== null) {
+                continue;
+            }
+
+            return [$connection->evaluate($this->check())->findings, $connection->certificate?->daysRemaining($this->clock->now())];
+        }
+
+        return null;
+    }
+
+    /** The container's CredentialCheck (warning window from `credentials.warn_days`), as the health module uses it. */
+    private function check(): CredentialCheck
+    {
+        return $this->container->bound(CredentialCheck::class) ? $this->container->make(CredentialCheck::class) : new CredentialCheck($this->clock);
+    }
+
     private function apns(string $name, ConfigReader $c): ConnectionInfo
     {
         $environment = $c->choice('environment', ['production', 'sandbox'], 'production');
         $bundle = $c->string('bundle_id');
         $team = $c->string('team_id');
         $auth = $c->choice('auth', ['token', 'certificate'], 'token');
-        $check = new CredentialCheck($this->clock);
+        $check = $this->check();
         $findings = [];
         $notes = [];
         $days = null;
@@ -157,7 +199,7 @@ final class ConnectionInspector
     {
         $auth = $c->choice('auth', ['service_account', 'adc'], 'service_account');
         $project = $c->string('project_id');
-        $check = new CredentialCheck($this->clock);
+        $check = $this->check();
         $findings = [];
         $notes = [];
         $identity = null;
@@ -188,7 +230,7 @@ final class ConnectionInspector
     /** @return array{0: string|null, 1: string|null, 2: CheckResult, 3: CredentialIdentity|null} */
     private function serviceAccount(ConfigReader $c, string $prefix, ?string $project): array
     {
-        $check = new CredentialCheck($this->clock);
+        $check = $this->check();
         try {
             $json = $this->secret($c, $prefix.'credentials');
             $info = (new ServiceAccountInspector)->fromJson($json);
