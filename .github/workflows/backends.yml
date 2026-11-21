@@ -22,7 +22,7 @@ env:
 jobs:
   cache-stores:
     runs-on: ubuntu-latest
-    name: Cache coordination on memcached and DynamoDB
+    name: Cache coordination on memcached and DynamoDB; APNs signer on a KMS emulator
     services:
       memcached:
         image: memcached:1.6
@@ -30,6 +30,9 @@ jobs:
       dynamodb:
         image: amazon/dynamodb-local:latest
         ports: ['8000:8000']
+      kms:
+        image: nsmithuk/local-kms:latest
+        ports: ['8088:8080']
     steps:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
@@ -50,6 +53,12 @@ jobs:
           vendor/bin/pest tests/Scenario/Laravel/Runtime/CacheCoordinationTest.php 2>&1 | tee coordination.txt
           grep -q '^\[memcached\] ' coordination.txt
           grep -q '^\[dynamodb\] ' coordination.txt
+      - name: The APNs provider token signed through the AWS KMS API (local emulator)
+        env:
+          MOBILE_PUSH_TEST_KMS: http://127.0.0.1:8088
+        run: |
+          vendor/bin/pest tests/Scenario/Laravel/Sending/KmsSignerTest.php 2>&1 | tee kms.txt
+          grep -q 'Tests:    1 passed' kms.txt
 
   queue-and-cache:
     runs-on: ubuntu-latest
