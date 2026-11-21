@@ -242,9 +242,11 @@ it('can be dropped into a dashboard view with the documented tag', function () {
     event(Kit::batch(Kit::binding('ios-main'), ['accepted' => 4]));
     Pulse::ingest();
 
-    $html = Blade::render('<livewire:mobile-push.pulse-card cols="6" />');
+    $html = Blade::render('<livewire:mobile-push.pulse-card cols="full" />');
 
-    expect($html)->toContain('Mobile push')->toContain('apns / ios-main')->toContain('col-span-6');
+    expect($html)->toContain('Mobile push')->toContain('apns / ios-main')->toContain('col-span-full')
+        // the rules the card brings itself, because Pulse's stylesheet has no such utility classes
+        ->toContain('mobile-push-card-table')->toContain('mobile-push-card-grid');
 });
 
 it('shows the same numbers on the second poll, read back from a cache store that refuses to rebuild objects', function () {

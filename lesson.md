@@ -550,3 +550,16 @@ Modello di voce:
 - **Scoperta:** in CI bastano i service container (`mariadb`, `memcached`, `softwaremill/elasticmq-native`, `amazon/dynamodb-local`), `setup-php` con `swoole`/`memcached` e `octane:install --server=frankenphp` (scarica il binario). Tutti e sei sono passati al primo giro. Il binario FrankenPHP incorpora un suo PHP (8.6 in quel run): il package gira anche lì.
 - **Regola:** prima di scrivere "non verificato", chiedersi se un job CI con un emulatore lo può eseguire; dichiarare bloccato solo ciò che richiede credenziali o hardware altrui (Vapor/AWS, dispositivi, Mac). Per provare il trasporto sotto un runtime longevo, far contare le connessioni al server mock, non al client.
 - **Errore mio:** lo script di prova della campagna assumeva uno schema vuoto ma girava dopo un altro passo che aveva già registrato dispositivi (252 invece di 250). Uno script di smoke dichiara e crea le proprie precondizioni (`migrate:fresh`).
+
+### 2026-11-21 — Laravel 13: `cache.serializable_classes = false` trasforma gli oggetti in cache in classi incomplete
+- **Contesto:** scheda Pulse del package aperta in un browser su un'app Laravel 13 nuova.
+- **Scoperta:** una nuova app Laravel 13 ha `cache.serializable_classes => false`: qualunque oggetto messo in cache torna come `__PHP_Incomplete_Class`. La scheda (che metteva in cache un `CardData`) tornava vuota al secondo poll; anche la scheda Cache di Pulse 1.11 stesso va in errore. I test non lo vedevano perché lo store `array` non serializza e Testbench non imposta quella chiave.
+- **Regola:** in cache solo scalari e array; per provarlo, far girare i test Laravel con `MOBILE_PUSH_TEST_STRICT_CACHE=1` (store `file` + `serializable_classes=false`).
+
+### 2026-11-21 — Una scheda Pulse non può usare classi Tailwind arbitrarie
+- **Scoperta:** Pulse distribuisce un CSS precompilato con le sole classi usate dalle sue schede. `@lg:grid-cols-3`, `mb-2`, `text-red-600`, `text-amber-600` non esistono: il markup era giusto, il rendering no. Si vede solo in un browser (o confrontando le classi della vista con `vendor/laravel/pulse/dist/pulse.css`).
+- **Regola:** le regole fuori dal set di Pulse vanno in un `<style>` della scheda con classi proprie.
+
+### 2026-11-21 — Swoole con hook di coroutine: Octane stesso non regge richieste concorrenti nello stesso worker
+- **Scoperta:** con `hook_flags = SWOOLE_HOOK_ALL` (in Swoole 6 include `SWOOLE_HOOK_NATIVE_CURL` = 4096 ed esclude `SWOOLE_HOOK_CURL` = 2048) una seconda richiesta entra nel worker mentre la prima attende dentro curl: errore fatale in `curl_multi_exec` sul pool condiviso e poi `Call to a member function handle() on null` in `octane/bin/swoole-server` (lo stato di Octane è globale). Sequenziali 60/60, concorrenti 4-9/60.
+- **Regola:** non si risolve con un mutex nel trasporto: è il contenitore di Laravel/Octane a non essere sicuro tra coroutine. Si dichiara non supportato e `doctor` avvisa leggendo `octane.swoole.options.hook_flags`. Per escludere i due hook: `SWOOLE_HOOK_ALL & ~(SWOOLE_HOOK_CURL | SWOOLE_HOOK_NATIVE_CURL)` (non `^`: uno dei due bit non è in ALL).

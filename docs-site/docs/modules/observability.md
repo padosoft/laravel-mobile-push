@@ -21,7 +21,7 @@ Send logs, Pulse, Telescope, health checks, Prometheus metrics, operational aler
 
 Related pages: [outcomes](/reliability/outcomes), [troubleshooting](/operations/troubleshooting), [commands](/operations/commands), [security and privacy](/operations/security-and-privacy), [safe mode](/reliability/safe-mode), [configuration](/get-started/configuration).
 
-What was not verified: Pulse and Telescope were verified through component rendering and storage, not in a browser. The OpenTelemetry sink was verified against an in-memory SDK; an absent SDK makes the API a no-op, which the package cannot detect. Databases other than SQLite and caches other than `array` were not exercised for these pieces.
+What was verified in a browser: on a freshly created Laravel 13 application with Pulse 1.11 and Telescope 5.29, the Pulse dashboard and Telescope were opened in headless Chromium after a few simulated pushes. The card shows the two connections, the top reason codes and the circuit and throttle blocks; Telescope lists `mobile-push.batch` events with their tags and the sanitised payload (no token). That check found and fixed two defects of the card (it came back empty on the second poll with Laravel 13's default `cache.serializable_classes = false`, and its layout relied on CSS classes Pulse does not ship). It was a manual run, not a CI job, with simulated sends only. The OpenTelemetry sink was verified against an in-memory SDK; an absent SDK makes the API a no-op, which the package cannot detect. Databases other than SQLite and caches other than `array` were not exercised for these pieces.
 
 ## Send log sinks
 
@@ -148,8 +148,9 @@ Needs `laravel/pulse` and Livewire. Nothing in the package extends a Pulse class
 1. Enable: `MOBILE_PUSH_PULSE_ENABLED=true` (`mobile-push.pulse.enabled`). Also available: `pulse.sample_rate` (`MOBILE_PUSH_PULSE_SAMPLE_RATE`, 0 to 1, default 1.0) and `pulse.max_connections` (default 50).
 2. Add the card to your published Pulse dashboard (`resources/views/vendor/pulse/dashboard.blade.php`):
    ```blade
-   <livewire:mobile-push.pulse-card cols="6" />
+   <livewire:mobile-push.pulse-card cols="full" />
    ```
+   The table has nine columns: on a narrower card (`cols="6"`) it scrolls sideways instead of being cut off.
 3. Optionally publish the card view to customise it: `php artisan vendor:publish --tag=mobile-push-views` (to `resources/views/vendor/mobile-push/pulse`).
 
 **What it shows:** per `provider / connection`: accepted, rejected, failed (failed + expired), unknown, deferred and skipped counts, an accepted rate (`accepted / (accepted + rejected + failed + unknown)`), and the batch time (max and average); the ten most frequent **reason codes** among non-accepted results; the connections whose **circuit is open** and those **throttled** right now; and totals of throttle events and circuit transitions.

@@ -57,8 +57,8 @@ jobs:
         env:
           MOBILE_PUSH_TEST_KMS: http://127.0.0.1:8088
         run: |
-          vendor/bin/pest tests/Scenario/Laravel/Sending/KmsSignerTest.php 2>&1 | tee kms.txt
-          grep -q 'Tests:    1 passed' kms.txt
+          vendor/bin/pest --colors=never tests/Scenario/Laravel/Sending/KmsSignerTest.php 2>&1 | tee kms.txt
+          grep -Eq 'Tests: +1 passed' kms.txt
 
   queue-and-cache:
     runs-on: ubuntu-latest
