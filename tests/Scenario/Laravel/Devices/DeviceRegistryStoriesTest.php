@@ -91,9 +91,10 @@ it('shared phone: B registers the token of A, one row, owner B, generation 2, A\
         ->and($row->owner_id)->toBe('2')
         ->and($row->generation)->toBe(2);
 
+    // Both the owner and the generation changed: the more informative cause wins.
     $verdict = app(DeviceEligibility::class)->check($queuedForA);
     expect($verdict->eligible)->toBeFalse()
-        ->and($verdict->cause)->toBe(Ineligibility::GenerationChanged)
+        ->and($verdict->cause)->toBe(Ineligibility::OwnerChanged)
         ->and($verdict->reason()->code)->toBe(ReasonCode::PolicyIneligible)
         ->and($verdict->reason()->hint)->not->toBeEmpty();
 
@@ -277,7 +278,7 @@ it('logout: forgetOwner empties the destinations and kills old refs; unregister 
     $verdicts = app(DeviceEligibility::class)->checkMany($refs);
     foreach ($refs as $ref) {
         expect($verdicts[$ref->id]->eligible)->toBeFalse()
-            ->and($verdicts[$ref->id]->cause)->toBe(Ineligibility::GenerationChanged);
+            ->and($verdicts[$ref->id]->cause)->toBe(Ineligibility::OwnerChanged);
     }
 
     expect(DB::table('mobile_push_devices')->count())->toBe(2)
