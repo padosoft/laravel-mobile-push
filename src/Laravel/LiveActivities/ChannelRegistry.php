@@ -49,15 +49,19 @@ final readonly class ChannelRegistry implements TransitionStore
         private TypeRegistry $types,
         private LiveActivitiesConfig $config,
         private Rows $rows,
+        /** Asked before any local write: a refused (simulated or blocked) management call changes nothing. */
+        private ?ChannelManagementGate $gate = null,
     ) {}
 
     /**
      * @throws ChannelLimitReachedException before the network when the local cap is reached
-     * @throws ChannelApiException when APNs refused the creation (no channel exists; the row is marked deleted)
+     * @throws ChannelApiException before any write when safe mode simulates or blocks channel management (no row is
+     *                             written), or when APNs refused the creation (no channel exists; the row is marked deleted)
      */
     public function create(BindingRef $binding, StoragePolicy $policy = StoragePolicy::NoStorage, ?string $label = null, LiveActivityType|string|null $type = null): BroadcastChannel
     {
         self::assertApns($binding);
+        $this->assertAllowed($binding);
         $client = $this->clients->for($binding);
 
         $counted = $this->appQuery($binding)->whereIn('state', ChannelState::counted())->count();
@@ -126,6 +130,7 @@ final readonly class ChannelRegistry implements TransitionStore
         }
 
         $previous = $row->state;
+        $this->assertAllowed($this->bindingOf($row));
         $client = $this->clients->for($this->bindingOf($row));
         $this->force($row, ['state' => ChannelState::Deleting, 'state_changed_at' => $this->rows->now()]);
 
@@ -162,6 +167,7 @@ final readonly class ChannelRegistry implements TransitionStore
     public function sync(BindingRef $binding): SyncReport
     {
         self::assertApns($binding);
+        $this->assertAllowed($binding);
         $remote = $this->clients->for($binding)->all();
         $remoteSet = array_fill_keys($remote, true);
         $now = $this->rows->now();
@@ -388,7 +394,7 @@ final readonly class ChannelRegistry implements TransitionStore
                         'pending_attempts' => $attempts,
                     ];
                 }
-            } elseif (in_array($result->status, [SendStatus::Skipped, SendStatus::Expired], true) && $latest) {
+            } elseif (in_array($result->status, [SendStatus::Skipped, SendStatus::Expired, SendStatus::Simulated], true) && $latest) {
                 $fields = array_replace($fields, [
                     'last_content_state' => $before->last_content_state,
                     'last_event' => $before->last_event,
@@ -453,6 +459,16 @@ final readonly class ChannelRegistry implements TransitionStore
     {
         if ($binding->provider !== Provider::Apns) {
             throw new InvalidDestinationException('Broadcast channels need an APNs binding.');
+        }
+    }
+
+    /** @throws ChannelApiException before any local write when safe mode simulates or blocks channel management */
+    private function assertAllowed(BindingRef $binding): void
+    {
+        $decision = $this->gate?->decide($binding);
+
+        if ($decision !== null && ! $decision->allowed) {
+            throw ChannelApiException::refused($decision);
         }
     }
 }

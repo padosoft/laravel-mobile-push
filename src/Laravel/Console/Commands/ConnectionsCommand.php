@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Padosoft\MobilePush\Laravel\Console\Commands;
 
+use Padosoft\MobilePush\Core\Credentials\Finding;
+use Padosoft\MobilePush\Core\Credentials\Severity;
 use Padosoft\MobilePush\Core\Exceptions\PushException;
 use Padosoft\MobilePush\Core\Policy\ModeResolver;
 use Padosoft\MobilePush\Laravel\Console\Support\ConnectionInfo;
@@ -51,6 +53,7 @@ final class ConnectionsCommand extends PushCommand
                     'days_left' => $i->daysLeft,
                     'live' => $i->live,
                     'error' => $i->error,
+                    'problems' => array_values(array_map(static fn (Finding $f): string => $f->message, array_filter($i->findings, static fn (Finding $f): bool => $f->severity === Severity::Error))),
                 ], $infos),
             ]);
 
@@ -68,7 +71,7 @@ final class ConnectionsCommand extends PushCommand
             ['Name', 'Provider', 'App id', 'Env', 'Auth', 'Credential', 'Generation', 'Live outside production', 'Days left'],
             array_map(fn (ConnectionInfo $i): array => [
                 $i->name,
-                $i->provider?->value ?? '?',
+                $i->provider->value ?? '?',
                 $i->appId ?? '-',
                 $i->environment ?? '-',
                 $i->auth ?? '-',
@@ -81,6 +84,11 @@ final class ConnectionsCommand extends PushCommand
         foreach ($infos as $info) {
             if ($info->error !== null) {
                 $this->components->error(sprintf('"%s": %s', $info->name, $info->error));
+            }
+            foreach ($info->findings as $finding) {
+                if ($finding->severity === Severity::Error) {
+                    $this->components->error(sprintf('"%s": %s', $info->name, $finding->message));
+                }
             }
         }
 

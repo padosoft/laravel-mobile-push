@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Padosoft\MobilePush\Core\Apns\Channels\StoragePolicy;
 use Padosoft\MobilePush\Core\Apns\LiveActivity\LiveActivityMessage;
 use Padosoft\MobilePush\Core\Apns\LiveActivity\LiveActivityType;
+use Padosoft\MobilePush\Core\Driver\SendOptions;
 use Padosoft\MobilePush\Core\Exceptions\ConfigurationException;
 use Padosoft\MobilePush\Core\Identity\BindingRef;
 use Padosoft\MobilePush\Core\Identity\Destination;
@@ -15,6 +16,7 @@ use Padosoft\MobilePush\Core\Outcome\Reason;
 use Padosoft\MobilePush\Core\Outcome\ReasonCode;
 use Padosoft\MobilePush\Core\Outcome\SendResult;
 use Padosoft\MobilePush\Core\Outcome\SendStatus;
+use Padosoft\MobilePush\Core\Policy\ExecutionMode;
 use Padosoft\MobilePush\Core\Retry\RetryPolicy;
 use Padosoft\MobilePush\Core\Retry\UnknownOutcomeRetry;
 use Padosoft\MobilePush\Laravel\Contracts\PushDispatcher;
@@ -197,6 +199,15 @@ final class ActivityManager
 
         $message = $start->message();
         $timestamp = $this->rows->second();
+        $options = $this->dispatcher->defaultOptions($binding);
+        $options = $options->withRetryPolicy(self::neverRetryUnknown($options->retryPolicy));
+
+        if ($options->effectiveMode === ExecutionMode::Simulate) {
+            // Nothing is requested from the provider: report what would happen, write nothing.
+            $destinations = array_map(static fn (PushToStartToken $t): Destination => $t->destination(), $tokens);
+
+            return new StartResult([], iterator_to_array($this->dispatcher->send($binding, $message, $destinations, $options)->results(), false));
+        }
 
         /** @var array<string, PushActivity> $rows keyed by push-to-start row id */
         $rows = [];
@@ -205,9 +216,6 @@ final class ActivityManager
             $rows[$token->id] = $this->activities->createRequested($binding, $start->type, $token, $start->state, $timestamp, $start->inputPushChannel, $start->staleAt);
             $destinations[] = $token->destination();
         }
-
-        $options = $this->dispatcher->defaultOptions($binding);
-        $options = $options->withRetryPolicy(self::neverRetryUnknown($options->retryPolicy));
 
         try {
             /** @var list<SendResult> $results */
@@ -230,9 +238,19 @@ final class ActivityManager
             if ($row === null) {
                 continue;
             }
-            $this->activities->applyResult($result);
-            $activities[] = $this->activities->recordStart($row, $result, $sentUpTo);
+            $position = count($ordered);
             $ordered[] = $result;
+            $this->activities->applyResult($result);
+
+            if (self::nothingLeft($result->status)) {
+                // Simulated, refused by safe mode or a gate, expired, or deferred (a start is never re-sent by the
+                // server): nothing was requested from the provider, so no activity row stays behind.
+                $this->activities->discardRequested($row);
+
+                continue;
+            }
+
+            $activities[$position] = $this->activities->recordStart($row, $result, $sentUpTo);
         }
 
         return new StartResult($activities, $ordered);
@@ -241,7 +259,24 @@ final class ActivityManager
     /** @internal used by the builders */
     public function sendTransition(PushActivity|BroadcastChannel $row, TransitionPayload $payload): TransitionResult
     {
+        $binding = $this->bindingFor($row);
+        if ($binding !== null && $this->dispatcher->defaultOptions($binding)->effectiveMode === ExecutionMode::Simulate) {
+            // Simulation numbers nothing and writes nothing: the would-be next ticket is only used to decide.
+            $fresh = $row instanceof BroadcastChannel ? $this->channels->find($row->id) : $this->activities->find($row->id);
+            $command = new TransitionCommand($payload->event, ($fresh ?? $row)->dispatch_seq + 1, $payload->priority);
+
+            return $row instanceof BroadcastChannel
+                ? $this->execute($this->channels, $row->id, $command, $payload, true)
+                : $this->execute($this->activities, $row->id, $command, $payload, false);
+        }
+
         return $this->replay($this->dispatchTicket($row, $payload));
+    }
+
+    /** Statuses of a send that prove nothing was requested from the provider by this call. */
+    private static function nothingLeft(SendStatus $status): bool
+    {
+        return in_array($status, [SendStatus::Simulated, SendStatus::Skipped, SendStatus::Expired, SendStatus::Deferred], true);
     }
 
     /**
@@ -260,6 +295,11 @@ final class ActivityManager
         if ($binding === null) {
             return $this->local(TransitionOutcome::Skipped, SendStatus::Skipped, ReasonCode::BindingMismatch,
                 'The connection this row was created for no longer resolves to the same app identity.', $row, $broadcast, $command->seq);
+        }
+
+        $options = $this->dispatcher->defaultOptions($binding);
+        if ($options->effectiveMode === ExecutionMode::Simulate) {
+            return $this->simulate($store, $row, $command, $payload, $binding, $options, $broadcast);
         }
 
         for ($attempt = 0; $attempt < self::MAX_ATTEMPTS; $attempt++) {
@@ -299,7 +339,7 @@ final class ActivityManager
                 $row instanceof BroadcastChannel && $row->storage_policy === StoragePolicy::NoStorage,
             );
 
-            $result = $this->send($binding, $message, $destination, $store, $before, $command, $payload, $decision);
+            $result = $this->send($binding, $message, $destination, $options, $store, $before, $command, $payload, $decision);
             $sentUpTo = max((int) $decision->timestamp, $this->rows->second());
             $store->record($before, $command, $payload, $decision, $result, $sentUpTo);
 
@@ -327,10 +367,10 @@ final class ActivityManager
      * @param  TransitionStore<T>  $store
      * @param  T  $before
      */
-    private function send(BindingRef $binding, LiveActivityMessage $message, Destination $destination, TransitionStore $store, Model $before, TransitionCommand $command, TransitionPayload $payload, Transition\TransitionDecision $decision): SendResult
+    private function send(BindingRef $binding, LiveActivityMessage $message, Destination $destination, SendOptions $options, TransitionStore $store, Model $before, TransitionCommand $command, TransitionPayload $payload, Transition\TransitionDecision $decision): SendResult
     {
         try {
-            $results = iterator_to_array($this->dispatcher->send($binding, $message, [$destination], $this->dispatcher->defaultOptions($binding))->results(), false);
+            $results = iterator_to_array($this->dispatcher->send($binding, $message, [$destination], $options)->results(), false);
         } catch (\Throwable $e) {
             // Globally invalid before the network: undo the claim, then let the caller see the error.
             $store->record($before, $command, $payload, $decision, new SendResult($destination, SendStatus::Skipped, Reason::of(ReasonCode::RequestInvalid)), 0);
@@ -341,6 +381,41 @@ final class ActivityManager
         $result = $results[0] ?? null;
 
         return $result instanceof SendResult ? $result : new SendResult($destination, SendStatus::Skipped, Reason::of(ReasonCode::None, null, 'The pipeline returned no result.'));
+    }
+
+    /**
+     * Simulate mode: decide as for real (a closed activity or a stale ticket is still Skipped), then let the pipeline
+     * simulate the request. No ticket, claim, pending transition or counter is written.
+     *
+     * @template T of Model
+     *
+     * @param  TransitionStore<T>  $store
+     * @param  T  $row
+     */
+    private function simulate(TransitionStore $store, Model $row, TransitionCommand $command, TransitionPayload $payload, BindingRef $binding, SendOptions $options, bool $broadcast): TransitionResult
+    {
+        $now = $this->rows->second();
+        $decision = $this->rules->decide($store->snapshot($row), $command, $now);
+
+        if ($decision->kind === DecisionKind::Skip) {
+            return new TransitionResult(TransitionOutcome::Skipped, SendStatus::Skipped, $decision->reason, null, $row, $command->seq, broadcast: $broadcast);
+        }
+
+        $destination = $store->destination($row);
+        if ($destination === null) {
+            throw new \LogicException('A deliverable row has no destination.');
+        }
+
+        $priority = $decision->priority ?? $payload->priority;
+        $message = $payload->withPriority($priority)->toMessage(
+            $row instanceof PushActivity ? $this->types->find($row->type_key) : null,
+            $row instanceof BroadcastChannel && $row->storage_policy === StoragePolicy::NoStorage,
+        );
+        $results = iterator_to_array($this->dispatcher->send($binding, $message, [$destination], $options)->results(), false);
+        $result = $results[0] ?? new SendResult($destination, SendStatus::Simulated, Reason::of(ReasonCode::Simulated));
+
+        return new TransitionResult(TransitionOutcome::Sent, $result->status, $result->reason, $result, $row, $command->seq,
+            $decision->timestamp ?? $now, $priority, $decision->downgraded, null, $broadcast);
     }
 
     private function bindingFor(Model $row): ?BindingRef

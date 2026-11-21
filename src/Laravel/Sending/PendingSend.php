@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Padosoft\MobilePush\Laravel\Sending;
 
 use Illuminate\Database\Eloquent\Relations\MorphMany;
+use Illuminate\Notifications\Notification;
 use Illuminate\Support\Str;
 use Padosoft\MobilePush\Core\Driver\DestinationGate;
 use Padosoft\MobilePush\Core\Driver\SendItem;
@@ -20,9 +21,12 @@ use Padosoft\MobilePush\Core\Identity\Destination\FcmCondition;
 use Padosoft\MobilePush\Core\Identity\Destination\FcmToken;
 use Padosoft\MobilePush\Core\Identity\Destination\FcmTopic;
 use Padosoft\MobilePush\Core\Identity\Platform;
+use Padosoft\MobilePush\Core\Identity\Provider;
 use Padosoft\MobilePush\Core\Identity\Scope;
 use Padosoft\MobilePush\Core\Message\Message;
+use Padosoft\MobilePush\Core\Message\PushMessage;
 use Padosoft\MobilePush\Core\Outcome\SendReport;
+use Padosoft\MobilePush\Core\Policy\Frequency\Subject;
 use Padosoft\MobilePush\Laravel\Contracts\QueueOptions;
 use Padosoft\MobilePush\Laravel\Devices\PushDevice;
 
@@ -64,6 +68,10 @@ final class PendingSend
     private \DateTimeInterface|int|null $delay = null;
 
     private bool $afterCommit = true;
+
+    private ?Notification $notification = null;
+
+    private ?Provider $onlyProvider = null;
 
     public function __construct(
         private readonly PushManager $manager,
@@ -187,6 +195,30 @@ final class PendingSend
         return $clone;
     }
 
+    /**
+     * The notification being sent, handed to the notifiables' routeNotificationForPush($notification) /
+     * routeNotificationFor('push', $notification) when they are resolved (Laravel's routing convention).
+     */
+    public function forNotification(?Notification $notification): self
+    {
+        $clone = clone $this;
+        $clone->notification = $notification;
+
+        return $clone;
+    }
+
+    /**
+     * Send only to destinations of one provider: destinations and registry devices of the other provider are left
+     * out (not reported as skipped), a named connection of the other provider sends nothing.
+     */
+    public function onlyProvider(?Provider $provider): self
+    {
+        $clone = clone $this;
+        $clone->onlyProvider = $provider;
+
+        return $clone;
+    }
+
     /** The QUEUE connection used by queue() (distinct from the push connection). */
     public function onQueueConnection(?string $connection): self
     {
@@ -223,15 +255,23 @@ final class PendingSend
     // ---------------------------------------------------------------- go
 
     /**
-     * Send now. When the targets span several connections (an iPhone and an Android phone), the report streams the
-     * results of each connection in turn. No eligible destination = an empty report, not an error.
-     * The report is a cursor: consume it (counts(), each(), results()).
+     * Send now (the synchronous path). When the targets span several connections (an iPhone and an Android phone),
+     * the report streams the results of each connection in turn. No eligible destination = an empty report, not an
+     * error. The report is a cursor: consume it (counts(), each(), results()).
+     *
+     * Every send has an effect key (the caller's, or one generated for this call), shared by all its connections, so
+     * the frequency cap and the badge counter decide once per send. A PushMessage with incrementBadge() sent to
+     * registry devices gets ONE badge number per owner (every device of the owner shows the same number).
+     *
+     * Durable profile: send() is synchronous and never writes the ledger (no effect row, no outbox, no receipt
+     * marker); only queue() goes through the ledger. Use queue() when the push must survive a crash.
      *
      * @throws ConfigurationException|InvalidDestinationException before the network
      */
     public function send(Message $message): SendReport
     {
         $scope = $this->resolvedScope();
+        $pending = $this->effectKey === null ? $this->effectKey((string) Str::ulid()) : $this;
         $reports = [];
         foreach ($this->plan($scope) as $group) {
             if ($group['binding'] === null) {
@@ -240,7 +280,9 @@ final class PendingSend
                 continue;
             }
             $binding = $group['binding'];
-            $reports[] = $this->manager->send($binding, $message, $group['items'], $this->options($this->manager->defaultOptions($binding)));
+            foreach ($pending->badged($binding, $message, $group['items'], false) as [$groupMessage, $items, $key]) {
+                $reports[] = $this->manager->send($binding, $groupMessage, $items, $pending->effectKey($key)->options($this->manager->defaultOptions($binding)));
+            }
         }
 
         return match (count($reports)) {
@@ -269,8 +311,8 @@ final class PendingSend
         $scope = $this->resolvedScope();
         $groups = $this->plan($scope);
         $pending = $this;
-        if ($this->effectKey === null && count($groups) > 1) {
-            // One logical effect across connections.
+        if ($this->effectKey === null && (count($groups) > 1 || $this->needsBadge($message))) {
+            // One logical effect across connections (and a stable key for the badge decision).
             $pending = $this->effectKey((string) Str::ulid());
         }
 
@@ -282,18 +324,20 @@ final class PendingSend
                 continue;
             }
             $binding = $group['binding'];
-            $destinations = (static function () use ($group): \Generator {
-                foreach ($group['items'] as $item) {
-                    yield $item instanceof SendItem ? $item->destination : $item;
-                }
-            })();
-            $ids[] = $queued->queue(
-                $binding,
-                $message,
-                $destinations,
-                $pending->options($this->manager->defaultOptions($binding)),
-                new QueueOptions($this->queueConnection, $this->queue, $this->delay, $this->afterCommit),
-            );
+            foreach ($pending->badged($binding, $message, $group['items'], true) as [$groupMessage, $items, $key]) {
+                $destinations = (static function () use ($items): \Generator {
+                    foreach ($items as $item) {
+                        yield $item instanceof SendItem ? $item->destination : $item;
+                    }
+                })();
+                $ids[] = $queued->queue(
+                    $binding,
+                    $groupMessage,
+                    $destinations,
+                    $pending->effectKey($key)->options($this->manager->defaultOptions($binding)),
+                    new QueueOptions($this->queueConnection, $this->queue, $this->delay, $this->afterCommit),
+                );
+            }
         }
 
         return implode(',', $ids);
@@ -319,7 +363,7 @@ final class PendingSend
 
             return;
         }
-        if (is_object($target) && (method_exists($target, 'routeNotificationForPush') || method_exists($target, 'pushDevices'))) {
+        if (is_object($target) && (method_exists($target, 'routeNotificationForPush') || method_exists($target, 'pushDevices') || method_exists($target, 'routeNotificationFor'))) {
             $this->notifiables[] = $target;
 
             return;
@@ -373,15 +417,32 @@ final class PendingSend
             return $named;
         };
 
+        $only = $this->onlyProvider;
+        $keep = static function (Destination|SendItem $item) use ($only): bool {
+            $destination = $item instanceof SendItem ? $item->destination : $item;
+
+            return $only === null || $destination->kind()->provider() === $only;
+        };
+        if ($only !== null && $named !== null && $this->manager->providerOf($scope, $named) !== $only) {
+            return [];   // the named connection is of the other provider: nothing to send
+        }
+
         foreach ($this->destinations as $item) {
-            $groups[$route($item)][] = $item;
+            if ($keep($item)) {
+                $groups[$route($item)][] = $item;
+            }
         }
 
         foreach ($this->notifiables as $notifiable) {
             foreach ($this->routedByNotifiable($notifiable) as $item) {
-                $groups[$route($item)][] = $item;
+                if ($keep($item)) {
+                    $groups[$route($item)][] = $item;
+                }
             }
             foreach ($this->registryRows($notifiable, $scope, $named) as [$name, $identity, $destination]) {
+                if (! $keep($destination)) {
+                    continue;
+                }
                 if ($this->identityOf($scope, $name) === $identity) {
                     $groups[$name][] = $destination;
                 } else {
@@ -394,7 +455,9 @@ final class PendingSend
             // Routing needs to see each destination: materialize the streams.
             foreach ($this->streams as $generator) {
                 foreach ($generator as $item) {
-                    $groups[$route($item)][] = $item;
+                    if ($keep($item)) {
+                        $groups[$route($item)][] = $item;
+                    }
                 }
             }
         }
@@ -438,25 +501,82 @@ final class PendingSend
         yield from $head;
         foreach ($streams as $stream) {
             foreach ($stream as $item) {
+                $destination = $item instanceof SendItem ? $item->destination : $item;
+                if ($this->onlyProvider !== null && $destination->kind()->provider() !== $this->onlyProvider) {
+                    continue;
+                }
                 yield $item;
             }
         }
     }
 
+    private function needsBadge(Message $message): bool
+    {
+        return $message instanceof PushMessage && $message->incrementBadge && $message->badge === null;
+    }
+
+    /**
+     * The sub-sends of one connection group: one per owner when the message asks the server to increment the badge
+     * (each owner gets its own resolved number, the same on every device of that owner and on every retry of the
+     * effect), otherwise the group itself. Destinations without an owner keep the message as it is.
+     *
+     * @param  iterable<Destination|SendItem>  $items
+     * @param  bool  $distinctKeys  queue(): give each owner sub-group its own effect key (one ledger effect per
+     *                              message content); send(): keep the one key of the send
+     * @return list<array{0: Message, 1: iterable<Destination|SendItem>, 2: string|null}>
+     */
+    private function badged(BindingRef $binding, Message $message, iterable $items, bool $distinctKeys): array
+    {
+        $resolver = $this->needsBadge($message) && is_array($items) ? $this->manager->badgeResolver() : null;
+        if ($resolver === null || ! $message instanceof PushMessage) {
+            return [[$message, $items, $this->effectKey]];
+        }
+
+        /** @var array<string, list<Destination|SendItem>> $byOwner */
+        $byOwner = [];
+        $ownerless = [];
+        foreach ($items as $item) {
+            $ref = ($item instanceof SendItem ? $item->destination : $item)->ref();
+            if ($ref !== null && $ref->ownerType !== null && $ref->ownerId !== null) {
+                $byOwner[Subject::owner($ref->ownerType, $ref->ownerId)][] = $item;
+            } else {
+                $ownerless[] = $item;
+            }
+        }
+
+        $out = [];
+        if ($ownerless !== []) {
+            $out[] = [$message, $ownerless, $this->effectKey];
+        }
+        $split = $distinctKeys && count($byOwner) + ($ownerless === [] ? 0 : 1) > 1;
+        foreach ($byOwner as $subject => $owned) {
+            $subject = (string) $subject;
+            $resolved = $resolver->resolve($message, $binding->scope, $subject, $this->effectKey, $binding);
+            $key = $split && $this->effectKey !== null ? $this->effectKey.'/'.substr(hash('sha256', $subject), 0, 16) : $this->effectKey;
+            $out[] = [$resolved, $owned, $key];
+        }
+
+        return $out;
+    }
+
     /** @return list<Destination|SendItem> */
     private function routedByNotifiable(object $notifiable): array
     {
-        if (! method_exists($notifiable, 'routeNotificationForPush')) {
+        if (method_exists($notifiable, 'routeNotificationForPush')) {
+            $routed = $notifiable->routeNotificationForPush($this->notification);
+        } elseif (! method_exists($notifiable, 'pushDevices') && method_exists($notifiable, 'routeNotificationFor')) {
+            // Notification::route('push', ...) (AnonymousNotifiable) and Notifiable models without a push route.
+            $routed = $notifiable->routeNotificationFor('push', $this->notification);
+        } else {
             return [];
         }
-        $routed = $notifiable->routeNotificationForPush(null);
-        if ($routed === null) {
+        if ($routed === null || $routed === []) {
             return [];
         }
         $out = [];
         foreach (is_iterable($routed) ? $routed : [$routed] as $item) {
             if (! $item instanceof Destination && ! $item instanceof SendItem) {
-                throw new InvalidDestinationException(sprintf('%s::routeNotificationForPush() must return typed destinations (e.g. ApnsDeviceToken::of()), never raw strings.', $notifiable::class));
+                throw new InvalidDestinationException(sprintf('The push route of %s must return typed destinations (e.g. ApnsDeviceToken::of()), never raw strings.', $notifiable::class));
             }
             $out[] = $item;
         }

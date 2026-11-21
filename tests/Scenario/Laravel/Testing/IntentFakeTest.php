@@ -2,18 +2,21 @@
 
 declare(strict_types=1);
 
-use PHPUnit\Framework\AssertionFailedError;
+use Padosoft\MobilePush\Core\Exceptions\InvalidDestinationException;
+use Padosoft\MobilePush\Core\Exceptions\UnsupportedCapabilityException;
+use Padosoft\MobilePush\Core\Identity\Platform;
 use Padosoft\MobilePush\Core\Message\PushMessage;
 use Padosoft\MobilePush\Core\Outcome\ReasonCode;
 use Padosoft\MobilePush\Core\Outcome\SendStatus;
-use Padosoft\MobilePush\Core\Identity\Platform;
 use Padosoft\MobilePush\Core\Transport\Transport;
 use Padosoft\MobilePush\Laravel\Facades\MobilePush;
 use Padosoft\MobilePush\Laravel\Testing\InteractsWithMobilePush;
 use Padosoft\MobilePush\Laravel\Testing\SentPush;
 use Padosoft\MobilePush\Laravel\Testing\SwitchableTransport;
+use Padosoft\MobilePush\Laravel\Testing\TestingSession;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Testing\OrderNotifications;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Testing\Shopper;
+use PHPUnit\Framework\AssertionFailedError;
 
 uses(InteractsWithMobilePush::class);
 
@@ -176,15 +179,15 @@ it('still refuses a raw string destination and a token without platform, exactly
     MobilePush::fake();
 
     expect(fn () => MobilePush::to('a-raw-token')->send(PushMessage::make('x')))
-        ->toThrow(Padosoft\MobilePush\Core\Exceptions\InvalidDestinationException::class, 'needs its platform');
-    expect(fn () => MobilePush::toToken(Platform::Android, '')->send(PushMessage::make('x')))->toThrow(Padosoft\MobilePush\Core\Exceptions\InvalidDestinationException::class);
+        ->toThrow(InvalidDestinationException::class, 'needs its platform');
+    expect(fn () => MobilePush::toToken(Platform::Android, '')->send(PushMessage::make('x')))->toThrow(InvalidDestinationException::class);
 });
 
 it('keeps the provider rule that APNs has no validate-only mode', function (): void {
     MobilePush::fake();
 
     expect(fn () => MobilePush::to(new Shopper(1))->validateOnly()->send(PushMessage::make('x')))
-        ->toThrow(Padosoft\MobilePush\Core\Exceptions\UnsupportedCapabilityException::class);
+        ->toThrow(UnsupportedCapabilityException::class);
 });
 
 it('is not the oracle of the wire: the same send reaches no transport and compiles nothing', function (): void {
@@ -197,7 +200,7 @@ it('is not the oracle of the wire: the same send reaches no transport and compil
     $push->assertSentTimes(1);
     // The real pipeline was never asked for a request: the only thing between the manager and the provider was the
     // fake's placeholder transport, and it carried no payload.
-    expect(app(Padosoft\MobilePush\Laravel\Testing\TestingSession::class)->wire())->toBeNull();
+    expect(app(TestingSession::class)->wire())->toBeNull();
 });
 
 it('lets tests name their own connection', function (): void {
@@ -221,5 +224,5 @@ it('puts everything back when the fake is reset', function (): void {
     $this->resetMobilePushFakes();
 
     expect(app()->environment())->toBe($before)
-        ->and(app(Padosoft\MobilePush\Laravel\Testing\TestingSession::class)->active())->toBeFalse();
+        ->and(app(TestingSession::class)->active())->toBeFalse();
 });

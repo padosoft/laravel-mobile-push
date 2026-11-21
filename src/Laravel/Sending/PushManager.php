@@ -265,7 +265,10 @@ final class PushManager implements PushDispatcher
     private static function ownerSubject(object $owner): string
     {
         if ($owner instanceof Model) {
-            return Subject::owner($owner->getMorphClass(), (string) $owner->getKey());
+            $key = $owner->getKey();
+            if (is_int($key) || is_string($key)) {
+                return Subject::owner($owner->getMorphClass(), (string) $key);
+            }
         }
         throw new ConfigurationException(sprintf('A badge belongs to an owner model (Eloquent), %s given.', get_debug_type($owner)));
     }

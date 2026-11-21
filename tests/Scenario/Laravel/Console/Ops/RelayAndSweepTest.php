@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
-use Padosoft\MobilePush\Core\Transport\Response;
+use Padosoft\MobilePush\Core\Identity\Destination\ApnsDeviceToken;
+use Padosoft\MobilePush\Core\Message\PushMessage;
 use Padosoft\MobilePush\Laravel\Ledger\DatabaseLedger;
 use Padosoft\MobilePush\Laravel\Queue\RelayDeliveriesJob;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Console\Ops\OpsWorld;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Sending\SendingWorld as W;
+use Padosoft\MobilePush\Tests\Scenario\Send\SendKit;
 
 require_once __DIR__.'/OpsWorld.php';
 
@@ -21,7 +23,7 @@ it('relays queued durable deliveries inline and prints what it did', function ()
     $world = OpsWorld::boot();
     $tokens = array_map(static fn (string $s): string => W::apnsToken($s), ['a', 'b', 'c']);
     $world->secret(...$tokens);
-    $world->queue(array_map(static fn (string $t) => Padosoft\MobilePush\Core\Identity\Destination\ApnsDeviceToken::of($t), $tokens), 'order-1');
+    $world->queue(array_map(static fn (string $t) => ApnsDeviceToken::of($t), $tokens), 'order-1');
     Queue::assertPushed(RelayDeliveriesJob::class);   // a worker would get it; this installation has none
     expect($world->w->transport->sentCount())->toBe(0);
 
@@ -46,8 +48,8 @@ it('relays queued durable deliveries inline and prints what it did', function ()
 
 it('shows the next attempt time of a delivery the provider asked to retry later', function (): void {
     $world = OpsWorld::boot();
-    $world->w->answer = static fn () => Padosoft\MobilePush\Tests\Scenario\Send\SendKit::apnsReason(503, 'ServiceUnavailable');
-    $world->queue([Padosoft\MobilePush\Core\Identity\Destination\ApnsDeviceToken::of(W::apnsToken('d'))], 'order-2');
+    $world->w->answer = static fn () => SendKit::apnsReason(503, 'ServiceUnavailable');
+    $world->queue([ApnsDeviceToken::of(W::apnsToken('d'))], 'order-2');
 
     $summary = $world->json('mobile-push:relay');
 
@@ -70,7 +72,7 @@ it('refuses on the light profile and says how to fix it, sending nothing', funct
 
 it('the sweeper recovers a relay that was lost: a dead worker held the lease and no job ever ran', function (): void {
     $world = OpsWorld::boot();
-    $destinations = array_map(static fn (string $s) => Padosoft\MobilePush\Core\Identity\Destination\ApnsDeviceToken::of(W::apnsToken($s)), ['x', 'y']);
+    $destinations = array_map(static fn (string $s) => ApnsDeviceToken::of(W::apnsToken($s)), ['x', 'y']);
     $world->queue($destinations, 'order-3');
 
     // A worker claimed both deliveries and died before sending: leases held, no request, relay job gone.
@@ -97,7 +99,7 @@ it('the sweeper recovers a relay that was lost: a dead worker held the lease and
 
 it('a lease lost after the request may have left is an unknown outcome, never "not sent"', function (): void {
     $world = OpsWorld::boot();
-    $world->queue([Padosoft\MobilePush\Core\Identity\Destination\ApnsDeviceToken::of(W::apnsToken('z'))], 'order-4', Padosoft\MobilePush\Core\Message\PushMessage::make('Code', 'Your code')->ttl(600));
+    $world->queue([ApnsDeviceToken::of(W::apnsToken('z'))], 'order-4', PushMessage::make('Code', 'Your code')->ttl(600));
     $ledger = app(DatabaseLedger::class);
     $claimed = $ledger->claimDue('default', 'crashed-worker', 10);
     expect($ledger->markAttemptStarted($claimed[0]->lease))->toBeTrue();   // the request may have left

@@ -14,7 +14,12 @@ use Padosoft\MobilePush\Core\Guard\TrafficClass;
 use Padosoft\MobilePush\Core\Identity\BindingRef;
 use Padosoft\MobilePush\Core\Ledger\LedgerTime;
 use Padosoft\MobilePush\Core\Message\Message;
+use Padosoft\MobilePush\Core\Outcome\Reason;
+use Padosoft\MobilePush\Core\Outcome\ReasonCode;
+use Padosoft\MobilePush\Core\Outcome\SendResult;
+use Padosoft\MobilePush\Core\Outcome\SendStatus;
 use Padosoft\MobilePush\Laravel\Contracts\PushDispatcher;
+use Padosoft\MobilePush\Laravel\Logging\SinkManager;
 use Psr\Clock\ClockInterface;
 use Psr\Log\LoggerInterface;
 
@@ -113,10 +118,33 @@ final class SendPushJob implements ShouldBeEncrypted, ShouldQueue
         }
     }
 
-    /** The job is not retried (tries = 1); a failure is reported without any destination value. */
+    /**
+     * The job is not retried (tries = 1). When the package's send log is enabled (mobile-push.log.sinks), every
+     * destination of the job is recorded there as OutcomeUnknown: the worker failed while the job was running, so
+     * some destinations may have been reached and the others are omitted (best effort). The log records carry only
+     * the keyed index and masked form of each destination, never the token. Without sinks, one warning goes to the
+     * application logger, without any destination value.
+     */
     public function failed(?\Throwable $exception = null): void
     {
         try {
+            $sinks = app()->bound(SinkManager::class) ? app(SinkManager::class) : null;
+            if ($sinks instanceof SinkManager && $sinks->isEnabled()) {
+                $binding = BindingRef::fromArray($this->binding);
+                $reason = Reason::of(ReasonCode::Unknown, $exception === null ? 'job_failed' : 'job_failed:'.(new \ReflectionClass($exception))->getShortName(),
+                    'The light-profile send job failed while it was running; it is not retried. This destination may or may not have been reached.');
+                foreach ($this->items() as $item) {
+                    $sinks->recordResult($binding, new SendResult($item->destination, SendStatus::OutcomeUnknown, $reason), [
+                        'operation' => $this->validateOnly ? 'validate' : 'send',
+                        'traffic_class' => $this->trafficClass,
+                        'effect_id' => $this->effectId,
+                    ]);
+                }
+                $sinks->flush();
+
+                return;
+            }
+
             app(LoggerInterface::class)->warning('mobile-push: a light-profile send job failed; it is not retried (best effort: destinations not reached are omitted).', $this->context() + [
                 'exception' => $exception === null ? null : $exception::class,
             ]);

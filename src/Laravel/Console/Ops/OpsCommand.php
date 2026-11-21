@@ -53,6 +53,9 @@ abstract class OpsCommand extends Command
     protected function stringOption(string $name): ?string
     {
         $value = $this->option($name);
+        if (is_int($value)) {
+            $value = (string) $value;
+        }
 
         return is_string($value) && trim($value) !== '' ? trim($value) : null;
     }

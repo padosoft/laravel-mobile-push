@@ -168,6 +168,7 @@ final class ExplainCatalog
             ReasonCode::AuthCertificateInvalid => ['The client certificate was refused: expired, revoked, or for the other environment. Renew it or use a .p8 key.', ['Reports a failure to the authentication breaker.']],
             ReasonCode::AuthForbidden => ['The credential is not allowed to do this (service account without the FCM permission, key without the capability).', ['Reports a failure to the authentication breaker; no retry.']],
             ReasonCode::AuthThirdParty => ['FCM could not authenticate to Apple or the browser vendor with the credential configured in the Firebase project. Fix it in the Firebase console (not the package credential).', ['No retry.']],
+            ReasonCode::ChannelLimitReached => ['The app reached the maximum number of APNs broadcast channels for this environment (about 10,000, or the configured cap). Delete channels you no longer use before creating new ones.', ['No retry: creating the channel again fails the same way.']],
             ReasonCode::QuotaExceeded => ['The provider quota was exceeded (per project, device or topic; or the channel limit for APNs broadcast).', ['Retries after at least a minute and pauses sending to the account.']],
             ReasonCode::ProviderUnavailable => ['The provider is temporarily unavailable.', ['Retries with backoff, honouring the provider delay, and throttles the account meanwhile.']],
             ReasonCode::ProviderInternal => ['The provider had an internal error.', ['Retries with backoff.']],

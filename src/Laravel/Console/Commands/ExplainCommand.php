@@ -99,7 +99,7 @@ final class ExplainCommand extends PushCommand
         $this->table(
             ['Source', 'Reason', 'HTTP', 'Package code', 'Status', 'Cause and remedy', 'What the package does'],
             array_map(static fn (ExplainEntry $e): array => [
-                $e->source, $e->key, $e->httpStatus ?? '', $e->code->value, $e->status?->value ?? '', $e->meaning, implode(' ', $e->behaviour),
+                $e->source, $e->key, $e->httpStatus ?? '', $e->code->value, $e->status->value ?? '', $e->meaning, implode(' ', $e->behaviour),
             ], $entries),
         );
 

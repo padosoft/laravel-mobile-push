@@ -17,6 +17,7 @@ final readonly class ResolvedConnection
     /**
      * @param  list<string>  $poolKeys
      * @param  list<TrackingTokenProvider>  $tokenProviders
+     * @param  list<InspectedCredential>  $credentials  public facts of the primary (first) and secondary credential
      */
     public function __construct(
         public BindingRef $binding,
@@ -24,6 +25,7 @@ final readonly class ResolvedConnection
         public LiveSettings $live,
         public array $poolKeys,
         private array $tokenProviders,
+        public array $credentials = [],
     ) {}
 
     /**

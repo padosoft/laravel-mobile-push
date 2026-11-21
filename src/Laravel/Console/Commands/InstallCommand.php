@@ -118,13 +118,15 @@ final class InstallCommand extends PushCommand
 
         if ($profile === null) {
             $production = $config->get('app.env') === 'production';
-            $profile = $this->canAsk()
-                ? (string) $this->choice(
-                    'Delivery profile. "light": best effort, no tables, fine to start. "durable": every delivery is recorded before it is sent, so a crashed worker never loses or duplicates a push'.($production ? ' (recommended for production)' : ' (recommended for production)'),
+            $profile = 'light';
+            if ($this->canAsk()) {
+                $picked = $this->choice(
+                    'Delivery profile. "light": best effort, no tables, fine to start. "durable": every delivery is recorded before it is sent, so a crashed worker never loses or duplicates a push (recommended for production)',
                     InstallPlan::PROFILES,
                     $production ? 'durable' : 'light',
-                )
-                : 'light';
+                );
+                $profile = is_string($picked) ? $picked : 'light';
+            }
         }
 
         if (in_array('receipts', $modules, true) && $profile !== 'durable') {

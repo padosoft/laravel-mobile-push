@@ -272,3 +272,8 @@ Modello di voce:
 - **Contesto:** comandi Live Activities in modalità simulate/bloccata.
 - **Fatto:** ActivityManager::sendStart scrive righe `requested` prima di inviare e con esito Simulated le lascia `requested` (start_status=simulated); update/end in simulate claimano la riga (version/last_timestamp). Un metodo `run()` privato in un Command rompe Laravel (Command::run è pubblico). Nei test il TokenIndex del Sender (SendKit) non è quello del container: per testare la allowlist legare il container allo stesso indice.
 - **Regola:** i comandi interpellano SafeModeGuard (stesse opzioni del dispatcher) PRIMA di chiamare il manager; i comandi si registrano con Illuminate\Console\Application::starting e rileggono la config al build.
+
+## 2026-11-21 — «Nulla inviato» deve voler dire «nulla scritto» (W3-L fix)
+- **Contesto:** Live Activities in modalità simulate e con safe mode che blocca (segnalato dall'agente dei comandi).
+- **Fatto:** annullare il claim dopo un risultato Simulated ripristina lo stato ma lascia `version` e `dispatch_seq` incrementati: un confronto riga-per-riga delle tabelle lo vede. L'unico modo per lasciare le tabelle identiche è decidere la modalità PRIMA di numerare la transizione (`defaultOptions()->effectiveMode`), e per i canali chiedere `SafeModeGuard` prima di scrivere la riga `creating`.
+- **Regola:** un modulo che scrive stato prima della rete controlla la modalità di esecuzione prima della prima scrittura; gli start che tornano Simulated/Skipped/Expired/Deferred non lasciano righe. Nei test, un `TokenIndex` diverso da quello del Sender rende impossibili gli allowlist `live.only_to`: usare lo stesso.

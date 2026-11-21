@@ -10,6 +10,7 @@ use Padosoft\MobilePush\Core\Apns\LiveActivity\LiveActivityType;
 use Padosoft\MobilePush\Core\Driver\Driver;
 use Padosoft\MobilePush\Core\Driver\Sender;
 use Padosoft\MobilePush\Core\Driver\SendOptions;
+use Padosoft\MobilePush\Core\Exceptions\UnknownConnectionException;
 use Padosoft\MobilePush\Core\Identity\BindingRef;
 use Padosoft\MobilePush\Core\Identity\Destination\ApnsLiveActivityToken;
 use Padosoft\MobilePush\Core\Identity\Destination\ApnsPushToStartToken;
@@ -91,14 +92,24 @@ final class LiveDispatcher implements PushDispatcher
 
     public function __construct(public readonly SendKit $kit, public readonly Sender $sender, public string $environment = 'production') {}
 
+    /** @var list<string> the push connections this dispatcher knows; any other name is an unknown connection */
+    public array $connections = ['ios'];
+
     public function binding(string $connection, ?string $scope = null): BindingRef
     {
+        if (! in_array($connection, $this->connections, true)) {
+            throw new UnknownConnectionException("No push connection named \"{$connection}\".");
+        }
+
         return SendKit::apnsBinding($connection, $scope ?? 'default', $this->bundle);
     }
 
+    /** Forces the options of every send, whatever the caller passed (a pipeline that disagrees with defaultOptions()). */
+    public ?SendOptions $forceSendOptions = null;
+
     public function send(BindingRef $binding, Message $message, iterable $destinations, ?SendOptions $options = null): SendReport
     {
-        return $this->sender->send($this->driver($binding), $message, $destinations, $options ?? $this->defaultOptions($binding));
+        return $this->sender->send($this->driver($binding), $message, $destinations, $this->forceSendOptions ?? $options ?? $this->defaultOptions($binding));
     }
 
     public function driver(BindingRef $binding): Driver
@@ -106,9 +117,12 @@ final class LiveDispatcher implements PushDispatcher
         return $this->drivers[$binding->fingerprint()] ??= $this->kit->apnsDriver(binding: $binding);
     }
 
+    /** Replace the default options (simulate mode, staging with an allowlist, ...); null = live in production. */
+    public ?SendOptions $options = null;
+
     public function defaultOptions(BindingRef $binding): SendOptions
     {
-        return SendKit::live(applicationEnvironment: $this->environment);
+        return $this->options ?? SendKit::live(applicationEnvironment: $this->environment);
     }
 }
 
@@ -147,9 +161,9 @@ final class LiveWorld
         $app->instance(ClockInterface::class, $world->kit->clock);
         $app->instance(PushDispatcher::class, $world->dispatcher);
         $app->instance(Transport::class, $world->transport);
-        $ring = new KeyRing([1 => random_bytes(32)]);
-        $app->instance(TokenIndex::class, new TokenIndex($ring));
-        $app->instance(TokenCipher::class, new TokenCipher($ring));
+        // The same HMAC index as the pipeline's SafeModeGuard, so live.only_to allowlists computed here match.
+        $app->instance(TokenIndex::class, $world->kit->index);
+        $app->instance(TokenCipher::class, new TokenCipher(new KeyRing([1 => random_bytes(32)])));
 
         config()->set('mobile-push.live_activities.enabled', true);
         config()->set('mobile-push.live_activities.binding', 'ios');
