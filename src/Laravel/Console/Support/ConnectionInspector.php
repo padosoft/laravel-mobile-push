@@ -165,6 +165,11 @@ final class ConnectionInspector
     {
         $label = $prefix === '' ? '' : 'secondary ';
         try {
+            if ($auth === 'token' && $this->hasValue($c->raw($prefix.'signer'))) {
+                // External signer (KMS / HSM): no key file to read and key_id is optional. The factory resolves the signer
+                // and validates it; once the connection resolves, its verdict ("expiry not verifiable") comes from there.
+                return [sprintf('%steam %s, external signer', $label, $team ?? '?'), $team === null ? null : CredentialIdentity::apnsKey($team), new CheckResult, null];
+            }
             if ($auth === 'token') {
                 $keyId = $c->string($prefix.'key_id');
                 if ($keyId === null) {
