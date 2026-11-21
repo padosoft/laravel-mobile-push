@@ -70,7 +70,7 @@ it('match day: two updates and an end go to the broadcast route as one publicati
 
     $row = $channel->fresh();
     expect($row->publications)->toBe(3)
-        ->and($row->last_content_state)->toBe(['score' => '2-0', 'final' => true])
+        ->and($row->last_content_state)->toEqual(['score' => '2-0', 'final' => true])   // key order is the engine's (MySQL JSON sorts keys)
         ->and($row->ended_at)->not->toBeNull();
 
     // After the end, a late goal update is not published.

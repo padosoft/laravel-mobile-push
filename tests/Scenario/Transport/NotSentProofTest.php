@@ -56,14 +56,15 @@ it('reports a server certificate from an untrusted CA as NotSent and sends nothi
     $profile = Batch::profile($server, 'untrusted', ['caBundlePath' => $server->foreignCaBundlePath()]);
 
     $byId = Batch::collect($transport->send(Batch::requests($server->baseUrl(), 2), $profile));
-    // The server learns about the aborted handshake a moment after the client has given up: wait for its count.
-    $stats = $server->waitFor(static fn (array $stats): bool => $stats['tlsErrors'] >= 1);
+    // Whether the server notices the aborted handshake depends on the TLS stack of the client (libcurl 8.5 makes Node
+    // report a TLS client error, later releases do not): the proof is that no request reached it.
+    $stats = $server->waitFor(static fn (array $stats): bool => $stats['tlsErrors'] >= 1, 300);
 
     foreach ($byId as [$exchange]) {
         expect($exchange->failure?->evidence)->toBe(TransportEvidence::NotSent)
             ->and($exchange->failure?->errno)->toBe(CurlErrorClassifier::PEER_FAILED_VERIFICATION);
     }
-    expect($stats['received'])->toBe(0)->and($stats['tlsErrors'])->toBeGreaterThanOrEqual(1);
+    expect($stats['received'])->toBe(0);
 });
 
 it('reports a timeout during the TLS handshake as NotSent', function (): void {

@@ -17,7 +17,7 @@ Nothing in this list has been exercised against the real APNs or FCM services ye
 
 **Sending**
 
-- Direct APNs HTTP/2 provider API: token (`.p8`, ES256) and certificate (mTLS) authentication, all push types with their topic suffixes, priorities, interruption levels, collapse id, logical expiry, per-type payload limits.
+- Direct APNs HTTP/2 provider API: token (`.p8`, ES256), certificate (mTLS) or external signer (KMS/HSM through the `Signer` interface) authentication, all push types with their topic suffixes, priorities, interruption levels, collapse id, logical expiry, per-type payload limits.
 - Direct FCM HTTP v1: targets `fid`, `token`, `topic` and `condition`; `android` or `androidV2` (mutually exclusive); `validate_only`; service-account OAuth exchange, with `google/auth` as an optional provider for Application Default Credentials, Workload Identity Federation and impersonation.
 - Unified `PushMessage` with `->apns()` / `->fcm()` overlays, native `ApnsMessage` / `FcmMessage` builders, rich-content helpers, a capability matrix enforced at validation time, and opt-in truncation of title/subtitle/body only.
 - `MobilePush` facade, `mobile_push()` and `mobile_push_to_token()` helpers, typed destinations, named connections, scopes for multi-tenancy.
@@ -27,7 +27,7 @@ Nothing in this list has been exercised against the real APNs or FCM services ye
 
 - One explicit result per destination: `Accepted`, `Rejected`, `Failed`, `Deferred`, `OutcomeUnknown`, `Expired`, `Skipped`, `Simulated`, `Validated`, each with a `ReasonCode`, the provider's raw reason and a hint.
 - An unknown outcome is never treated as a failure: no automatic retry of non-replaceable pushes, no invalidation, no fallback.
-- A single retry planner with one budget per destination, message-counted rate limits, and separate breakers for authentication, quota and destination quality.
+- A single retry planner with one budget per destination, message-counted rate limits, and separate breakers for authentication, quota and destination quality. When the cache behind them is unreachable they fail open; when it is contended the destinations are deferred; a send never throws for it.
 - Streaming `SendReport` with bounded memory.
 
 **Safe mode**
@@ -36,7 +36,8 @@ Nothing in this list has been exercised against the real APNs or FCM services ye
 
 **Delivery profiles**
 
-- Light profile (default, no tables, best effort) and durable profile (effects and deliveries ledger, outbox written in the caller's transaction, leases, relay job and sweeper, idempotency keys).
+- Light profile (default, no tables, best effort) and durable profile (effects and deliveries ledger, outbox written in the caller's transaction, leases, relay job and sweeper, idempotency keys with a deduplication window, attempts marked per transport window, follow-up relays folded when many effects are deferred at once).
+- Migrations are published by `mobile-push:install` (or the module tags) and are idempotent; `migrations.autoload` makes enabled modules register them with `migrate` instead.
 
 **Live Activities**
 
@@ -54,10 +55,12 @@ Nothing in this list has been exercised against the real APNs or FCM services ye
 
 **Tooling**
 
-- Artisan commands under `mobile-push:*` (install, doctor, send, preview, explain, simulator, connections, circuit, relay, sweep, prune commands, health, credentials check, forget, export, environment probe, topic subscriptions, Live Activities, channels, campaigns). See `docs/commands.md`.
+- 38 Artisan commands under `mobile-push:*` (install, doctor, send, preview, explain, simulator, connections, circuit, relay, sweep, prune commands, health, credentials check, forget, export, environment probe, topic subscriptions, Live Activities, channels, campaigns). See `docs/commands.md`.
+- The package schedules its own housekeeping (sweeper, alert evaluation, Live Activity flush, campaign sweep, daily prune commands and credential check), each behind a config switch; the application only runs Laravel's scheduler.
+- FCM topic subscriptions from code (`MobilePush::topicSubscriptions()`) and from the command line.
 - Testing fakes: `MobilePush::fake()` (intent) and `MobilePush::fakeTransport()` (bytes on the wire).
 - `docs/configuration.md` generated from the configuration schema; documentation examples executed by the test suite.
-- Reproducible benchmarks in `benchmarks/`.
+- Reproducible benchmarks in `benchmarks/`, and a runtime compatibility page (`docs/runtimes.md`) that separates what was measured (queue worker loop, forks, many tenants, cache coordination across processes) from what was not run (Octane, Swoole, RoadRunner, FrankenPHP, Horizon, Vapor).
 - Documentation site sources in `docs-site/` (docmd).
 
 ---

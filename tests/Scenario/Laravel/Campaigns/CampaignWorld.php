@@ -89,6 +89,7 @@ final class CampaignWorld
             if (self::$dead) {
                 throw new WorkerKilled('The worker is dead: nothing after the kill point runs.');
             }
+            $sql = str_replace('`', '"', $sql);   // the patterns are written with ANSI quotes; MySQL quotes with backticks
             foreach (self::$kills as $i => $kill) {
                 if (preg_match($kill['pattern'], $sql) === 1 && --self::$kills[$i]['left'] === 0) {
                     unset(self::$kills[$i]);

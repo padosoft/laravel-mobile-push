@@ -31,7 +31,7 @@ final class TokenSlot
     public function set(?AuthToken $token): void
     {
         if ($token === null) {
-            $this->storage->detach($this->anchor);
+            $this->storage->offsetUnset($this->anchor);
 
             return;
         }

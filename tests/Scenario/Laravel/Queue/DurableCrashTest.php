@@ -125,6 +125,7 @@ function dieOnStatement(string $pattern, int $nth): Closure
 {
     $state = new ArrayObject(['seen' => 0, 'dead' => false, 'over' => false]);
     DB::connection()->beforeExecuting(static function (string $sql) use ($pattern, $nth, $state): void {
+        $sql = str_replace('`', '"', $sql);   // the patterns are written with ANSI quotes; MySQL quotes with backticks
         if ($state['over']) {
             return;
         }

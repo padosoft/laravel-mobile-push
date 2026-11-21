@@ -71,7 +71,7 @@ final class InMemoryTokenStore implements TokenStore
     public function forget(string $cacheKey): void
     {
         if (isset($this->anchors[$cacheKey])) {
-            $this->entries->detach($this->anchors[$cacheKey]);
+            $this->entries->offsetUnset($this->anchors[$cacheKey]);
         }
     }
 

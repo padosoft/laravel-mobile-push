@@ -109,7 +109,7 @@ it('a cancel that lands while a slice is being written also cancels what that sl
     // The cancel happens between the slice's ledger write and its checkpoint (the checkpoint then still commits).
     $cancelled = false;
     DB::connection()->beforeExecuting(function (string $sql) use (&$cancelled): void {
-        if (! $cancelled && str_starts_with($sql, 'update "mobile_push_campaigns" set "cursor"')) {
+        if (! $cancelled && str_starts_with(str_replace('`', '"', $sql), 'update "mobile_push_campaigns" set "cursor"')) {
             $cancelled = true;
             $this->w->campaigns()->cancel('default', $this->id);
         }

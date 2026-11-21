@@ -98,7 +98,7 @@ it('small effects deferred at the same instant (300 here, 10,000 in the slow gro
     $this->w->transport->respondUsing(static fn (Request $r) => null);   // the provider recovers
     $this->w->advance(120);
     foreach (Queue::pushed(RelayDeliveriesJob::class) as $job) {
-        $this->ran->detach($job);   // the delayed follow-ups are now due: the queue hands them out
+        $this->ran->offsetUnset($job);   // the delayed follow-ups are now due: the queue hands them out
     }
     ($this->drain)();
 
