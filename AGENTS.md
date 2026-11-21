@@ -50,6 +50,12 @@ The status table at the top of `progress.md` is maintained by the orchestrator o
 
 The send pipeline lives in `src/Core/Driver` (`Sender`, `Driver`, `SendOptions`, `SendItem`, `SendObserver`, `DestinationGate`, `GateDenial`). The report returned by a send is a cursor and must be consumed.
 
+## Documentation
+
+Public docs are `README.md` and `docs/*.md` (English). `docs/configuration.md` is GENERATED from the config schema: never edit it by hand. Every statement must be true of the code as it is; do not document a feature that is not implemented, and say plainly what is not verified against real providers.
+
+PHP examples that can run are marked and executed by `tests/Scenario/Laravel/Docs/DocExamplesTest.php`: put an HTML comment `<!-- example: short-id -->` on the line before a fenced ```php block. Each marked block runs alone inside an app where `MobilePush::fake()` is active, with `$fake`, `$iosToken`, `$androidToken` and `$user` (a notifiable with one iOS and one Android destination) in scope, and may start with its own `use` lines. Mark every example that can run this way; unmarked blocks are illustrative (config arrays, Swift/Kotlin, shell). Run `vendor/bin/pest tests/Scenario/Laravel/Docs` before finishing.
+
 ## Testing style (what the project owner asked for)
 
 - **Prefer high-level scenario tests** that cross layers: message → compilation → send on a transport → classification → report. They live in `tests/Scenario/**` and read like a story of one real situation ("APNs accepts the push but the connection drops before the response").
