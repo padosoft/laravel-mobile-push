@@ -17,7 +17,7 @@ use Psr\Clock\ClockInterface;
  * In-process ledger with the same rules as the database one (tests, single-process tools). Not durable: it is the
  * reference implementation of the contract, not a production store. Rows are kept in the database column layout.
  */
-final class InMemoryLedger implements ClientReceiptStore, Ledger
+final class InMemoryLedger implements ClientReceiptStore, DeliveryBatches, Ledger, SettlementProbe
 {
     /** @var array<string, array<string, mixed>> */
     private array $effects = [];
@@ -49,11 +49,13 @@ final class InMemoryLedger implements ClientReceiptStore, Ledger
         $identity = $intent->binding->identity();
         $created = false;
         $effect = null;
+        $previous = null;
 
         if ($intent->effectKey !== null) {
             $slot = $scope.'|'.$identity.'|'.LedgerRules::dedupeKey($intent->effectKey);
             $existingId = $this->effectKeys[$slot] ?? null;
-            if ($existingId !== null && Row::int($this->effects[$existingId], 'dedupe_until') > $now) {
+            // A key is not released while its effect still has open deliveries (same rule as the database ledger).
+            if ($existingId !== null && (Row::int($this->effects[$existingId], 'dedupe_until') > $now || $this->hasOpenDeliveries($scope, $existingId))) {
                 $effect = $this->effects[$existingId];
                 if (! $this->rules->sameMessage(Row::str($effect, 'fingerprint'), $intent->message, $scope)) {
                     throw new IdempotencyConflictException('The effect key was already used with a different message.');
@@ -61,6 +63,7 @@ final class InMemoryLedger implements ClientReceiptStore, Ledger
             } elseif ($existingId !== null) {
                 $this->effects[$existingId]['dedupe_key'] = null;
                 unset($this->effectKeys[$slot]);
+                $previous = $existingId;
             }
         }
 
@@ -75,7 +78,8 @@ final class InMemoryLedger implements ClientReceiptStore, Ledger
         $added = $existing = 0;
         foreach ($destinations as $destination) {
             $key = $this->rules->logicalKey($destination, $scope);
-            if (isset($this->deliveryKeys[$effectId.'|'.$key])) {
+            $legacy = LedgerRules::legacyDeviceKey($destination);
+            if (isset($this->deliveryKeys[$effectId.'|'.$key]) || ($legacy !== null && isset($this->deliveryKeys[$effectId.'|'.$legacy]))) {
                 $existing++;
 
                 continue;
@@ -86,7 +90,7 @@ final class InMemoryLedger implements ClientReceiptStore, Ledger
             $added++;
         }
 
-        return new IntentResult(Effect::fromRow($effect), $created, $added, $existing);
+        return new IntentResult(Effect::fromRow($effect), $created, $added, $existing, $created ? $previous : null);
     }
 
     public function effect(string $scope, string $effectId): ?Effect
@@ -227,6 +231,38 @@ final class InMemoryLedger implements ClientReceiptStore, Ledger
         ]);
 
         return true;
+    }
+
+    public function markAttemptsStarted(array $leases): array
+    {
+        $started = [];
+        foreach ($leases as $lease) {
+            if ($this->markAttemptStarted($lease)) {
+                $started[] = $lease->deliveryId;
+            }
+        }
+
+        return $started;
+    }
+
+    public function recordMany(array $records): array
+    {
+        $out = [];
+        foreach ($records as [$lease, $result, $budget]) {
+            $out[$lease->deliveryId] = $this->record($lease, $result, $budget);
+        }
+
+        return $out;
+    }
+
+    public function hasOpenDeliveries(string $scope, string $effectId): bool
+    {
+        return $this->anyOpen($scope, static fn (array $row): bool => $row['effect_id'] === $effectId);
+    }
+
+    public function campaignHasOpenDeliveries(string $scope, string $campaignId): bool
+    {
+        return $this->anyOpen($scope, static fn (array $row): bool => $row['campaign_id'] === $campaignId);
     }
 
     public function record(Lease $lease, SendResult $result, ?RetryBudget $budget = null): Recording
@@ -452,6 +488,20 @@ final class InMemoryLedger implements ClientReceiptStore, Ledger
         }
 
         return $changed;
+    }
+
+    /** @param \Closure(array<string, mixed>): bool $match */
+    private function anyOpen(string $scope, \Closure $match): bool
+    {
+        $scope = LedgerRules::scope($scope);
+        foreach ($this->deliveries as $row) {
+            $state = DeliveryState::from(Row::str($row, 'state'));
+            if ($row['scope'] === $scope && ($state->isWaiting() || $state->isInFlight()) && $match($row)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** @param \Closure(array<string, mixed>): bool $match */

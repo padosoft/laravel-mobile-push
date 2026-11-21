@@ -20,7 +20,10 @@ function proseOf(line) {
     if (statSync(p).isDirectory()) { walk(p); continue; }
     if (!n.endsWith('.md')) continue;
     let fence = null;
+    let fm = false; // inside the YAML frontmatter
     readFileSync(p, 'utf8').split('\n').forEach((l, i) => {
+      if (i === 0 && l === '---') { fm = true; return; }
+      if (fm) { if (l === '---') fm = false; return; }
       const f = l.match(/^\s*(```+|~~~+)/);
       if (f) { fence = fence ? (fence === f[1][0] ? null : fence) : f[1][0]; return; }
       if (fence) return;

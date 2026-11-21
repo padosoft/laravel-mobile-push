@@ -19,3 +19,4 @@ node_modules/
 /_site/
 /docs-site/.docmd-search/*
 !/docs-site/.docmd-search/config.json
+/docs-site/docs/_docmd-search/
