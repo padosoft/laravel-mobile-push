@@ -129,6 +129,10 @@ it('returns an empty report, not an error, for a user without devices', function
 
 it('tells listeners about a token refresh and the completed batch, with counters and no token', function () {
     $world = W::install(['connections' => ['ios' => W::apns()]]);
+    // The provider token was minted 25 minutes ago, by an earlier send: old enough for Apple to accept a new one
+    // (inside the first 20 minutes a refused token cannot be replaced, and nothing would be refreshed).
+    MobilePush::driver(MobilePush::binding('ios'))->tokenProvider(0)?->token();
+    $world->clock->advance(25 * 60);
     $answers = [
         new Response(403, [], '{"reason":"ExpiredProviderToken"}'),
     ];
