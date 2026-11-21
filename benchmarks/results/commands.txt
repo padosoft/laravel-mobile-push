@@ -8,3 +8,4 @@
 >>> php benchmarks/run.php --scenario=pipeline-mixed-outcomes --count=20000 --server-delay-ms=0 --repeat=5 --json --out=benchmarks/results/pipeline-mixed-d0.json
 >>> php benchmarks/run.php --scenario=window-sweep --count=10000 --server-delay-ms=20 --repeat=3 --json --out=benchmarks/results/window-sweep.json
 >>> php benchmarks/run.php --scenario=connections-sweep --count=20000 --server-delay-ms=20 --repeat=3 --json --out=benchmarks/results/connections-sweep.json
+>>> php benchmarks/run.php --scenario=large-batch-memory --million --json --out=benchmarks/results/large-batch-memory.json

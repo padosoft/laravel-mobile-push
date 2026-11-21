@@ -1,0 +1,1276 @@
+{
+    "env": {
+        "date_utc": "2026-11-21T00:53:31+00:00",
+        "php": "8.3.6 (cli, NTS)",
+        "libcurl": "8.5.0",
+        "libcurl_ssl": "OpenSSL/3.0.13",
+        "libcurl_protocols_h2": true,
+        "node": "v22.23.5",
+        "cpu_model": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+        "cpu_cores": 4,
+        "mem_total": "16473744 kB",
+        "kernel": "6.18.44-fc-v726",
+        "loadavg_at_start": [
+            18.09912109375,
+            19.1572265625,
+            18.7587890625
+        ],
+        "package_commit": "65ff6a6",
+        "pushok": {
+            "version": "0.19.1",
+            "reference": "34e97101ab4ead13ef3154cb389bca4d46dc0cba"
+        },
+        "php_memory_limit": "-1"
+    },
+    "command": "php benchmarks/run.php --scenario=connections-sweep --count=20000 --server-delay-ms=20 --repeat=3 --json --out=benchmarks/results/connections-sweep.json",
+    "scenarios": [
+        {
+            "scenario": "connections-sweep",
+            "description": "Raw CurlTransport, warm, fixed server delay, 1/2/4 connections. The mock advertises SETTINGS_MAX_CONCURRENT_STREAMS = peer limit.",
+            "cases": [
+                {
+                    "label": "1 connection(s), peer stream limit 1000, window 500",
+                    "params": {
+                        "count": 20000,
+                        "window": 500,
+                        "connections": 1,
+                        "payload": 256,
+                        "delay": 20,
+                        "repeat": 3,
+                        "peerLimit": 1000,
+                        "warm": true
+                    },
+                    "runs": [
+                        {
+                            "requests": 20000,
+                            "wall_s": 2.8654,
+                            "rps": 6979.9,
+                            "latency_ms": {
+                                "p50": 61.093,
+                                "p95": 127.185,
+                                "p99": 163.779,
+                                "max": 204.85,
+                                "samples": 20000
+                            },
+                            "peak_over_start_mib": 5.033,
+                            "mem_start_bytes": 3769784,
+                            "mem_end_bytes": 8970184,
+                            "mem_growth_bytes": 5200400,
+                            "mem_growth_after_gc_bytes": 1894272,
+                            "recorder_bytes_estimate": 320000,
+                            "cpu_s": 1.071,
+                            "transport_errors": 0,
+                            "http_status": {
+                                "200": 20000
+                            },
+                            "outcomes": [],
+                            "fds": {
+                                "before": 9,
+                                "after": 9
+                            },
+                            "server": {
+                                "connections_opened": 0,
+                                "connections_total_since_reset": 1,
+                                "tcp_connections": 0,
+                                "requests_received": 20000,
+                                "requests_processed": 20000,
+                                "max_concurrent_streams_cumulative": 500,
+                                "open_connections_after": 1
+                            }
+                        },
+                        {
+                            "requests": 20000,
+                            "wall_s": 2.4757,
+                            "rps": 8078.5,
+                            "latency_ms": {
+                                "p50": 50.087,
+                                "p95": 123.774,
+                                "p99": 197.054,
+                                "max": 227.799,
+                                "samples": 20000
+                            },
+                            "peak_over_start_mib": 1.721,
+                            "mem_start_bytes": 5131704,
+                            "mem_end_bytes": 6869664,
+                            "mem_growth_bytes": 1737960,
+                            "mem_growth_after_gc_bytes": 534768,
+                            "recorder_bytes_estimate": 320000,
+                            "cpu_s": 1.123,
+                            "transport_errors": 0,
+                            "http_status": {
+                                "200": 20000
+                            },
+                            "outcomes": [],
+                            "fds": {
+                                "before": 9,
+                                "after": 9
+                            },
+                            "server": {
+                                "connections_opened": 0,
+                                "connections_total_since_reset": 1,
+                                "tcp_connections": 0,
+                                "requests_received": 20000,
+                                "requests_processed": 20000,
+                                "max_concurrent_streams_cumulative": 500,
+                                "open_connections_after": 1
+                            }
+                        },
+                        {
+                            "requests": 20000,
+                            "wall_s": 2.4794,
+                            "rps": 8066.3,
+                            "latency_ms": {
+                                "p50": 54.889,
+                                "p95": 100.993,
+                                "p99": 126.395,
+                                "max": 142.39,
+                                "samples": 20000
+                            },
+                            "peak_over_start_mib": 2.483,
+                            "mem_start_bytes": 5133904,
+                            "mem_end_bytes": 7673104,
+                            "mem_growth_bytes": 2539200,
+                            "mem_growth_after_gc_bytes": 534768,
+                            "recorder_bytes_estimate": 320000,
+                            "cpu_s": 1.146,
+                            "transport_errors": 0,
+                            "http_status": {
+                                "200": 20000
+                            },
+                            "outcomes": [],
+                            "fds": {
+                                "before": 9,
+                                "after": 9
+                            },
+                            "server": {
+                                "connections_opened": 0,
+                                "connections_total_since_reset": 1,
+                                "tcp_connections": 0,
+                                "requests_received": 20000,
+                                "requests_processed": 20000,
+                                "max_concurrent_streams_cumulative": 500,
+                                "open_connections_after": 1
+                            }
+                        }
+                    ],
+                    "summary": {
+                        "runs": 3,
+                        "rps": {
+                            "median": 8066.3,
+                            "min": 6979.9,
+                            "max": 8078.5,
+                            "spread_pct": 13.6
+                        },
+                        "wall_s": {
+                            "median": 2.479,
+                            "min": 2.476,
+                            "max": 2.865,
+                            "spread_pct": 15.7
+                        },
+                        "p50_ms": {
+                            "median": 54.889,
+                            "min": 50.087,
+                            "max": 61.093,
+                            "spread_pct": 20.1
+                        },
+                        "p95_ms": {
+                            "median": 123.774,
+                            "min": 100.993,
+                            "max": 127.185,
+                            "spread_pct": 21.2
+                        },
+                        "p99_ms": {
+                            "median": 163.779,
+                            "min": 126.395,
+                            "max": 197.054,
+                            "spread_pct": 43.1
+                        },
+                        "max_ms": {
+                            "median": 204.85,
+                            "min": 142.39,
+                            "max": 227.799,
+                            "spread_pct": 41.7
+                        },
+                        "peak_over_start_mib": {
+                            "median": 2.483,
+                            "min": 1.721,
+                            "max": 5.033,
+                            "spread_pct": 133.4
+                        },
+                        "mem_growth_bytes": {
+                            "median": 2539200,
+                            "min": 1737960,
+                            "max": 5200400,
+                            "spread_pct": 136.4
+                        },
+                        "mem_growth_after_gc_bytes": {
+                            "median": 534768,
+                            "min": 534768,
+                            "max": 1894272,
+                            "spread_pct": 254.2
+                        },
+                        "cpu_s": {
+                            "median": 1.123,
+                            "min": 1.071,
+                            "max": 1.146,
+                            "spread_pct": 6.7
+                        },
+                        "transport_errors": {
+                            "median": 0,
+                            "min": 0,
+                            "max": 0,
+                            "spread_pct": 0
+                        },
+                        "connections_opened": {
+                            "median": 0,
+                            "min": 0,
+                            "max": 0,
+                            "spread_pct": 0
+                        },
+                        "max_concurrent_streams": {
+                            "median": 500,
+                            "min": 500,
+                            "max": 500,
+                            "spread_pct": 0
+                        }
+                    }
+                },
+                {
+                    "label": "2 connection(s), peer stream limit 1000, window 500",
+                    "params": {
+                        "count": 20000,
+                        "window": 500,
+                        "connections": 2,
+                        "payload": 256,
+                        "delay": 20,
+                        "repeat": 3,
+                        "peerLimit": 1000,
+                        "warm": true
+                    },
+                    "runs": [
+                        {
+                            "requests": 20000,
+                            "wall_s": 3.1594,
+                            "rps": 6330.3,
+                            "latency_ms": {
+                                "p50": 62.743,
+                                "p95": 165.4,
+                                "p99": 223.266,
+                                "max": 264.355,
+                                "samples": 20000
+                            },
+                            "peak_over_start_mib": 4.496,
+                            "mem_start_bytes": 3840896,
+                            "mem_end_bytes": 8464360,
+                            "mem_growth_bytes": 4623464,
+                            "mem_growth_after_gc_bytes": 1836928,
+                            "recorder_bytes_estimate": 320000,
+                            "cpu_s": 1.153,
+                            "transport_errors": 0,
+                            "http_status": {
+                                "200": 20000
+                            },
+                            "outcomes": [],
+                            "fds": {
+                                "before": 9,
+                                "after": 9
+                            },
+                            "server": {
+                                "connections_opened": 0,
+                                "connections_total_since_reset": 1,
+                                "tcp_connections": 0,
+                                "requests_received": 20000,
+                                "requests_processed": 20000,
+                                "max_concurrent_streams_cumulative": 500,
+                                "open_connections_after": 1
+                            }
+                        },
+                        {
+                            "requests": 20000,
+                            "wall_s": 2.1308,
+                            "rps": 9386,
+                            "latency_ms": {
+                                "p50": 48.125,
+                                "p95": 75.935,
+                                "p99": 93.444,
+                                "max": 104.122,
+                                "samples": 20000
+                            },
+                            "peak_over_start_mib": 2.655,
+                            "mem_start_bytes": 5145472,
+                            "mem_end_bytes": 7854632,
+                            "mem_growth_bytes": 2709160,
+                            "mem_growth_after_gc_bytes": 534768,
+                            "recorder_bytes_estimate": 320000,
+                            "cpu_s": 1.035,
+                            "transport_errors": 0,
+                            "http_status": {
+                                "200": 20000
+                            },
+                            "outcomes": [],
+                            "fds": {
+                                "before": 9,
+                                "after": 9
+                            },
+                            "server": {
+                                "connections_opened": 0,
+                                "connections_total_since_reset": 1,
+                                "tcp_connections": 0,
+                                "requests_received": 20000,
+                                "requests_processed": 20000,
+                                "max_concurrent_streams_cumulative": 500,
+                                "open_connections_after": 1
+                            }
+                        },
+                        {
+                            "requests": 20000,
+                            "wall_s": 2.6857,
+                            "rps": 7446.7,
+                            "latency_ms": {
+                                "p50": 57.253,
+                                "p95": 106.627,
+                                "p99": 141.834,
+                                "max": 200.384,
+                                "samples": 20000
+                            },
+                            "peak_over_start_mib": 3.621,
+                            "mem_start_bytes": 5147672,
+                            "mem_end_bytes": 8867040,
+                            "mem_growth_bytes": 3719368,
+                            "mem_growth_after_gc_bytes": 534928,
+                            "recorder_bytes_estimate": 320000,
+                            "cpu_s": 1.115,
+                            "transport_errors": 0,
+                            "http_status": {
+                                "200": 20000
+                            },
+                            "outcomes": [],
+                            "fds": {
+                                "before": 9,
+                                "after": 9
+                            },
+                            "server": {
+                                "connections_opened": 0,
+                                "connections_total_since_reset": 1,
+                                "tcp_connections": 0,
+                                "requests_received": 20000,
+                                "requests_processed": 20000,
+                                "max_concurrent_streams_cumulative": 500,
+                                "open_connections_after": 1
+                            }
+                        }
+                    ],
+                    "summary": {
+                        "runs": 3,
+                        "rps": {
+                            "median": 7446.7,
+                            "min": 6330.3,
+                            "max": 9386,
+                            "spread_pct": 41
+                        },
+                        "wall_s": {
+                            "median": 2.686,
+                            "min": 2.131,
+                            "max": 3.159,
+                            "spread_pct": 38.3
+                        },
+                        "p50_ms": {
+                            "median": 57.253,
+                            "min": 48.125,
+                            "max": 62.743,
+                            "spread_pct": 25.5
+                        },
+                        "p95_ms": {
+                            "median": 106.627,
+                            "min": 75.935,
+                            "max": 165.4,
+                            "spread_pct": 83.9
+                        },
+                        "p99_ms": {
+                            "median": 141.834,
+                            "min": 93.444,
+                            "max": 223.266,
+                            "spread_pct": 91.5
+                        },
+                        "max_ms": {
+                            "median": 200.384,
+                            "min": 104.122,
+                            "max": 264.355,
+                            "spread_pct": 80
+                        },
+                        "peak_over_start_mib": {
+                            "median": 3.621,
+                            "min": 2.655,
+                            "max": 4.496,
+                            "spread_pct": 50.8
+                        },
+                        "mem_growth_bytes": {
+                            "median": 3719368,
+                            "min": 2709160,
+                            "max": 4623464,
+                            "spread_pct": 51.5
+                        },
+                        "mem_growth_after_gc_bytes": {
+                            "median": 534928,
+                            "min": 534768,
+                            "max": 1836928,
+                            "spread_pct": 243.4
+                        },
+                        "cpu_s": {
+                            "median": 1.115,
+                            "min": 1.035,
+                            "max": 1.153,
+                            "spread_pct": 10.6
+                        },
+                        "transport_errors": {
+                            "median": 0,
+                            "min": 0,
+                            "max": 0,
+                            "spread_pct": 0
+                        },
+                        "connections_opened": {
+                            "median": 0,
+                            "min": 0,
+                            "max": 0,
+                            "spread_pct": 0
+                        },
+                        "max_concurrent_streams": {
+                            "median": 500,
+                            "min": 500,
+                            "max": 500,
+                            "spread_pct": 0
+                        }
+                    }
+                },
+                {
+                    "label": "4 connection(s), peer stream limit 1000, window 500",
+                    "params": {
+                        "count": 20000,
+                        "window": 500,
+                        "connections": 4,
+                        "payload": 256,
+                        "delay": 20,
+                        "repeat": 3,
+                        "peerLimit": 1000,
+                        "warm": true
+                    },
+                    "runs": [
+                        {
+                            "requests": 20000,
+                            "wall_s": 1.9863,
+                            "rps": 10069.1,
+                            "latency_ms": {
+                                "p50": 44.218,
+                                "p95": 73.767,
+                                "p99": 104.239,
+                                "max": 126.765,
+                                "samples": 20000
+                            },
+                            "peak_over_start_mib": 3.405,
+                            "mem_start_bytes": 3854448,
+                            "mem_end_bytes": 7351480,
+                            "mem_growth_bytes": 3497032,
+                            "mem_growth_after_gc_bytes": 1837088,
+                            "recorder_bytes_estimate": 320000,
+                            "cpu_s": 1.013,
+                            "transport_errors": 0,
+                            "http_status": {
+                                "200": 20000
+                            },
+                            "outcomes": [],
+                            "fds": {
+                                "before": 9,
+                                "after": 9
+                            },
+                            "server": {
+                                "connections_opened": 0,
+                                "connections_total_since_reset": 1,
+                                "tcp_connections": 0,
+                                "requests_received": 20000,
+                                "requests_processed": 20000,
+                                "max_concurrent_streams_cumulative": 500,
+                                "open_connections_after": 1
+                            }
+                        },
+                        {
+                            "requests": 20000,
+                            "wall_s": 2.4491,
+                            "rps": 8166.2,
+                            "latency_ms": {
+                                "p50": 50.537,
+                                "p95": 104.614,
+                                "p99": 186.953,
+                                "max": 194.933,
+                                "samples": 20000
+                            },
+                            "peak_over_start_mib": 2.638,
+                            "mem_start_bytes": 5159184,
+                            "mem_end_bytes": 7834352,
+                            "mem_growth_bytes": 2675168,
+                            "mem_growth_after_gc_bytes": 534768,
+                            "recorder_bytes_estimate": 320000,
+                            "cpu_s": 1.091,
+                            "transport_errors": 0,
+                            "http_status": {
+                                "200": 20000
+                            },
+                            "outcomes": [],
+                            "fds": {
+                                "before": 9,
+                                "after": 9
+                            },
+                            "server": {
+                                "connections_opened": 0,
+                                "connections_total_since_reset": 1,
+                                "tcp_connections": 0,
+                                "requests_received": 20000,
+                                "requests_processed": 20000,
+                                "max_concurrent_streams_cumulative": 500,
+                                "open_connections_after": 1
+                            }
+                        },
+                        {
+                            "requests": 20000,
+                            "wall_s": 2.4402,
+                            "rps": 8196.2,
+                            "latency_ms": {
+                                "p50": 51.716,
+                                "p95": 115.168,
+                                "p99": 137.929,
+                                "max": 161.664,
+                                "samples": 20000
+                            },
+                            "peak_over_start_mib": 2.413,
+                            "mem_start_bytes": 5161384,
+                            "mem_end_bytes": 7627744,
+                            "mem_growth_bytes": 2466360,
+                            "mem_growth_after_gc_bytes": 534768,
+                            "recorder_bytes_estimate": 320000,
+                            "cpu_s": 1.11,
+                            "transport_errors": 0,
+                            "http_status": {
+                                "200": 20000
+                            },
+                            "outcomes": [],
+                            "fds": {
+                                "before": 9,
+                                "after": 9
+                            },
+                            "server": {
+                                "connections_opened": 0,
+                                "connections_total_since_reset": 1,
+                                "tcp_connections": 0,
+                                "requests_received": 20000,
+                                "requests_processed": 20000,
+                                "max_concurrent_streams_cumulative": 500,
+                                "open_connections_after": 1
+                            }
+                        }
+                    ],
+                    "summary": {
+                        "runs": 3,
+                        "rps": {
+                            "median": 8196.2,
+                            "min": 8166.2,
+                            "max": 10069.1,
+                            "spread_pct": 23.2
+                        },
+                        "wall_s": {
+                            "median": 2.44,
+                            "min": 1.986,
+                            "max": 2.449,
+                            "spread_pct": 19
+                        },
+                        "p50_ms": {
+                            "median": 50.537,
+                            "min": 44.218,
+                            "max": 51.716,
+                            "spread_pct": 14.8
+                        },
+                        "p95_ms": {
+                            "median": 104.614,
+                            "min": 73.767,
+                            "max": 115.168,
+                            "spread_pct": 39.6
+                        },
+                        "p99_ms": {
+                            "median": 137.929,
+                            "min": 104.239,
+                            "max": 186.953,
+                            "spread_pct": 60
+                        },
+                        "max_ms": {
+                            "median": 161.664,
+                            "min": 126.765,
+                            "max": 194.933,
+                            "spread_pct": 42.2
+                        },
+                        "peak_over_start_mib": {
+                            "median": 2.638,
+                            "min": 2.413,
+                            "max": 3.405,
+                            "spread_pct": 37.6
+                        },
+                        "mem_growth_bytes": {
+                            "median": 2675168,
+                            "min": 2466360,
+                            "max": 3497032,
+                            "spread_pct": 38.5
+                        },
+                        "mem_growth_after_gc_bytes": {
+                            "median": 534768,
+                            "min": 534768,
+                            "max": 1837088,
+                            "spread_pct": 243.5
+                        },
+                        "cpu_s": {
+                            "median": 1.091,
+                            "min": 1.013,
+                            "max": 1.11,
+                            "spread_pct": 8.9
+                        },
+                        "transport_errors": {
+                            "median": 0,
+                            "min": 0,
+                            "max": 0,
+                            "spread_pct": 0
+                        },
+                        "connections_opened": {
+                            "median": 0,
+                            "min": 0,
+                            "max": 0,
+                            "spread_pct": 0
+                        },
+                        "max_concurrent_streams": {
+                            "median": 500,
+                            "min": 500,
+                            "max": 500,
+                            "spread_pct": 0
+                        }
+                    }
+                },
+                {
+                    "label": "1 connection(s), peer stream limit 100, window 500",
+                    "params": {
+                        "count": 20000,
+                        "window": 500,
+                        "connections": 1,
+                        "payload": 256,
+                        "delay": 20,
+                        "repeat": 3,
+                        "peerLimit": 100,
+                        "warm": true
+                    },
+                    "runs": [
+                        {
+                            "requests": 20000,
+                            "wall_s": 5.2281,
+                            "rps": 3825.5,
+                            "latency_ms": {
+                                "p50": 99.06,
+                                "p95": 330.37,
+                                "p99": 487.485,
+                                "max": 920.904,
+                                "samples": 20000
+                            },
+                            "peak_over_start_mib": 2.909,
+                            "mem_start_bytes": 3868160,
+                            "mem_end_bytes": 6869720,
+                            "mem_growth_bytes": 3001560,
+                            "mem_growth_after_gc_bytes": 1836928,
+                            "recorder_bytes_estimate": 320000,
+                            "cpu_s": 2.199,
+                            "transport_errors": 0,
+                            "http_status": {
+                                "200": 20000
+                            },
+                            "outcomes": [],
+                            "fds": {
+                                "before": 9,
+                                "after": 9
+                            },
+                            "server": {
+                                "connections_opened": 0,
+                                "connections_total_since_reset": 1,
+                                "tcp_connections": 0,
+                                "requests_received": 20000,
+                                "requests_processed": 20000,
+                                "max_concurrent_streams_cumulative": 100,
+                                "open_connections_after": 1
+                            }
+                        },
+                        {
+                            "requests": 20000,
+                            "wall_s": 5.5027,
+                            "rps": 3634.6,
+                            "latency_ms": {
+                                "p50": 109.024,
+                                "p95": 321.972,
+                                "p99": 465.088,
+                                "max": 986.935,
+                                "samples": 20000
+                            },
+                            "peak_over_start_mib": 1.687,
+                            "mem_start_bytes": 5172736,
+                            "mem_end_bytes": 6886416,
+                            "mem_growth_bytes": 1713680,
+                            "mem_growth_after_gc_bytes": 534768,
+                            "recorder_bytes_estimate": 320000,
+                            "cpu_s": 2.101,
+                            "transport_errors": 0,
+                            "http_status": {
+                                "200": 20000
+                            },
+                            "outcomes": [],
+                            "fds": {
+                                "before": 9,
+                                "after": 9
+                            },
+                            "server": {
+                                "connections_opened": 0,
+                                "connections_total_since_reset": 1,
+                                "tcp_connections": 0,
+                                "requests_received": 20000,
+                                "requests_processed": 20000,
+                                "max_concurrent_streams_cumulative": 100,
+                                "open_connections_after": 1
+                            }
+                        },
+                        {
+                            "requests": 20000,
+                            "wall_s": 5.1084,
+                            "rps": 3915.1,
+                            "latency_ms": {
+                                "p50": 97.041,
+                                "p95": 319.736,
+                                "p99": 475.499,
+                                "max": 1186.625,
+                                "samples": 20000
+                            },
+                            "peak_over_start_mib": 1.689,
+                            "mem_start_bytes": 5174936,
+                            "mem_end_bytes": 6888616,
+                            "mem_growth_bytes": 1713680,
+                            "mem_growth_after_gc_bytes": 534768,
+                            "recorder_bytes_estimate": 320000,
+                            "cpu_s": 2.309,
+                            "transport_errors": 0,
+                            "http_status": {
+                                "200": 20000
+                            },
+                            "outcomes": [],
+                            "fds": {
+                                "before": 9,
+                                "after": 9
+                            },
+                            "server": {
+                                "connections_opened": 0,
+                                "connections_total_since_reset": 1,
+                                "tcp_connections": 0,
+                                "requests_received": 20000,
+                                "requests_processed": 20000,
+                                "max_concurrent_streams_cumulative": 100,
+                                "open_connections_after": 1
+                            }
+                        }
+                    ],
+                    "summary": {
+                        "runs": 3,
+                        "rps": {
+                            "median": 3825.5,
+                            "min": 3634.6,
+                            "max": 3915.1,
+                            "spread_pct": 7.3
+                        },
+                        "wall_s": {
+                            "median": 5.228,
+                            "min": 5.108,
+                            "max": 5.503,
+                            "spread_pct": 7.5
+                        },
+                        "p50_ms": {
+                            "median": 99.06,
+                            "min": 97.041,
+                            "max": 109.024,
+                            "spread_pct": 12.1
+                        },
+                        "p95_ms": {
+                            "median": 321.972,
+                            "min": 319.736,
+                            "max": 330.37,
+                            "spread_pct": 3.3
+                        },
+                        "p99_ms": {
+                            "median": 475.499,
+                            "min": 465.088,
+                            "max": 487.485,
+                            "spread_pct": 4.7
+                        },
+                        "max_ms": {
+                            "median": 986.935,
+                            "min": 920.904,
+                            "max": 1186.625,
+                            "spread_pct": 26.9
+                        },
+                        "peak_over_start_mib": {
+                            "median": 1.689,
+                            "min": 1.687,
+                            "max": 2.909,
+                            "spread_pct": 72.4
+                        },
+                        "mem_growth_bytes": {
+                            "median": 1713680,
+                            "min": 1713680,
+                            "max": 3001560,
+                            "spread_pct": 75.2
+                        },
+                        "mem_growth_after_gc_bytes": {
+                            "median": 534768,
+                            "min": 534768,
+                            "max": 1836928,
+                            "spread_pct": 243.5
+                        },
+                        "cpu_s": {
+                            "median": 2.199,
+                            "min": 2.101,
+                            "max": 2.309,
+                            "spread_pct": 9.5
+                        },
+                        "transport_errors": {
+                            "median": 0,
+                            "min": 0,
+                            "max": 0,
+                            "spread_pct": 0
+                        },
+                        "connections_opened": {
+                            "median": 0,
+                            "min": 0,
+                            "max": 0,
+                            "spread_pct": 0
+                        },
+                        "max_concurrent_streams": {
+                            "median": 100,
+                            "min": 100,
+                            "max": 100,
+                            "spread_pct": 0
+                        }
+                    }
+                },
+                {
+                    "label": "2 connection(s), peer stream limit 100, window 500",
+                    "params": {
+                        "count": 20000,
+                        "window": 500,
+                        "connections": 2,
+                        "payload": 256,
+                        "delay": 20,
+                        "repeat": 3,
+                        "peerLimit": 100,
+                        "warm": true
+                    },
+                    "runs": [
+                        {
+                            "requests": 20000,
+                            "wall_s": 3.3284,
+                            "rps": 6008.9,
+                            "latency_ms": {
+                                "p50": 69.489,
+                                "p95": 171.783,
+                                "p99": 235.793,
+                                "max": 377.157,
+                                "samples": 20000
+                            },
+                            "peak_over_start_mib": 2.912,
+                            "mem_start_bytes": 3881712,
+                            "mem_end_bytes": 6883272,
+                            "mem_growth_bytes": 3001560,
+                            "mem_growth_after_gc_bytes": 1837520,
+                            "recorder_bytes_estimate": 320000,
+                            "cpu_s": 1.649,
+                            "transport_errors": 0,
+                            "http_status": {
+                                "200": 20000
+                            },
+                            "outcomes": [],
+                            "fds": {
+                                "before": 9,
+                                "after": 10
+                            },
+                            "server": {
+                                "connections_opened": 1,
+                                "connections_total_since_reset": 2,
+                                "tcp_connections": 1,
+                                "requests_received": 20000,
+                                "requests_processed": 20000,
+                                "max_concurrent_streams_cumulative": 100,
+                                "open_connections_after": 2
+                            }
+                        },
+                        {
+                            "requests": 20000,
+                            "wall_s": 2.9762,
+                            "rps": 6719.9,
+                            "latency_ms": {
+                                "p50": 59.632,
+                                "p95": 159.536,
+                                "p99": 222.152,
+                                "max": 355.439,
+                                "samples": 20000
+                            },
+                            "peak_over_start_mib": 1.69,
+                            "mem_start_bytes": 5186880,
+                            "mem_end_bytes": 6900560,
+                            "mem_growth_bytes": 1713680,
+                            "mem_growth_after_gc_bytes": 535360,
+                            "recorder_bytes_estimate": 320000,
+                            "cpu_s": 1.653,
+                            "transport_errors": 0,
+                            "http_status": {
+                                "200": 20000
+                            },
+                            "outcomes": [],
+                            "fds": {
+                                "before": 10,
+                                "after": 10
+                            },
+                            "server": {
+                                "connections_opened": 0,
+                                "connections_total_since_reset": 2,
+                                "tcp_connections": 0,
+                                "requests_received": 20000,
+                                "requests_processed": 20000,
+                                "max_concurrent_streams_cumulative": 100,
+                                "open_connections_after": 2
+                            }
+                        },
+                        {
+                            "requests": 20000,
+                            "wall_s": 3.0826,
+                            "rps": 6488,
+                            "latency_ms": {
+                                "p50": 63.126,
+                                "p95": 159.613,
+                                "p99": 228.384,
+                                "max": 405.076,
+                                "samples": 20000
+                            },
+                            "peak_over_start_mib": 1.683,
+                            "mem_start_bytes": 5189080,
+                            "mem_end_bytes": 6902760,
+                            "mem_growth_bytes": 1713680,
+                            "mem_growth_after_gc_bytes": 535360,
+                            "recorder_bytes_estimate": 320000,
+                            "cpu_s": 1.748,
+                            "transport_errors": 0,
+                            "http_status": {
+                                "200": 20000
+                            },
+                            "outcomes": [],
+                            "fds": {
+                                "before": 10,
+                                "after": 10
+                            },
+                            "server": {
+                                "connections_opened": 0,
+                                "connections_total_since_reset": 2,
+                                "tcp_connections": 0,
+                                "requests_received": 20000,
+                                "requests_processed": 20000,
+                                "max_concurrent_streams_cumulative": 100,
+                                "open_connections_after": 2
+                            }
+                        }
+                    ],
+                    "summary": {
+                        "runs": 3,
+                        "rps": {
+                            "median": 6488,
+                            "min": 6008.9,
+                            "max": 6719.9,
+                            "spread_pct": 11
+                        },
+                        "wall_s": {
+                            "median": 3.083,
+                            "min": 2.976,
+                            "max": 3.328,
+                            "spread_pct": 11.4
+                        },
+                        "p50_ms": {
+                            "median": 63.126,
+                            "min": 59.632,
+                            "max": 69.489,
+                            "spread_pct": 15.6
+                        },
+                        "p95_ms": {
+                            "median": 159.613,
+                            "min": 159.536,
+                            "max": 171.783,
+                            "spread_pct": 7.7
+                        },
+                        "p99_ms": {
+                            "median": 228.384,
+                            "min": 222.152,
+                            "max": 235.793,
+                            "spread_pct": 6
+                        },
+                        "max_ms": {
+                            "median": 377.157,
+                            "min": 355.439,
+                            "max": 405.076,
+                            "spread_pct": 13.2
+                        },
+                        "peak_over_start_mib": {
+                            "median": 1.69,
+                            "min": 1.683,
+                            "max": 2.912,
+                            "spread_pct": 72.7
+                        },
+                        "mem_growth_bytes": {
+                            "median": 1713680,
+                            "min": 1713680,
+                            "max": 3001560,
+                            "spread_pct": 75.2
+                        },
+                        "mem_growth_after_gc_bytes": {
+                            "median": 535360,
+                            "min": 535360,
+                            "max": 1837520,
+                            "spread_pct": 243.2
+                        },
+                        "cpu_s": {
+                            "median": 1.653,
+                            "min": 1.649,
+                            "max": 1.748,
+                            "spread_pct": 6
+                        },
+                        "transport_errors": {
+                            "median": 0,
+                            "min": 0,
+                            "max": 0,
+                            "spread_pct": 0
+                        },
+                        "connections_opened": {
+                            "median": 0,
+                            "min": 0,
+                            "max": 1,
+                            "spread_pct": 0
+                        },
+                        "max_concurrent_streams": {
+                            "median": 100,
+                            "min": 100,
+                            "max": 100,
+                            "spread_pct": 0
+                        }
+                    }
+                },
+                {
+                    "label": "4 connection(s), peer stream limit 100, window 500",
+                    "params": {
+                        "count": 20000,
+                        "window": 500,
+                        "connections": 4,
+                        "payload": 256,
+                        "delay": 20,
+                        "repeat": 3,
+                        "peerLimit": 100,
+                        "warm": true
+                    },
+                    "runs": [
+                        {
+                            "requests": 20000,
+                            "wall_s": 2.3572,
+                            "rps": 8484.6,
+                            "latency_ms": {
+                                "p50": 52.291,
+                                "p95": 97.153,
+                                "p99": 130.053,
+                                "max": 169.003,
+                                "samples": 20000
+                            },
+                            "peak_over_start_mib": 2.919,
+                            "mem_start_bytes": 3895264,
+                            "mem_end_bytes": 6896824,
+                            "mem_growth_bytes": 3001560,
+                            "mem_growth_after_gc_bytes": 1838704,
+                            "recorder_bytes_estimate": 320000,
+                            "cpu_s": 1.129,
+                            "transport_errors": 0,
+                            "http_status": {
+                                "200": 20000
+                            },
+                            "outcomes": [],
+                            "fds": {
+                                "before": 9,
+                                "after": 12
+                            },
+                            "server": {
+                                "connections_opened": 3,
+                                "connections_total_since_reset": 4,
+                                "tcp_connections": 3,
+                                "requests_received": 20000,
+                                "requests_processed": 20000,
+                                "max_concurrent_streams_cumulative": 100,
+                                "open_connections_after": 4
+                            }
+                        },
+                        {
+                            "requests": 20000,
+                            "wall_s": 2.3988,
+                            "rps": 8337.7,
+                            "latency_ms": {
+                                "p50": 52.575,
+                                "p95": 89.955,
+                                "p99": 130.617,
+                                "max": 152.524,
+                                "samples": 20000
+                            },
+                            "peak_over_start_mib": 1.687,
+                            "mem_start_bytes": 5201616,
+                            "mem_end_bytes": 6915296,
+                            "mem_growth_bytes": 1713680,
+                            "mem_growth_after_gc_bytes": 536544,
+                            "recorder_bytes_estimate": 320000,
+                            "cpu_s": 1.143,
+                            "transport_errors": 0,
+                            "http_status": {
+                                "200": 20000
+                            },
+                            "outcomes": [],
+                            "fds": {
+                                "before": 12,
+                                "after": 12
+                            },
+                            "server": {
+                                "connections_opened": 0,
+                                "connections_total_since_reset": 4,
+                                "tcp_connections": 0,
+                                "requests_received": 20000,
+                                "requests_processed": 20000,
+                                "max_concurrent_streams_cumulative": 100,
+                                "open_connections_after": 4
+                            }
+                        },
+                        {
+                            "requests": 20000,
+                            "wall_s": 3.0844,
+                            "rps": 6484.2,
+                            "latency_ms": {
+                                "p50": 70.305,
+                                "p95": 117.524,
+                                "p99": 156.149,
+                                "max": 184.912,
+                                "samples": 20000
+                            },
+                            "peak_over_start_mib": 1.712,
+                            "mem_start_bytes": 5203816,
+                            "mem_end_bytes": 6941776,
+                            "mem_growth_bytes": 1737960,
+                            "mem_growth_after_gc_bytes": 536544,
+                            "recorder_bytes_estimate": 320000,
+                            "cpu_s": 1.126,
+                            "transport_errors": 0,
+                            "http_status": {
+                                "200": 20000
+                            },
+                            "outcomes": [],
+                            "fds": {
+                                "before": 12,
+                                "after": 12
+                            },
+                            "server": {
+                                "connections_opened": 0,
+                                "connections_total_since_reset": 4,
+                                "tcp_connections": 0,
+                                "requests_received": 20000,
+                                "requests_processed": 20000,
+                                "max_concurrent_streams_cumulative": 100,
+                                "open_connections_after": 4
+                            }
+                        }
+                    ],
+                    "summary": {
+                        "runs": 3,
+                        "rps": {
+                            "median": 8337.7,
+                            "min": 6484.2,
+                            "max": 8484.6,
+                            "spread_pct": 24
+                        },
+                        "wall_s": {
+                            "median": 2.399,
+                            "min": 2.357,
+                            "max": 3.084,
+                            "spread_pct": 30.3
+                        },
+                        "p50_ms": {
+                            "median": 52.575,
+                            "min": 52.291,
+                            "max": 70.305,
+                            "spread_pct": 34.3
+                        },
+                        "p95_ms": {
+                            "median": 97.153,
+                            "min": 89.955,
+                            "max": 117.524,
+                            "spread_pct": 28.4
+                        },
+                        "p99_ms": {
+                            "median": 130.617,
+                            "min": 130.053,
+                            "max": 156.149,
+                            "spread_pct": 20
+                        },
+                        "max_ms": {
+                            "median": 169.003,
+                            "min": 152.524,
+                            "max": 184.912,
+                            "spread_pct": 19.2
+                        },
+                        "peak_over_start_mib": {
+                            "median": 1.712,
+                            "min": 1.687,
+                            "max": 2.919,
+                            "spread_pct": 72
+                        },
+                        "mem_growth_bytes": {
+                            "median": 1737960,
+                            "min": 1713680,
+                            "max": 3001560,
+                            "spread_pct": 74.1
+                        },
+                        "mem_growth_after_gc_bytes": {
+                            "median": 536544,
+                            "min": 536544,
+                            "max": 1838704,
+                            "spread_pct": 242.7
+                        },
+                        "cpu_s": {
+                            "median": 1.129,
+                            "min": 1.126,
+                            "max": 1.143,
+                            "spread_pct": 1.5
+                        },
+                        "transport_errors": {
+                            "median": 0,
+                            "min": 0,
+                            "max": 0,
+                            "spread_pct": 0
+                        },
+                        "connections_opened": {
+                            "median": 0,
+                            "min": 0,
+                            "max": 3,
+                            "spread_pct": 0
+                        },
+                        "max_concurrent_streams": {
+                            "median": 100,
+                            "min": 100,
+                            "max": 100,
+                            "spread_pct": 0
+                        }
+                    }
+                }
+            ]
+        }
+    ]
+}

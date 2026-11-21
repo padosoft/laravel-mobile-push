@@ -13,6 +13,7 @@ use Illuminate\Support\ServiceProvider;
 use Padosoft\MobilePush\Core\Ledger\Ledger;
 use Padosoft\MobilePush\Core\Privacy\TokenCipher;
 use Padosoft\MobilePush\Laravel\Campaigns\Audience\AudienceRegistry;
+use Padosoft\MobilePush\Laravel\Campaigns\Console\ConsoleCommands;
 use Padosoft\MobilePush\Laravel\Contracts\PushDispatcher;
 use Padosoft\MobilePush\Laravel\Module;
 use Padosoft\MobilePush\Laravel\Queue\QueueSettings;
@@ -98,6 +99,10 @@ final class CampaignsModule implements Module
 
         if (self::usable($app) && $app->bound('migrator')) {
             $app->make('migrator')->path($migration);
+        }
+
+        if ($app->runningInConsole() && (bool) config('mobile-push.campaigns.enabled', false)) {
+            ConsoleCommands::register();
         }
 
         if ($app->runningInConsole()) {
