@@ -208,6 +208,16 @@ A missing or unreadable key (not applicable to a connection with an external `si
 
 Next: [FCM credentials](/get-started/credentials-fcm), or back to [getting started](/get-started/getting-started).
 
+## What was checked against Apple's real endpoint
+
+Nothing in this project has run with a real Apple key or certificate. One thing was checked against Apple's real **sandbox** host (`api.sandbox.push.apple.com`) on 2026-11-21, and it needs no credential and can deliver nothing (the requests went through the build environment's HTTPS proxy, so they say nothing about TLS or HTTP/2 negotiation with Apple itself):
+
+- **A push with a provider token signed by a key Apple does not know** (a P-256 key generated on the spot, a made-up team id and key id, a device token of 64 zeros). APNs answered HTTP 403 `{"reason":"InvalidProviderToken"}`; the package returned `failed` / `auth_token_invalid` after one attempt, with no action on the destination: an authentication problem never quarantines or invalidates a device.
+- **The same with a provider token issued two hours earlier.** Apple answered `InvalidProviderToken` again, not `ExpiredProviderToken`: with an unknown key the age of the token is never looked at. The refresh-and-retry path for `ExpiredProviderToken` therefore remains verified against fixtures only.
+- **A request with no `authorization` header at all** (sent with curl, not through the package, which never sends one): HTTP 403 `{"reason":"MissingProviderToken"}`, with an `apns-id` response header.
+
+You can repeat the first two with `php tests/Support/Probes/apns-unauthenticated-probe.php` from a clone of the repository. Everything past authentication (an accepted push, `BadDeviceToken`, `Unregistered` with its timestamp, the 5xx advice, Live Activities, broadcast channels, certificates) is still verified against fixtures and the local mock server only. The production host was not contacted.
+
 ---
 
 *This page is generated from [`docs/credentials-apns.md`](https://github.com/padosoft/laravel-mobile-push/blob/main/docs/credentials-apns.md). To change it, edit that file in the repository, not this site.*

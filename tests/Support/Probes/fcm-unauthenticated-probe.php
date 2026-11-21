@@ -65,7 +65,7 @@ $bogus = new class($clock) implements AccessTokenProvider
 $show = static function (string $title, iterable $results): void {
     echo "== {$title}\n";
     foreach ($results as $r) {
-        printf("status=%s code=%s raw=%s http=%s attempts=%d credential_action=%s\n  hint=%s\n", $r->status->value, $r->reason->code->value, $r->reason->rawReason ?? '-', $r->httpStatus ?? '-', $r->attempts, $r->decision?->credentialAction->value ?? '-', $r->reason->hint ?? '-');
+        printf("status=%s code=%s raw=%s http=%s attempts=%d destination_action=%s\n  hint=%s\n", $r->status->value, $r->reason->code->value, $r->reason->rawReason ?? '-', $r->httpStatus ?? '-', $r->attempts, $r->destinationAction->value, $r->reason->hint ?? '-');
     }
 };
 

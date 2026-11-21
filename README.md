@@ -16,7 +16,7 @@ MobilePush::to($user)->send(PushMessage::make('Order shipped', 'Arrives Friday')
 **Pre-release.** The package is complete enough to try, but read this before you rely on it:
 
 - It is verified against a **protocol-level HTTP/2 mock server** (a Node `http2` server that counts what it receives, drops connections, resets streams and sends `GOAWAY`) and against the providers' **published schemas** (Apple's documentation, the FCM Discovery document revision 20261112). The suite has about 2,500 tests; CI runs it on PHP 8.3, 8.4 and 8.5 with Laravel 12 and 13 (lowest and latest dependencies), and runs the database-backed scenarios on MySQL 8.4 and PostgreSQL 17.
-- It has **never been run with real credentials against APNs or FCM, nor on a real device**, in this project. Real-provider verification is the next step before 1.0. The only contact with real servers so far needed no credentials ([what was checked](docs/credentials-fcm.md#what-was-checked-against-googles-real-endpoints)): Google's FCM and OAuth endpoints answered made-up credentials as the package expects, and the live FCM Discovery document equals the pinned snapshot. The APNs hosts were not reachable from the build environment.
+- It has **never been run with real credentials against APNs or FCM, nor on a real device**, in this project. Real-provider verification is the next step before 1.0. The only contact with real servers so far needed no credentials: the APNs sandbox refused a provider token signed by a made-up key with `InvalidProviderToken` ([details](docs/credentials-apns.md#what-was-checked-against-apples-real-endpoint)), Google's FCM and OAuth endpoints refused made-up credentials ([details](docs/credentials-fcm.md#what-was-checked-against-googles-real-endpoints)), the package classified each answer as documented, and the live FCM Discovery document equals the pinned snapshot.
 
 Specific points not yet verified against the real services or infrastructure:
 
@@ -429,7 +429,7 @@ Each connection is validated the first time it is used: a missing key, an expire
 
 ## Documentation
 
-The full table of contents is [docs/index.md](docs/index.md). The same documentation will also be published as a website; the link will be added here when the site is online. The most used pages: [getting started](docs/getting-started.md) · [sending](docs/sending.md) · [messages](docs/messages.md) · [outcomes](docs/outcomes.md) · [testing](docs/testing.md) · [configuration](docs/configuration.md) · [commands](docs/commands.md) · [troubleshooting](docs/troubleshooting.md).
+The full table of contents is [docs/index.md](docs/index.md). The same documentation is also built as a website, generated from `docs/` (sources in [`docs-site/`](docs-site/README.md)): <https://doc.laravel-mobile-push.padosoft.com>. The most used pages: [getting started](docs/getting-started.md) · [sending](docs/sending.md) · [messages](docs/messages.md) · [outcomes](docs/outcomes.md) · [testing](docs/testing.md) · [configuration](docs/configuration.md) · [commands](docs/commands.md) · [troubleshooting](docs/troubleshooting.md).
 
 ## How it compares
 
