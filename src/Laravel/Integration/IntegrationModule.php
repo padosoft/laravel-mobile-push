@@ -105,11 +105,15 @@ final class IntegrationModule implements Module
     private static function afterJob(Application $app, JobProcessed $event): void
     {
         try {
-            if (self::config($app)->get('mobile-push.delivery.profile', 'light') !== 'durable' || $event->job->resolveName() !== RelayDeliveriesJob::class) {
+            if (self::config($app)->get('mobile-push.delivery.profile', 'light') !== 'durable') {
                 return;
             }
+            // resolveName() is the job's displayName(): match the command class of the payload instead.
             $data = $event->job->payload()['data'] ?? null;
-            $command = is_array($data) ? ($data['command'] ?? null) : null;
+            if (! is_array($data) || ($data['commandName'] ?? null) !== RelayDeliveriesJob::class) {
+                return;
+            }
+            $command = $data['command'] ?? null;
             $job = is_string($command) ? unserialize($command, ['allowed_classes' => [RelayDeliveriesJob::class]]) : null;
             if (! $job instanceof RelayDeliveriesJob || $job->effectId === null) {
                 return;
