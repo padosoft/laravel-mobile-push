@@ -173,7 +173,7 @@ final class Kit
     public static function message(int $payloadBytes): PushMessage
     {
         $m = PushMessage::make('Shipped', 'On its way');
-        $base = 110; // approximate size of the compiled message without padding
+        $base = 66; // measured: title+body message plus the "pad" key overhead compiles to 66 bytes when the pad is empty
         if ($payloadBytes > $base) {
             $m->data(['pad' => str_repeat('x', $payloadBytes - $base)]);
         }
