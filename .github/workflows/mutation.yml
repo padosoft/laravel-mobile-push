@@ -132,6 +132,9 @@ jobs:
       DB_DATABASE: mobile_push_test
       DB_USERNAME: ${{ matrix.username }}
       DB_PASSWORD: ${{ matrix.password }}
+      # Read by libpq: a mutant that makes the two connections of one test wait for each other fails after 5 seconds
+      # instead of hanging until the mutation runner's own timeout (the MySQL counterpart is set in a step below).
+      PGOPTIONS: -c lock_timeout=5s
     steps:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
