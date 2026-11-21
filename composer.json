@@ -22,6 +22,7 @@
         "psr/log": "^3.0"
     },
     "require-dev": {
+        "edamov/pushok": "^0.19.1",
         "firebase/php-jwt": "^6.10|^7.0",
         "google/auth": "^1.55",
         "larastan/larastan": "^3.0",
