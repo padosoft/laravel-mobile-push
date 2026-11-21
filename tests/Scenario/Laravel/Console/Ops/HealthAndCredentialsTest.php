@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Notification;
 use Padosoft\MobilePush\Laravel\Health\ConnectionCredentialsSource;
 use Padosoft\MobilePush\Laravel\Health\CredentialMonitor;
@@ -12,6 +13,11 @@ use Padosoft\MobilePush\Tests\Scenario\Laravel\Health\HealthKit;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Health\World;
 
 require_once __DIR__.'/OpsWorld.php';
+
+// The scenarios pin Carbon's clock to the fake clock: put the real one back when the application goes away.
+beforeEach(function (): void {
+    $this->beforeApplicationDestroyed(static fn () => Carbon::setTestNow());
+});
 require_once __DIR__.'/../../Health/HealthKit.php';
 
 /*

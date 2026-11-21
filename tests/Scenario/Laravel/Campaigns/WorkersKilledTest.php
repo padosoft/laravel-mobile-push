@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\Queue;
 use Padosoft\MobilePush\Laravel\Campaigns\Audience\DeviceAudience;
 use Padosoft\MobilePush\Laravel\Campaigns\CampaignStatus;
 use Padosoft\MobilePush\Laravel\Campaigns\PlanCampaignJob;
@@ -139,4 +140,17 @@ it('a relay dies in the middle of a chunk: nothing is sent twice, what was about
     expect($final['accepted'] + ($final['outcome_unknown'] ?? 0))->toBe(DEVICES)
         ->and($final['outcome_unknown'] ?? 0)->toBe($inFlight)                      // unknown, never failed, never re-sent
         ->and($this->w->requestHistogram(DEVICES)[0])->toBeLessThanOrEqual($inFlight);
+});
+
+it('a planner job delivered twice (or three times) writes its slice once and never doubles the chain', function (): void {
+    $first = $this->w->pending(PlanCampaignJob::class)[0];
+    $this->w->drain(1);
+    $this->w->rerun($first);
+    $this->w->rerun($first);
+    ($this->invariant)();
+
+    ($this->drainChecked)();
+    ($this->finalChecks)();
+    expect(Queue::pushed(PlanCampaignJob::class))->toHaveCount(10)
+        ->and($this->w->requestHistogram(DEVICES))->toBe([0 => 0, 1 => DEVICES, 'many' => 0]);
 });

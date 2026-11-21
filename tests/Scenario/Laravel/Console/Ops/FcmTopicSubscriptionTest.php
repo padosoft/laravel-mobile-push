@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Carbon;
 use Padosoft\MobilePush\Core\Transport\Request;
 use Padosoft\MobilePush\Core\Transport\Response;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Console\Ops\OpsWorld;
@@ -9,6 +10,11 @@ use Padosoft\MobilePush\Tests\Scenario\Laravel\Sending\SendingWorld;
 use Padosoft\MobilePush\Tests\Scenario\Send\SendKit;
 
 require_once __DIR__.'/OpsWorld.php';
+
+// The scenarios pin Carbon's clock to the fake clock: put the real one back when the application goes away.
+beforeEach(function (): void {
+    $this->beforeApplicationDestroyed(static fn () => Carbon::setTestNow());
+});
 
 /*
  * FCM topic subscriptions from the command line: one installation per API call, one result row per installation.

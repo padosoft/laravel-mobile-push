@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Padosoft\MobilePush\Core\Identity\Destination\ApnsDeviceToken;
 use Padosoft\MobilePush\Laravel\Devices\DeviceRegistrar;
@@ -11,6 +12,11 @@ use Padosoft\MobilePush\Tests\Scenario\Laravel\Sending\Customer;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Sending\SendingWorld as W;
 
 require_once __DIR__.'/OpsWorld.php';
+
+// The scenarios pin Carbon's clock to the fake clock: put the real one back when the application goes away.
+beforeEach(function (): void {
+    $this->beforeApplicationDestroyed(static fn () => Carbon::setTestNow());
+});
 
 /*
  * Retention: each prune command deletes only what is older than the retention; --pretend counts the same rows and

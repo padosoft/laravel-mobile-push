@@ -17,7 +17,7 @@ final class KeysetCursor
 {
     public static function encode(string $kind, int $position): string
     {
-        if ($position < 0 || preg_match('/^[a-z]{1,8}$/', $kind) !== 1) {
+        if ($position < 0 || preg_match('/^[a-z]{1,8}$/D', $kind) !== 1) {
             throw new \InvalidArgumentException('A cursor is a lowercase kind and a non-negative position.');
         }
 
@@ -30,7 +30,7 @@ final class KeysetCursor
         if ($cursor === null) {
             return 0;
         }
-        if (preg_match('/^'.preg_quote($kind, '/').':(0|[1-9][0-9]{0,18})$/', $cursor, $m) !== 1) {
+        if (preg_match('/^'.preg_quote($kind, '/').':(0|[1-9][0-9]{0,18})$/D', $cursor, $m) !== 1) {
             throw new CampaignException('The stored campaign cursor is not a valid "'.$kind.'" cursor.');
         }
         $value = filter_var($m[1], FILTER_VALIDATE_INT);

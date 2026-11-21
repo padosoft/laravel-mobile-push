@@ -23,7 +23,7 @@ use Psr\Clock\ClockInterface;
  * ClockInterface. The integration step takes the gates from PolicyGates and calls BadgeResolver per owner.
  *
  * Config (all optional, read with defaults):
- *  - mobile-push.frequency.enabled (bool, true)
+ *  - mobile-push.frequency.enabled (bool, false: every optional behaviour is off by default)
  *  - mobile-push.frequency.limits (map bucket => {per_hour?, per_day?} | 'unlimited'; default bucket 'default' 5/h 20/d)
  *  - mobile-push.frequency.no_policy_bucket (string bucket name, default 'default'; null/'' = not capped)
  *  - mobile-push.frequency.on_store_failure ('allow' | 'deny', default 'allow')
@@ -71,7 +71,7 @@ final class PoliciesModule implements Module
         });
 
         $app->singleton(PolicyGates::class, static fn (Application $app): PolicyGates => new PolicyGates(
-            self::flag($app, 'mobile-push.frequency.enabled', true) ? $app->make(FrequencyCapGate::class) : null,
+            self::flag($app, 'mobile-push.frequency.enabled', false) ? $app->make(FrequencyCapGate::class) : null,
         ));
 
         $app->singleton(BadgeCounter::class, static function (Application $app): BadgeCounter {

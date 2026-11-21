@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace Padosoft\MobilePush\Laravel\Campaigns\Audience;
 
+use Padosoft\MobilePush\Core\Exceptions\ValidationException;
 use Padosoft\MobilePush\Core\Identity\Destination;
 use Padosoft\MobilePush\Core\Identity\DestinationKind;
 use Padosoft\MobilePush\Core\Identity\DestinationRef;
-use Padosoft\MobilePush\Core\Exceptions\ValidationException;
 use Padosoft\MobilePush\Core\Ledger\RecordedDestination;
 use Padosoft\MobilePush\Laravel\Devices\PushDevice;
 

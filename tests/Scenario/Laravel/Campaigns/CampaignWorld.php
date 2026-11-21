@@ -14,9 +14,8 @@ use Padosoft\MobilePush\Core\Driver\SendOptions;
 use Padosoft\MobilePush\Core\Exceptions\UnknownConnectionException;
 use Padosoft\MobilePush\Core\Guard\Guards;
 use Padosoft\MobilePush\Core\Identity\BindingRef;
-use Padosoft\MobilePush\Core\Identity\Destination;
-use Padosoft\MobilePush\Core\Identity\DestinationKind;
 use Padosoft\MobilePush\Core\Identity\Destination\ApnsDeviceToken;
+use Padosoft\MobilePush\Core\Identity\DestinationKind;
 use Padosoft\MobilePush\Core\Message\Message;
 use Padosoft\MobilePush\Core\Message\PushMessage;
 use Padosoft\MobilePush\Core\Outcome\Reason;
@@ -65,13 +64,16 @@ final class CampaignWorld
     /** @var list<array{pattern: string, left: int}> armed kill points (see killOn()) */
     private static array $kills = [];
 
-    /** @param  array<string, mixed>  $config  extra mobile-push.* config */
-    private function __construct(array $config, ?Guards $guards)
+    /**
+     * @param  array<string, mixed>  $config  extra mobile-push.* config
+     * @param  (\Closure(SendKit): Guards)|null  $guards
+     */
+    private function __construct(array $config, ?\Closure $guards)
     {
         Queue::fake();
-        $this->queue = QueueWorld::boot('durable', ['campaigns.enabled' => true] + $config, devices: true);
+        $this->queue = QueueWorld::boot('durable', $config + ['campaigns.enabled' => true], devices: true);
         $kit = $this->queue->kit;
-        $this->dispatcher = new CampaignDispatcher($kit->sender($this->queue->transport, $guards));
+        $this->dispatcher = new CampaignDispatcher($kit->sender($this->queue->transport, $guards === null ? null : $guards($kit)));
         $this->dispatcher->add($kit->apnsDriver());
         $this->dispatcher->add($kit->apnsDriver(binding: SendKit::apnsBinding(scope: 'tenant-b')));
         $this->dispatcher->add($kit->fcmDriver());
@@ -97,8 +99,11 @@ final class CampaignWorld
         });
     }
 
-    /** @param  array<string, mixed>  $config */
-    public static function boot(array $config = [], ?Guards $guards = null): self
+    /**
+     * @param  array<string, mixed>  $config
+     * @param  (\Closure(SendKit): Guards)|null  $guards  the real Guards to send with (default: SendKit's)
+     */
+    public static function boot(array $config = [], ?\Closure $guards = null): self
     {
         return new self($config, $guards);
     }
@@ -266,6 +271,9 @@ final class CampaignWorld
 
     private function count(Request $request): void
     {
+        if (! str_contains($request->url, '/3/device/')) {
+            return;   // only APNs device requests carry a seeded token number
+        }
         $number = (int) hexdec(substr(SendKit::tokenOf($request), -12)) - 1;
         if ($number < 0) {
             return;

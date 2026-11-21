@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Queue;
 use Padosoft\MobilePush\Laravel\Campaigns\Audience\DeviceAudience;
 use Padosoft\MobilePush\Laravel\Campaigns\CampaignStatus;
 use Padosoft\MobilePush\Laravel\Campaigns\Events\CampaignCompleted;
@@ -10,7 +12,6 @@ use Padosoft\MobilePush\Laravel\Campaigns\Events\CampaignStarted;
 use Padosoft\MobilePush\Laravel\Campaigns\PlanCampaignJob;
 use Padosoft\MobilePush\Laravel\Queue\RelayDeliveriesJob;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Campaigns\CampaignWorld;
-use Illuminate\Support\Facades\Event;
 
 require_once __DIR__.'/CampaignWorld.php';
 

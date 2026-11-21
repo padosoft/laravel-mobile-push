@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Queue;
 use Padosoft\MobilePush\Laravel\Campaigns\Audience\DeviceAudience;
 use Padosoft\MobilePush\Laravel\Campaigns\CampaignStateException;
 use Padosoft\MobilePush\Laravel\Campaigns\CampaignStatus;

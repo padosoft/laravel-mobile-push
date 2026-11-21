@@ -13,17 +13,18 @@ use Padosoft\MobilePush\Laravel\Policies\PolicyGates;
 use Padosoft\MobilePush\Tests\Scenario\Policy\Frequency\PolicyKit;
 use Padosoft\MobilePush\Tests\Scenario\Send\SendKit;
 
-it('offers the frequency gate by default and nothing when it is disabled', function () {
-    $gates = $this->app->make(PolicyGates::class)->gates();
-    expect($gates)->toHaveCount(1)->and($gates[0])->toBeInstanceOf(FrequencyCapGate::class);
+it('offers no gate by default (the cap is opt-in) and the frequency gate once it is enabled', function () {
+    expect($this->app->make(PolicyGates::class)->gates())->toBe([]);
 
     $this->app->forgetInstance(PolicyGates::class);
-    config(['mobile-push.frequency.enabled' => false]);
-    expect($this->app->make(PolicyGates::class)->gates())->toBe([]);
+    config(['mobile-push.frequency.enabled' => true]);
+    $gates = $this->app->make(PolicyGates::class)->gates();
+    expect($gates)->toHaveCount(1)->and($gates[0])->toBeInstanceOf(FrequencyCapGate::class);
 });
 
 it('reads limits, no-policy bucket and badge settings from config', function () {
     config([
+        'mobile-push.frequency.enabled' => true,
         'mobile-push.frequency.limits' => ['default' => ['per_hour' => 1], 'marketing' => ['per_day' => 1]],
         'mobile-push.frequency.no_policy_bucket' => null,
         'mobile-push.badge.per_binding' => true,
