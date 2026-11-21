@@ -163,13 +163,29 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           php artisan octane:install --server=${{ matrix.server }} --no-interaction
+          # for the record: which server this run exercised
+          if [ "${{ matrix.server }}" = swoole ]; then php --ri swoole | grep -i '^Version'; else ./frankenphp version; fi
           cat ../package/tests/Support/FreshApp/octane-routes.php >> routes/web.php
+          # the real transport on the wire: a local HTTP/2 mock that counts the connections it sees
+          php ../package/tests/Support/FreshApp/wire-mock.php "$PWD/wire.json" > wire-mock.log 2>&1 &
+          for i in $(seq 1 50); do test -s wire.json && break; sleep 0.2; done
+          test -s wire.json
+          echo "MOBILE_PUSH_WIRE_MOCK=$PWD/wire.json" >> .env
           php artisan octane:start --server=${{ matrix.server }} --host=127.0.0.1 --port=8089 --workers=2 --max-requests=1000 > octane.log 2>&1 &
           for i in $(seq 1 60); do curl -fsS -o /dev/null http://127.0.0.1:8089/up && break; sleep 0.5; done
           for n in $(seq 1 60); do curl -fsS "http://127.0.0.1:8089/push/$n" >> responses.txt; echo >> responses.txt; done || true
+          # sixty more requests, each putting one HTTP/2 request on the wire through the application's transport
+          for n in $(seq 1 60); do curl -fsS "http://127.0.0.1:8089/wire/$n" >> wire.txt; echo >> wire.txt; done || true
           php artisan octane:stop --server=${{ matrix.server }} || true
           tail -20 octane.log
           head -2 responses.txt
+          head -2 wire.txt
+          test "$(grep -c '"status":200,"http":"2"' wire.txt)" = 60
+          touch wire.json.stop
+          for i in $(seq 1 50); do test -s wire.json.stats && break; sleep 0.2; done
+          cat wire.json.stats; echo
+          # the mock received all sixty, on at most one connection per worker: the pool outlives the request
+          php -r '$s = json_decode(file_get_contents("wire.json.stats"), true); exit($s["received"] === 60 && $s["processed"] === 60 && $s["connections"] >= 1 && $s["connections"] <= 2 ? 0 : 1);'
           # every request was served and simulated, in the default scope, by the long-lived workers
           test "$(grep -c '"statuses":\["simulated"\]' responses.txt)" = 60
           test "$(grep -c '"scope":"default"' responses.txt)" = 60
