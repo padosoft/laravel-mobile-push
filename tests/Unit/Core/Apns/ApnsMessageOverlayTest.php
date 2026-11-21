@@ -57,3 +57,12 @@ it('keeps Alert immutable', function () {
 
     expect($alert->title)->toBe('t')->and($changed->title)->toBe('other')->and($changed->body)->toBe('b');
 });
+
+it('keeps integer-like custom keys when an overlay is merged', function () {
+    $base = ApnsMessage::overlay();
+    $base->custom = ['7' => 'seven', 'order' => 'A1'];
+    $overlay = ApnsMessage::overlay();
+    $overlay->custom = ['42' => 'answer'];
+
+    expect($base->overlaidWith($overlay)->custom)->toBe([7 => 'seven', 'order' => 'A1', 42 => 'answer']);
+});

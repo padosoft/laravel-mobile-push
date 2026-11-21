@@ -90,6 +90,15 @@ final class SinkManager
     }
 
     /**
+     * The payload level the records are built with. None when no sink is enabled: a caller asks for the payload
+     * (and builds a copy of it) only when this is not None.
+     */
+    public function payloadLevel(): PayloadLevel
+    {
+        return $this->sinks === [] || $this->factory === null ? PayloadLevel::None : $this->factory->payloadLevel();
+    }
+
+    /**
      * Build a record from a send outcome and record it. Never throws: a failure to build is counted in
      * stats()['record_errors'].
      *

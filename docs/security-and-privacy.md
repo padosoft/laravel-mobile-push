@@ -62,7 +62,7 @@ Rotate by **adding a version**, never by replacing one. The environment variable
 versions put the map in the published config file:
 
 ```php
-// config/mobile-push.php
+// config/mobile-push.php (the *_V2 variable names are yours to choose; only the version-1 names are read by the stock config)
 'privacy' => [
     'index_keys' => [1 => env('MOBILE_PUSH_INDEX_KEY'), 2 => env('MOBILE_PUSH_INDEX_KEY_V2')],
     'index_key_current' => 2,                 // new writes use version 2; lookups try every version

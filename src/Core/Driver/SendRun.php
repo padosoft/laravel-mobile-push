@@ -690,8 +690,34 @@ final class SendRun
                 'request_written' => $failure->requestWritten,
             ],
             $exchange->durationMs,
+            self::payloadView($work->compiled, $work->destination(), $redactor),
         );
         ($this->notify)(static fn (SendObserver $o) => $o->attemptFinished($report));
+    }
+
+    /**
+     * The compiled payload as an observer may log it, computed only if an observer asks (AttemptReport::payload()):
+     * the JSON body decoded and passed through the redactor that knows this attempt's bearer, receipt marker and
+     * destination value. Nothing is decoded or copied when no observer asks (the default `log.payload = none`): the
+     * closure only holds references to objects this attempt already has.
+     *
+     * @return (\Closure(): ?array<array-key, mixed>)|null
+     */
+    private static function payloadView(?CompiledMessage $compiled, Destination $destination, Redactor $redactor): ?\Closure
+    {
+        if ($compiled === null) {
+            return null;
+        }
+
+        return static function () use ($compiled, $destination, $redactor): ?array {
+            $decoded = json_decode($compiled->body, true);
+            if (! is_array($decoded)) {
+                return null;
+            }
+            $safe = $redactor->withSecrets([$destination->value()])->value($decoded);
+
+            return is_array($safe) ? $safe : null;
+        };
     }
 
     /** @param  array<int, SendResult>  $results */

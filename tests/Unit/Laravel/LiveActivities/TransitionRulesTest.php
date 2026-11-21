@@ -14,9 +14,9 @@ use Padosoft\MobilePush\Laravel\LiveActivities\Transition\TransitionRules;
 
 const LA_NOW = 1_763_632_800;
 
-function laRow(ActivityState $state = ActivityState::Active, bool $deliverable = true, int $applied = 3, ?int $pending = null, ?int $last = LA_NOW - 10): RowSnapshot
+function laRow(ActivityState $state = ActivityState::Active, bool $deliverable = true, int $applied = 3, ?int $pending = null, ?int $last = LA_NOW - 10, ?int $expires = null): RowSnapshot
 {
-    return new RowSnapshot($state, $deliverable, $applied, $pending, $last);
+    return new RowSnapshot($state, $deliverable, $applied, $pending, $last, localExpiresAt: $expires);
 }
 
 function laCmd(LiveActivityEvent $event = LiveActivityEvent::Update, int $seq = 4, bool $fromPending = false): TransitionCommand
@@ -78,3 +78,26 @@ it('downgrades only high-priority updates beyond the limit, never ends or explic
         ->and($low->priority)->toBe(Priority::Normal)->and($low->downgraded)->toBeFalse()
         ->and($low->hpCount)->toBe(1);
 });
+
+it('enforces the local expiry against the clock, whether or not the pruner ran', function (RowSnapshot $row, TransitionCommand $command, DecisionKind $kind, bool $expire): void {
+    $decision = (new TransitionRules(new HourlyLimiter(null)))->decide($row, $command, LA_NOW);
+
+    expect($decision->kind)->toBe($kind)->and($decision->expire)->toBe($expire);
+    if ($expire) {
+        expect($decision->reason->code)->toBe(ReasonCode::PolicyIneligible)
+            ->and($decision->reason->hint)->toContain('local expiry');
+    }
+})->with([
+    'active + update past the expiry: skip and mark expired' => [laRow(expires: LA_NOW - 1), laCmd(), DecisionKind::Skip, true],
+    'active + update at exactly the expiry second' => [laRow(expires: LA_NOW), laCmd(), DecisionKind::Skip, true],
+    'active + end past the expiry: skipped too' => [laRow(expires: LA_NOW - 1), laCmd(LiveActivityEvent::End), DecisionKind::Skip, true],
+    'ending + end resend past the expiry' => [laRow(ActivityState::Ending, expires: LA_NOW - 1), laCmd(LiveActivityEvent::End), DecisionKind::Skip, true],
+    'requested past the expiry' => [laRow(ActivityState::Requested, false, expires: LA_NOW - 1), laCmd(), DecisionKind::Skip, true],
+    'flush of a pending transition past the expiry' => [laRow(applied: 3, pending: 4, expires: LA_NOW - 1), laCmd(seq: 4, fromPending: true), DecisionKind::Skip, true],
+    'stale ticket past the expiry: still expires the row' => [laRow(applied: 9, expires: LA_NOW - 1), laCmd(seq: 4), DecisionKind::Skip, true],
+    'same second as the last request but expired: skip, not defer' => [laRow(last: LA_NOW, expires: LA_NOW), laCmd(), DecisionKind::Skip, true],
+    'already expired row (pruner ran): skip, nothing more to mark' => [laRow(ActivityState::Expired, expires: LA_NOW - 1), laCmd(), DecisionKind::Skip, false],
+    'ended row past the expiry: nothing to mark' => [laRow(ActivityState::Ended, expires: LA_NOW - 1), laCmd(), DecisionKind::Skip, false],
+    'one second before the expiry: send' => [laRow(expires: LA_NOW + 1), laCmd(), DecisionKind::Send, false],
+    'no local expiry (a channel): send' => [laRow(expires: null), laCmd(), DecisionKind::Send, false],
+]);
