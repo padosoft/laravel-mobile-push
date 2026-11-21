@@ -300,7 +300,7 @@ final class FakeTransportBuilder
             if ($withBody) {
                 $headers = Describe::headers($request->headers);
                 $keep = array_intersect_key($headers, array_flip(['apns-push-type', 'apns-topic', 'apns-priority', 'apns-expiration', 'apns-collapse-id', 'authorization']));
-                $line .= ' '.json_encode($keep).' '.substr($request->body, 0, 500);
+                $line .= ' '.json_encode($keep).' '.Describe::body($request);
             }
             $lines[] = $line;
         }

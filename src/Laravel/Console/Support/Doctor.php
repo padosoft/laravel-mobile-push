@@ -25,7 +25,6 @@ use Padosoft\MobilePush\Laravel\LiveActivities\LiveActivitiesModule;
 use Padosoft\MobilePush\Laravel\Logging\LoggingModule;
 use Padosoft\MobilePush\Laravel\Queue\ChainStatus;
 use Padosoft\MobilePush\Laravel\Queue\QueueModule;
-use Padosoft\MobilePush\Laravel\Queue\TimeoutLink;
 use Padosoft\MobilePush\Laravel\Sending\PushManager;
 use Padosoft\MobilePush\Laravel\Sending\SendingSettings;
 
@@ -181,7 +180,7 @@ final class Doctor
                 $checks[] = DoctorCheck::notVerifiable($s, $note);
             }
             if (! $info->hasErrors()) {
-                $checks[] = DoctorCheck::ok($s, sprintf('%s: %s (%s, %s), generation %s.', $info->provider?->value ?? '?', $info->appId ?? '?', $info->environment ?? '?', $info->identity ?? $info->auth ?? '?', $info->generation ?? '?'));
+                $checks[] = DoctorCheck::ok($s, sprintf('%s: %s (%s, %s), generation %s.', $info->provider->value ?? '?', $info->appId ?? '?', $info->environment ?? '?', $info->identity ?? $info->auth ?? '?', $info->generation ?? '?'));
             }
         }
 
@@ -196,7 +195,7 @@ final class Doctor
         $s = 'Cache';
         $name = config('mobile-push.cache.store');
         $name = is_string($name) && $name !== '' ? $name : null;
-        $prefix = (string) config('mobile-push.cache.prefix', 'mobile-push');
+        $prefix = Cfg::string('mobile-push.cache.prefix', 'mobile-push');
 
         try {
             $repository = $this->app->make('cache')->store($name);
@@ -257,9 +256,6 @@ final class Doctor
 
         $checks = [];
         foreach ($chain->links as $link) {
-            if (! $link instanceof TimeoutLink) {
-                continue;
-            }
             $label = sprintf('%s (%s) < %s (%s), margin %s', $link->lower, self::seconds($link->lowerSeconds), $link->upper, self::seconds($link->upperSeconds), self::seconds($link->marginSeconds));
             $checks[] = match ($link->status) {
                 ChainStatus::Ok => DoctorCheck::ok($s, $label),
@@ -285,23 +281,23 @@ final class Doctor
         $s = 'Database';
         $needed = [];
         if ((bool) config('mobile-push.devices.enabled', false)) {
-            $needed[] = ['devices', config('mobile-push.devices.connection'), [(string) config('mobile-push.devices.table', 'mobile_push_devices')], DevicesModule::PUBLISH_TAG];
+            $needed[] = ['devices', config('mobile-push.devices.connection'), [Cfg::string('mobile-push.devices.table', 'mobile_push_devices')], DevicesModule::PUBLISH_TAG];
         }
         if (config('mobile-push.delivery.profile', 'light') === 'durable') {
             $needed[] = ['durable ledger', config('mobile-push.ledger.connection'), [
-                (string) config('mobile-push.ledger.tables.effects', 'mobile_push_effects'),
-                (string) config('mobile-push.ledger.tables.deliveries', 'mobile_push_deliveries'),
+                Cfg::string('mobile-push.ledger.tables.effects', 'mobile_push_effects'),
+                Cfg::string('mobile-push.ledger.tables.deliveries', 'mobile_push_deliveries'),
             ], LedgerModule::PUBLISH_TAG];
         }
         $sinks = config('mobile-push.log.sinks', []);
         if (is_array($sinks) && in_array('database', $sinks, true)) {
-            $needed[] = ['database log sink', config('mobile-push.log.database.connection'), [(string) config('mobile-push.log.database.table', 'mobile_push_logs')], LoggingModule::PUBLISH_TAG];
+            $needed[] = ['database log sink', config('mobile-push.log.database.connection'), [Cfg::string('mobile-push.log.database.table', 'mobile_push_logs')], LoggingModule::PUBLISH_TAG];
         }
         if ((bool) config('mobile-push.live_activities.enabled', false)) {
             $needed[] = ['live activities', config('mobile-push.live_activities.connection'), [
-                (string) config('mobile-push.live_activities.table', 'mobile_push_live_activities'),
-                (string) config('mobile-push.live_activities.push_to_start_table', 'mobile_push_live_activity_push_to_start_tokens'),
-                (string) config('mobile-push.live_activities.channels_table', 'mobile_push_broadcast_channels'),
+                Cfg::string('mobile-push.live_activities.table', 'mobile_push_live_activities'),
+                Cfg::string('mobile-push.live_activities.push_to_start_table', 'mobile_push_live_activity_push_to_start_tokens'),
+                Cfg::string('mobile-push.live_activities.channels_table', 'mobile_push_broadcast_channels'),
             ], LiveActivitiesModule::PUBLISH_TAG];
         }
 
@@ -428,6 +424,7 @@ final class Doctor
         return [rtrim($parts[0]), isset($parts[1]) ? trim($parts[1]) : null];
     }
 
+    /** @param  list<DoctorCheck>  $checks */
     public static function exitCode(array $checks): int
     {
         $exit = 0;

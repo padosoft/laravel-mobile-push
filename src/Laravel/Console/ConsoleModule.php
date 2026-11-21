@@ -35,7 +35,8 @@ final class ConsoleModule implements Module
         CircuitCommand::class,
     ];
 
-    private const OPS = 'Padosoft\MobilePush\Laravel\Console\Ops\OpsCommands';
+    /** The operational commands of the other slice; a property so its absence is a runtime fact. */
+    public static string $opsClass = 'Padosoft\MobilePush\Laravel\Console\Ops\OpsCommands';
 
     public static function register(Application $app): void
     {
@@ -60,8 +61,8 @@ final class ConsoleModule implements Module
     {
         $commands = self::COMMANDS;
 
-        if (class_exists(self::OPS) && method_exists(self::OPS, 'all')) {
-            $extra = call_user_func([self::OPS, 'all']);
+        if (class_exists(self::$opsClass) && is_callable([self::$opsClass, 'all'])) {
+            $extra = (new \ReflectionMethod(self::$opsClass, 'all'))->invoke(null);
             foreach (is_array($extra) ? $extra : [] as $class) {
                 if (is_string($class) && class_exists($class) && ! in_array($class, $commands, true)) {
                     $commands[] = $class;
@@ -69,6 +70,6 @@ final class ConsoleModule implements Module
             }
         }
 
-        return array_values($commands);
+        return $commands;
     }
 }

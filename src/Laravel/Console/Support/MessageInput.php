@@ -47,7 +47,9 @@ final class MessageInput
         $data = [];
         $entries = $command->option('data');
         foreach (is_array($entries) ? $entries : [] as $entry) {
-            $entry = (string) $entry;
+            if (! is_string($entry)) {
+                continue;
+            }
             $position = strpos($entry, '=');
             if ($position === false || $position === 0) {
                 throw new ConsoleInputException(sprintf('--data "%s" is not key=value. Example: --data=order=42', $entry));

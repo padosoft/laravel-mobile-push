@@ -76,6 +76,20 @@ final class Describe
         return sprintf('%s https://%s%s', $request->method, $host, $path);
     }
 
+    /** The request body for a failure message: device tokens masked, long bodies cut. */
+    public static function body(Request $request): string
+    {
+        $decoded = json_decode($request->body, true);
+        if (is_array($decoded) && is_array($decoded['message'] ?? null) && is_string($decoded['message']['token'] ?? null)) {
+            $decoded['message']['token'] = TokenMasker::mask($decoded['message']['token']);
+            $body = (string) json_encode($decoded);
+        } else {
+            $body = $request->body;
+        }
+
+        return strlen($body) > 500 ? substr($body, 0, 500).'...' : $body;
+    }
+
     /**
      * @param  array<string, string>  $headers
      * @return array<string, string>

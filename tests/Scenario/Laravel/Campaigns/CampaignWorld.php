@@ -62,6 +62,9 @@ final class CampaignWorld
 
     private int $peak = 0;
 
+    /** @var list<array{pattern: string, left: int}> armed kill points (see killOn()) */
+    private static array $kills = [];
+
     /** @param  array<string, mixed>  $config  extra mobile-push.* config */
     private function __construct(array $config, ?Guards $guards)
     {
@@ -75,6 +78,16 @@ final class CampaignWorld
         app()->instance(PushDispatcher::class, $this->dispatcher);
         (require CampaignsModule::migrationPath())->up();
         $this->ran = new \SplObjectStorage;
+        self::$kills = [];
+        DB::connection()->beforeExecuting(static function (string $sql): void {
+            foreach (self::$kills as $i => $kill) {
+                if (preg_match($kill['pattern'], $sql) === 1 && --self::$kills[$i]['left'] === 0) {
+                    unset(self::$kills[$i]);
+
+                    throw new WorkerKilled('The worker was killed at: '.$kill['pattern']);
+                }
+            }
+        });
 
         $this->queue->transport->keepLast(50);
         $this->queue->transport->respondUsing(function (Request $request): mixed {
@@ -110,6 +123,30 @@ final class CampaignWorld
     public function answer(?\Closure $answer): void
     {
         $this->answer = $answer;
+    }
+
+    /**
+     * Kill the worker (throw WorkerKilled) right before the `$nth` SQL statement matching `$pattern` runs: the
+     * statement does not execute, nothing after it in that job runs.
+     */
+    public static function killOn(string $pattern, int $nth = 1): void
+    {
+        self::$kills[] = ['pattern' => $pattern, 'left' => $nth];
+    }
+
+    /** Run the next queued job and expect it to die at an armed kill point. Returns the job (to rerun it). */
+    public function runUntilKilled(): object
+    {
+        while (($job = $this->nextJob()) !== null) {
+            $this->ran[$job] = true;
+            try {
+                app()->call([$job, 'handle']);
+            } catch (WorkerKilled) {
+                return $job;
+            }
+        }
+
+        throw new \LogicException('No job reached the kill point.');
     }
 
     // ------------------------------------------------------------------ devices
@@ -363,3 +400,6 @@ final class CampaignDispatcher implements PushDispatcher
         return $options;
     }
 }
+
+/** A worker process dying at a chosen point. */
+final class WorkerKilled extends \RuntimeException {}

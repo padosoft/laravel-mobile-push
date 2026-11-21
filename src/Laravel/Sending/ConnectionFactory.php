@@ -19,6 +19,7 @@ use Padosoft\MobilePush\Core\Credentials\ApnsKeyInspector;
 use Padosoft\MobilePush\Core\Credentials\CheckResult;
 use Padosoft\MobilePush\Core\Credentials\CredentialCheck;
 use Padosoft\MobilePush\Core\Credentials\CredentialIdentity;
+use Padosoft\MobilePush\Core\Credentials\ServiceAccountInfo;
 use Padosoft\MobilePush\Core\Credentials\ServiceAccountInspector;
 use Padosoft\MobilePush\Core\Credentials\Severity;
 use Padosoft\MobilePush\Core\Driver\Driver;
@@ -125,11 +126,12 @@ final readonly class ConnectionFactory
         $team = $c->requiredString('team_id', 'Set it to the 10-character Apple team id shown in the developer account');
 
         $trackers = [];
-        [$primary, $primaryIdentity] = $this->apnsCredential($c, '', $scope, $environment, $team, $trackers);
+        $inspected = [];
+        [$primary, $primaryIdentity] = $this->apnsCredential($c, '', $scope, $environment, $team, $trackers, $inspected);
 
         $secondary = null;
         if ($this->present($c, 'secondary')) {
-            [$secondary, $secondaryIdentity] = $this->apnsCredential($c, 'secondary.', $scope, $environment, $team, $trackers);
+            [$secondary, $secondaryIdentity] = $this->apnsCredential($c, 'secondary.', $scope, $environment, $team, $trackers, $inspected);
             $this->assertPasses($this->check()->sameIdentity($primaryIdentity, $secondaryIdentity), $c->prefix().'.secondary');
         }
 
@@ -164,16 +166,18 @@ final readonly class ConnectionFactory
 
         return new ResolvedConnection(
             $binding, $driver, $this->live($c, $binding),
-            self::poolKeys($driver, $roles, $secondary !== null), $trackers,
+            self::poolKeys($driver, $roles, $secondary !== null), $trackers, $inspected,
         );
     }
 
     /**
      * @param  list<TrackingTokenProvider>  $trackers
+     * @param  list<InspectedCredential>  $inspected
      * @return array{0: ApnsCredential, 1: CredentialIdentity}
      */
-    private function apnsCredential(ConfigReader $c, string $prefix, string $scope, Environment $environment, string $primaryTeam, array &$trackers): array
+    private function apnsCredential(ConfigReader $c, string $prefix, string $scope, Environment $environment, string $primaryTeam, array &$trackers, array &$inspected): array
     {
+        $role = $prefix === '' ? 'primary' : 'secondary';
         $where = $c->prefix().($prefix === '' ? '' : '.'.rtrim($prefix, '.'));
         $team = $c->string($prefix.'team_id') ?? $primaryTeam;
         $auth = $c->choice($prefix.'auth', ['token', 'certificate'], 'token');
@@ -183,6 +187,7 @@ final readonly class ConnectionFactory
             $pem = $this->secret($c, $prefix.'key', true, 'the .p8 key file downloaded from the Apple developer account');
             $info = (new ApnsKeyInspector)->inspect($pem);
             $this->assertPasses($this->check()->apnsKey($info), $where);
+            $inspected[] = new InspectedCredential($role, apnsKey: $info);
 
             $tracker = new TrackingTokenProvider(new ApnsTokenProvider(
                 new OpenSslEs256Signer(PrivateKey::fromPem($pem), $keyId),
@@ -199,6 +204,7 @@ final readonly class ConnectionFactory
 
         $info = (new ApnsCertificateInspector)->fromPem($certificate, $key, $passphrase);
         $this->assertPasses($this->check()->certificate($info), $where);
+        $inspected[] = new InspectedCredential($role, certificate: $info);
         if ($info->teamId !== null && $info->teamId !== $team) {
             throw new ConfigurationException(sprintf(
                 '%s: the certificate belongs to team "%s" but team_id is "%s". Use the certificate of this team or correct team_id.',
@@ -223,8 +229,10 @@ final readonly class ConnectionFactory
             }
             $primary = new TrackingTokenProvider(GoogleAuthLibraryProvider::applicationDefault($this->tokens, $this->clock, $scope));
             $primaryIdentity = new CredentialIdentity(Provider::Fcm, $project, Environment::Production);
+            $inspected = [new InspectedCredential('primary', applicationDefault: true)];
         } else {
-            [$primary, $primaryIdentity, $fileProject] = $this->serviceAccount($c, '', $scope);
+            [$primary, $primaryIdentity, $fileProject, $info] = $this->serviceAccount($c, '', $scope);
+            $inspected = [new InspectedCredential('primary', serviceAccount: $info)];
             $project ??= $fileProject;
             if ($project === null) {
                 throw $c->error('project_id', 'is required: the service-account JSON has no project_id, set the Firebase project id');
@@ -234,8 +242,9 @@ final readonly class ConnectionFactory
 
         $secondary = null;
         if ($this->present($c, 'secondary')) {
-            [$secondary, $secondaryIdentity] = $this->serviceAccount($c, 'secondary.', $scope);
+            [$secondary, $secondaryIdentity, , $secondaryInfo] = $this->serviceAccount($c, 'secondary.', $scope);
             $trackers[] = $secondary;
+            $inspected[] = new InspectedCredential('secondary', serviceAccount: $secondaryInfo);
             $this->assertPasses($this->check()->sameIdentity($primaryIdentity, $secondaryIdentity), $c->prefix().'.secondary');
         }
 
@@ -263,12 +272,12 @@ final readonly class ConnectionFactory
 
         return new ResolvedConnection(
             $binding, $driver, $this->live($c, $binding),
-            self::poolKeys($driver, [EndpointRole::FcmApi], $secondary !== null), $trackers,
+            self::poolKeys($driver, [EndpointRole::FcmApi], $secondary !== null), $trackers, $inspected,
         );
     }
 
     /**
-     * @return array{0: TrackingTokenProvider, 1: CredentialIdentity, 2: string|null}
+     * @return array{0: TrackingTokenProvider, 1: CredentialIdentity, 2: string|null, 3: ServiceAccountInfo}
      */
     private function serviceAccount(ConfigReader $c, string $prefix, string $scope): array
     {
@@ -282,6 +291,7 @@ final readonly class ConnectionFactory
             new TrackingTokenProvider(new ServiceAccountTokenProvider($credentials, $this->oauthTransport, $this->tokens, $this->clock, $scope)),
             CredentialIdentity::serviceAccount($info),
             $credentials->projectId,
+            $info,
         ];
     }
 

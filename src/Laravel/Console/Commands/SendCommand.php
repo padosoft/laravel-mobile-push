@@ -64,7 +64,7 @@ final class SendCommand extends PushCommand
         $message = MessageInput::build($this);
 
         $useStdin = (bool) $this->option('stdin');
-        $arguments = array_values(array_map('strval', (array) $this->argument('tokens')));
+        $arguments = array_values(array_filter((array) $this->argument('tokens'), is_string(...)));
         $tokens = TokenInput::collect($arguments, $this->stringOption('file'), $useStdin ? $stdin->contents() : null);
         $secrets = count($tokens) <= 200 ? $tokens : [];
 
@@ -182,6 +182,7 @@ final class SendCommand extends PushCommand
     }
 
     /** Asks a person to confirm a platform; never decides alone. */
+    /** @param  list<string>  $tokens */
     private function proposed(#[\SensitiveParameter] array $tokens, bool $useStdin): Platform
     {
         $remedy = 'The platform is never guessed. Pass --platform=ios or --platform=android (or --connection=NAME).';

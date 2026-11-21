@@ -65,7 +65,7 @@ final class PreviewCommand extends PushCommand
         $this->line($note);
         $this->newLine();
         $this->line('<options=bold>Destination</>  '.$preview->destinationLabel);
-        $this->line('<options=bold>Headers</> (the authorization header is added at send time and never shown)');
+        $this->line('<options=bold>Headers</> (credentials are added at send time and never shown)');
         foreach ($compiled->headers as $name => $value) {
             $this->line(sprintf('  %s: %s', $name, $value));
         }

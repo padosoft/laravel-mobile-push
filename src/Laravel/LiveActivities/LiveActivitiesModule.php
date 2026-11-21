@@ -48,6 +48,7 @@ final class LiveActivitiesModule implements Module
             $app->make(TypeRegistry::class),
             $app->make(LiveActivitiesConfig::class),
             $app->make(Rows::class),
+            new ChannelManagementGate($app->make(PushDispatcher::class), $app->make(TokenIndex::class)),
         ));
         $app->singleton(ActivityManager::class, static fn (Application $app): ActivityManager => new ActivityManager(
             $app->make(PushDispatcher::class),

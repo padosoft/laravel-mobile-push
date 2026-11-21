@@ -76,12 +76,7 @@ final class TestingSession
         $this->reset();
         $this->goLive();
 
-        $configured = config('mobile-push.connections', []);
-        if (! is_array($configured) || $configured === []) {
-            $this->state->connectionsBackup = is_array($configured) ? $configured : [];
-            $this->state->connectionsReplaced = true;
-            config()->set('mobile-push.connections', TestConnections::wire());
-        }
+        $this->provideConnections(TestConnections::wire());
 
         $builder = new FakeTransportBuilder;
         $this->switchable()->route($builder->transport());
@@ -201,8 +196,8 @@ final class TestingSession
             }
         }
         if ($definitions === []) {
+            $this->provideConnections(TestConnections::intent());
             foreach (TestConnections::intent() as $name => $config) {
-                $manager->register($name, $config, $scope);
                 $definitions[] = [$scope, $name, $config];
             }
         }
@@ -214,10 +209,45 @@ final class TestingSession
             $config = $driver === 'fcm'
                 ? ['driver' => 'fcm', 'project_id' => $appId ?? TestConnections::PROJECT, 'fake' => true]
                 : ['driver' => 'apns', 'bundle_id' => $appId ?? TestConnections::BUNDLE, 'environment' => 'sandbox', 'fake' => true];
-            $scope ??= $manager->currentScope();
-            $manager->register($name, $config, $scope);
+            if ($scope === null) {
+                $scope = $manager->currentScope();
+                $this->addConnection($name, $config); // configuration, so reset() takes it back
+            } else {
+                $manager->register($name, $config, $scope); // a runtime registration cannot be taken back
+            }
             $this->seedOne($manager, $fake, $scope, $name, $config);
         });
+    }
+
+    /**
+     * Test connections for an application that configures none; reset() puts the application's config back.
+     *
+     * @param  array<string, array<string, mixed>>  $connections
+     */
+    private function provideConnections(array $connections): void
+    {
+        $configured = config('mobile-push.connections', []);
+        if (is_array($configured) && $configured !== []) {
+            return;
+        }
+        $this->backUpConnections();
+        config()->set('mobile-push.connections', $connections);
+    }
+
+    /** @param  array<string, mixed>  $config */
+    private function addConnection(string $name, array $config): void
+    {
+        $this->backUpConnections();
+        config()->set('mobile-push.connections.'.$name, $config);
+    }
+
+    private function backUpConnections(): void
+    {
+        if (! $this->state->connectionsReplaced) {
+            $configured = config('mobile-push.connections', []);
+            $this->state->connectionsBackup = is_array($configured) ? $configured : [];
+            $this->state->connectionsReplaced = true;
+        }
     }
 
     /** @param  array<mixed>  $config */

@@ -82,9 +82,7 @@ final readonly class DeviceEligibility
 
         $rows = [];
         foreach ($query->get() as $row) {
-            if ($row instanceof PushDevice) {
-                $rows[PushDevice::keyOf($row)] = $row;
-            }
+            $rows[PushDevice::keyOf($row)] = $row;
         }
 
         return $rows;

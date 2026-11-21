@@ -283,8 +283,7 @@ final readonly class ActivityRegistry implements TransitionStore
             if ($result->status === SendStatus::Accepted) {
                 $fields['started_at'] = $now;
                 $fields['last_accepted_at'] = $now;
-            } elseif (in_array($result->status, [SendStatus::Rejected, SendStatus::Failed, SendStatus::Skipped, SendStatus::Expired], true)
-                && $current->state === ActivityState::Requested) {
+            } elseif (in_array($result->status, [SendStatus::Rejected, SendStatus::Failed], true) && $current->state === ActivityState::Requested) {
                 // Known not accepted: no activity was started on the device.
                 $fields += ['state' => ActivityState::Ended, 'closed_reason' => CloseReason::StartNotAccepted, 'closed_at' => $now];
             }
@@ -532,6 +531,7 @@ final readonly class ActivityRegistry implements TransitionStore
 
             case SendStatus::Skipped:
             case SendStatus::Expired:
+            case SendStatus::Simulated:
                 // Nothing left the server: undo the claim so the stored state is what was really sent.
                 if ($latest) {
                     $fields = array_replace($fields, [
@@ -551,7 +551,7 @@ final readonly class ActivityRegistry implements TransitionStore
                 break;
 
             default:
-                // OutcomeUnknown, Rejected, Failed, Simulated, Validated: the claim stands as what was sent.
+                // OutcomeUnknown, Rejected, Failed, Validated: the claim stands as what was sent.
                 break;
         }
 

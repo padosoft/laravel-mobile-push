@@ -17,8 +17,10 @@ enum ProbeOutcome: string
     case Conflict = 'conflict';
     /** The device changed (re-registered, no longer quarantined) while the probe ran: nothing was changed. */
     case Changed = 'changed';
-    /** Simulation mode or safe mode: no request was sent. */
+    /** Simulation mode: no request was sent, by design. */
     case NotSent = 'not_sent';
+    /** Safe mode refused the probe (live sending outside production is not authorised for this binding or device). */
+    case Blocked = 'blocked';
     /** No (or no unique) connection of the same app in the other environment. */
     case NoConnection = 'no_connection';
     /** The provider refused the credential: the whole run stopped here. */
@@ -32,7 +34,7 @@ enum ProbeOutcome: string
     public function needsAttention(): bool
     {
         return match ($this) {
-            self::Untouched, self::Conflict, self::Changed, self::NoConnection, self::NotContacted, self::Unreadable, self::AuthenticationError => true,
+            self::Untouched, self::Blocked, self::Conflict, self::Changed, self::NoConnection, self::NotContacted, self::Unreadable, self::AuthenticationError => true,
             default => false,
         };
     }

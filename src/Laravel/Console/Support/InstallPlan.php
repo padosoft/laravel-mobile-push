@@ -16,7 +16,8 @@ final class InstallPlan
 
     public const PROFILES = ['light', 'durable'];
 
-    private const CAMPAIGNS_MODULE = 'Padosoft\MobilePush\Laravel\Campaigns\CampaignsModule';
+    /** @var class-string|string */
+    public static string $campaignsModule = 'Padosoft\MobilePush\Laravel\Campaigns\CampaignsModule';
 
     /**
      * The migration groups to publish.
@@ -54,15 +55,13 @@ final class InstallPlan
 
     private static function campaignsTag(): ?string
     {
-        $constant = self::CAMPAIGNS_MODULE.'::PUBLISH_TAG';
-
-        if (class_exists(self::CAMPAIGNS_MODULE) && defined($constant)) {
-            $tag = constant($constant);
-
-            return is_string($tag) ? $tag : null;
+        $class = self::$campaignsModule;
+        if (! class_exists($class) || ! defined($class.'::PUBLISH_TAG')) {
+            return null;
         }
+        $tag = (new \ReflectionClassConstant($class, 'PUBLISH_TAG'))->getValue();
 
-        return null;
+        return is_string($tag) ? $tag : null;
     }
 
     /**

@@ -44,8 +44,8 @@ final class Targets
 
             return $out;
         }
-        if ($target === null) {
-            return [];
+        if ($target === null || is_object($target)) {
+            return []; // a notifiable without push routes or registered devices: the caller reports "no destination"
         }
 
         throw new InvalidDestinationException(sprintf('Cannot read push destinations from a %s.', get_debug_type($target)));

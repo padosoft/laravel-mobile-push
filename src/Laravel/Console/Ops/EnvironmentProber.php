@@ -148,7 +148,7 @@ final class EnvironmentProber
         $options = $this->manager->defaultOptions($target);
         $decision = $this->guard->decide($options->effectiveMode, $options->applicationEnvironment ?? '', $target, $destination, OperationKind::Probe, $options->live, $target->environment);
         if (! $decision->allowed) {
-            return new ProbeItem($device, $row->with(ProbeOutcome::NotSent, ($decision->isSimulated() ? 'Simulation mode: would probe through connection "' : 'Blocked by safe mode (connection "').$target->name.'"): '.($decision->hint ?? '')), false, $target, $destination);
+            return new ProbeItem($device, $row->with($decision->isSimulated() ? ProbeOutcome::NotSent : ProbeOutcome::Blocked, ($decision->isSimulated() ? 'Simulation mode: would probe through connection "' : 'Blocked by safe mode (connection "').$target->name.'"): '.($decision->hint ?? '')), false, $target, $destination);
         }
 
         return new ProbeItem($device, $row, true, $target, $destination);
