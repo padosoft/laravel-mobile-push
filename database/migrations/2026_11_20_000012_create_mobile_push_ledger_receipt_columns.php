@@ -17,6 +17,8 @@ use Illuminate\Support\Facades\Schema;
  */
 return new class extends Migration
 {
+    private const INDEX = 'mp_deliveries_message_id_idx';
+
     public function getConnection(): ?string
     {
         $connection = config('mobile-push.ledger.connection');
@@ -26,19 +28,78 @@ return new class extends Migration
 
     public function up(): void
     {
-        Schema::connection($this->getConnection())->table($this->table(), function (Blueprint $table): void {
-            $table->char('message_id', 36)->nullable();
-            $table->boolean('receipt_marker')->default(false);
-            $table->index(['scope', 'message_id'], 'mp_deliveries_message_id_idx');
+        $schema = Schema::connection($this->getConnection());
+        $table = $this->table();
+
+        // Idempotent: every step checks what already exists, so a second run (a published copy next to an auto-loaded
+        // file) changes nothing. Without the deliveries table there is nothing to extend (the effects/deliveries
+        // migrations run first).
+        if (! $schema->hasTable($table)) {
+            return;
+        }
+
+        $columns = [];
+        if (! $schema->hasColumn($table, 'message_id')) {
+            $columns[] = 'message_id';
+        }
+        if (! $schema->hasColumn($table, 'receipt_marker')) {
+            $columns[] = 'receipt_marker';
+        }
+        $index = $this->hasIndex($schema, $table);
+
+        if ($columns === [] && $index) {
+            return;
+        }
+
+        $schema->table($table, function (Blueprint $blueprint) use ($columns, $index): void {
+            if (in_array('message_id', $columns, true)) {
+                $blueprint->char('message_id', 36)->nullable();
+            }
+            if (in_array('receipt_marker', $columns, true)) {
+                $blueprint->boolean('receipt_marker')->default(false);
+            }
+            if (! $index) {
+                $blueprint->index(['scope', 'message_id'], self::INDEX);
+            }
         });
     }
 
     public function down(): void
     {
-        Schema::connection($this->getConnection())->table($this->table(), function (Blueprint $table): void {
-            $table->dropIndex('mp_deliveries_message_id_idx');
-            $table->dropColumn(['message_id', 'receipt_marker']);
-        });
+        $schema = Schema::connection($this->getConnection());
+        $table = $this->table();
+
+        if (! $schema->hasTable($table)) {
+            return;
+        }
+
+        // The index goes first: SQLite cannot drop a column that an index still uses.
+        if ($this->hasIndex($schema, $table)) {
+            $schema->table($table, function (Blueprint $blueprint): void {
+                $blueprint->dropIndex(self::INDEX);
+            });
+        }
+
+        $present = array_values(array_filter(
+            ['message_id', 'receipt_marker'],
+            static fn (string $column): bool => $schema->hasColumn($table, $column),
+        ));
+        if ($present !== []) {
+            $schema->table($table, function (Blueprint $blueprint) use ($present): void {
+                $blueprint->dropColumn($present);
+            });
+        }
+    }
+
+    private function hasIndex(\Illuminate\Database\Schema\Builder $schema, string $table): bool
+    {
+        foreach ($schema->getIndexes($table) as $existing) {
+            if (($existing['name'] ?? null) === self::INDEX) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function table(): string

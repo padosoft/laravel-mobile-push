@@ -254,6 +254,20 @@ return [
         'per_result' => env('MOBILE_PUSH_EVENTS_PER_RESULT', 'auto'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Migrations
+    |--------------------------------------------------------------------------
+    | Default: the migrations of the modules you use are PUBLISHED (`php artisan mobile-push:install` copies them into
+    | database/migrations) and the modules do not register the package files with `migrate`.
+    | migrations.autoload = true: the enabled modules register their package files with `migrate` instead and nothing is
+    |   published (install says so). A copy already published wins, so a table is never created twice. Every migration
+    |   is also idempotent.                                              env MOBILE_PUSH_MIGRATIONS_AUTOLOAD
+    */
+    'migrations' => [
+        'autoload' => (bool) env('MOBILE_PUSH_MIGRATIONS_AUTOLOAD', false),
+    ],
+
     'connection_cache' => [
         'size' => (int) env('MOBILE_PUSH_CONNECTION_CACHE_SIZE', 64),
     ],
@@ -300,6 +314,9 @@ return [
         'table' => env('MOBILE_PUSH_DEVICES_TABLE', 'mobile_push_devices'),
         'connection' => env('MOBILE_PUSH_DEVICES_CONNECTION'),
         'model' => PushDevice::class,
+        'probe' => [                                                                   // mobile-push:devices:probe-environment
+            'cooldown_hours' => (int) env('MOBILE_PUSH_DEVICES_PROBE_COOLDOWN_HOURS', 24), // a device is probed at most once per this many hours
+        ],
         'prune' => [                                                                   // mobile-push:devices:prune
             'invalidated_days' => 30,                                                  // delete invalidated rows after this many days
             'inactive_days' => 365,                                                    // delete rows not seen for this many days
@@ -367,6 +384,9 @@ return [
     | The QUEUE connection and names used by queue() (the push connection is chosen separately). The time budget
     | chain checked by `mobile-push:doctor`: transport timeout < chunk_deadline < timeout < worker timeout <
     | retry_after (SQS: visibility timeout). Declare worker_timeout / visibility_timeout when they cannot be read.
+    | The defaults fit a stock Laravel app (retry_after 90): transport 30 s < chunk_deadline 40 s < timeout 50 s <
+    | worker 55 s (the value `mobile-push:install` prints) < retry_after 90 s, each link with the margin the doctor
+    | requires. Raise the whole chain together, never one value alone.
     */
     'queue' => [
         'connection' => env('MOBILE_PUSH_QUEUE_CONNECTION'),                           // null = the app's default queue connection
@@ -374,8 +394,8 @@ return [
         'bulk_queue' => env('MOBILE_PUSH_BULK_QUEUE', 'push-bulk'),                   // bulk() traffic
         'chunk' => (int) env('MOBILE_PUSH_QUEUE_CHUNK', 500),                          // destinations per job, 1..10000
         'chunk_bytes' => (int) env('MOBILE_PUSH_QUEUE_CHUNK_BYTES', 98304),            // >= 4096, before encryption
-        'timeout' => (int) env('MOBILE_PUSH_QUEUE_TIMEOUT', 120),                      // job timeout, seconds
-        'chunk_deadline' => (int) env('MOBILE_PUSH_QUEUE_CHUNK_DEADLINE', 60),         // wall time of one relay run, seconds
+        'timeout' => (int) env('MOBILE_PUSH_QUEUE_TIMEOUT', 50),                       // job timeout, seconds
+        'chunk_deadline' => (int) env('MOBILE_PUSH_QUEUE_CHUNK_DEADLINE', 40),         // wall time of one relay run, seconds
         'after_commit' => (bool) env('MOBILE_PUSH_QUEUE_AFTER_COMMIT', true),
         'follow_up_bucket' => (int) env('MOBILE_PUSH_QUEUE_FOLLOW_UP_BUCKET', 60),     // seconds; deferred retries this close share a job
         'worker_timeout' => env('MOBILE_PUSH_QUEUE_WORKER_TIMEOUT'),                   // seconds, when not on Horizon

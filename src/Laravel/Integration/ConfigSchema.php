@@ -176,6 +176,9 @@ final class ConfigSchema
                 self::k('events.per_result', 'string', 'auto', 'MOBILE_PUSH_EVENTS_PER_RESULT', 'When to dispatch PushResultProduced per destination: auto = transactional sends only. Pulse needs always to see the reason codes of bulk traffic.', 'sending', ['auto', 'always', 'never']),
                 self::k('connection_cache.size', 'int', 64, 'MOBILE_PUSH_CONNECTION_CACHE_SIZE', 'Resolved connections (drivers, pools) kept per process.', 'sending', constraint: '1..100000'),
             ]),
+            self::section('migrations', 'Migrations', 'Where the tables of the modules come from. By default the migrations are published into your application (`mobile-push:install` does it) and the modules never register their own copies with `migrate`.', [
+                self::k('migrations.autoload', 'bool', false, 'MOBILE_PUSH_MIGRATIONS_AUTOLOAD', 'false (default): module migrations are published by mobile-push:install and `migrate` runs the copies. true: enabled modules register their package files with `migrate` and nothing is published (a copy already published wins).', 'install'),
+            ]),
             self::section('cache', 'Shared cache', 'Provider tokens, breakers, rate limits, throttle gates, metrics, frequency counters and badges are shared between workers through this store. Cross-process guarantees need a lock-capable shared store (redis, memcached, database, dynamodb).', [
                 self::k('cache.store', 'string|null', null, 'MOBILE_PUSH_CACHE_STORE', 'Cache store name from config/cache.php; null = the default store.', 'cache'),
                 self::k('cache.prefix', 'string', 'mobile-push', 'MOBILE_PUSH_CACHE_PREFIX', 'Prefix of every cache key of the package.', 'cache'),
@@ -191,6 +194,7 @@ final class ConfigSchema
                 self::k('devices.table', 'string', 'mobile_push_devices', 'MOBILE_PUSH_DEVICES_TABLE', 'Table name.', 'devices'),
                 self::k('devices.connection', 'string|null', null, 'MOBILE_PUSH_DEVICES_CONNECTION', 'Database connection; null = default.', 'devices'),
                 self::k('devices.model', 'class-string', PushDevice::class, null, 'Eloquent model (extend PushDevice to customise).', 'devices'),
+                self::k('devices.probe.cooldown_hours', 'int', 24, 'MOBILE_PUSH_DEVICES_PROBE_COOLDOWN_HOURS', 'mobile-push:devices:probe-environment contacts a device at most once per this many hours (0 = no cooldown).', 'console', constraint: '>= 0'),
                 self::k('devices.prune.invalidated_days', 'int', 30, null, 'mobile-push:devices:prune deletes invalidated rows older than this.', 'console', constraint: '>= 0'),
                 self::k('devices.prune.inactive_days', 'int', 365, null, 'mobile-push:devices:prune deletes rows not seen for this many days.', 'console', constraint: '>= 0'),
             ]),
@@ -224,8 +228,8 @@ final class ConfigSchema
                 self::k('queue.bulk_queue', 'string', 'push-bulk', 'MOBILE_PUSH_BULK_QUEUE', 'Queue of bulk() traffic.', 'queue'),
                 self::k('queue.chunk', 'int', 500, 'MOBILE_PUSH_QUEUE_CHUNK', 'Destinations per light job / deliveries per relay claim.', 'queue', constraint: '1..10000'),
                 self::k('queue.chunk_bytes', 'int', 98304, 'MOBILE_PUSH_QUEUE_CHUNK_BYTES', 'Estimated bytes of one light job before encryption.', 'queue', constraint: '>= 4096'),
-                self::k('queue.timeout', 'int', 120, 'MOBILE_PUSH_QUEUE_TIMEOUT', 'Job timeout, seconds.', 'queue', constraint: '>= 1'),
-                self::k('queue.chunk_deadline', 'int', 60, 'MOBILE_PUSH_QUEUE_CHUNK_DEADLINE', 'Wall time of one relay run before it hands over, seconds.', 'queue', constraint: '>= 1'),
+                self::k('queue.timeout', 'int', 50, 'MOBILE_PUSH_QUEUE_TIMEOUT', 'Job timeout, seconds.', 'queue', constraint: '>= 1'),
+                self::k('queue.chunk_deadline', 'int', 40, 'MOBILE_PUSH_QUEUE_CHUNK_DEADLINE', 'Wall time of one relay run before it hands over, seconds.', 'queue', constraint: '>= 1'),
                 self::k('queue.after_commit', 'bool', true, 'MOBILE_PUSH_QUEUE_AFTER_COMMIT', 'Dispatch light jobs after the open transaction commits.', 'queue'),
                 self::k('queue.follow_up_bucket', 'int', 60, 'MOBILE_PUSH_QUEUE_FOLLOW_UP_BUCKET', 'Deferred destinations whose next attempts are this close share one continuation job, seconds.', 'queue', constraint: '>= 0'),
                 self::k('queue.worker_timeout', 'int|null', null, 'MOBILE_PUSH_QUEUE_WORKER_TIMEOUT', 'Declared worker timeout when it is not readable from Horizon.', 'queue'),

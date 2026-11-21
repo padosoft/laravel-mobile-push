@@ -10,6 +10,7 @@ use Padosoft\MobilePush\Laravel\Console\Support\ConsoleInputException;
 use Padosoft\MobilePush\Laravel\Console\Support\EnvChecklist;
 use Padosoft\MobilePush\Laravel\Console\Support\HorizonBlock;
 use Padosoft\MobilePush\Laravel\Console\Support\InstallPlan;
+use Padosoft\MobilePush\Laravel\Integration\ModuleMigrations;
 use Padosoft\MobilePush\Laravel\Queue\QueueSettings;
 
 /**
@@ -37,13 +38,22 @@ final class InstallCommand extends PushCommand
         $force = (bool) $this->option('force');
 
         $this->components->info('Installing laravel-mobile-push');
-        $this->line('  Delivery profile: '.$profile.($profile === 'durable' ? ' (every delivery is recorded in a ledger table before it is sent)' : ' (best effort, no tables)'));
+        $this->line('  Delivery profile: '.$profile.($profile === 'durable' ? ' (every delivery is recorded in a ledger table before it is sent: intents survive crashes and accepted pushes are not re-sent)' : ' (best effort, no tables)'));
         $this->line('  Optional modules: '.($modules === [] ? 'none' : implode(', ', $modules)));
         $this->newLine();
 
         $this->publishConfig($force);
+        $autoload = ModuleMigrations::autoload();
         foreach (InstallPlan::migrations($modules, $profile) as $group) {
+            if ($autoload) {
+                $this->reportAutoloaded($group['label'], $group['suffixes']);
+
+                continue;
+            }
             $this->publishMigrations($group['label'], $group['tag'], $group['suffixes'], $force);
+        }
+        if ($autoload) {
+            $this->line('  mobile-push.migrations.autoload is on: nothing was published because the enabled modules hand their own migration files to `php artisan migrate`. Publishing as well would be the same tables twice.');
         }
         if (in_array('campaigns', $modules, true) && ! InstallPlan::campaignsAvailable()) {
             $this->components->warn('The campaigns module is not part of this version of the package: no campaigns migration was published.');
@@ -121,7 +131,7 @@ final class InstallCommand extends PushCommand
             $profile = 'light';
             if ($this->canAsk()) {
                 $picked = $this->choice(
-                    'Delivery profile. "light": best effort, no tables, fine to start. "durable": every delivery is recorded before it is sent, so a crashed worker never loses or duplicates a push (recommended for production)',
+                    'Delivery profile. "light": best effort, no tables, a crash can lose or duplicate a push. "durable": intents survive crashes and accepted pushes are never re-sent; an outcome that cannot be known is reported as unknown rather than guessed, and a replaceable message retried after an unknown outcome can arrive twice (recommended for production)',
                     InstallPlan::PROFILES,
                     $production ? 'durable' : 'light',
                 );
@@ -166,6 +176,18 @@ final class InstallCommand extends PushCommand
         }
         $this->callSilent('vendor:publish', ['--tag' => 'mobile-push-config', '--force' => $force]);
         $this->line('  Published config/mobile-push.php');
+    }
+
+    /** @param  list<string>  $suffixes */
+    private function reportAutoloaded(string $label, array $suffixes): void
+    {
+        $directory = database_path('migrations');
+        foreach ($suffixes as $suffix) {
+            if (glob($directory.'/*_'.$suffix) !== [] && glob($directory.'/*_'.$suffix) !== false) {
+                $this->components->warn(sprintf('A published copy of a %s migration (%s) is already in database/migrations: it is the one `migrate` runs, the package file is skipped. Delete the copy if you want the package file instead.', $label, $suffix));
+            }
+        }
+        $this->line(sprintf('  The %s migration(s) are loaded from the package by `php artisan migrate` (autoload).', $label));
     }
 
     /** @param  list<string>  $suffixes */

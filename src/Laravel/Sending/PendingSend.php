@@ -13,6 +13,7 @@ use Padosoft\MobilePush\Core\Driver\SendOptions;
 use Padosoft\MobilePush\Core\Exceptions\ConfigurationException;
 use Padosoft\MobilePush\Core\Exceptions\InvalidDestinationException;
 use Padosoft\MobilePush\Core\Exceptions\UnknownConnectionException;
+use Padosoft\MobilePush\Core\Exceptions\ValidationException;
 use Padosoft\MobilePush\Core\Guard\TrafficClass;
 use Padosoft\MobilePush\Core\Identity\BindingRef;
 use Padosoft\MobilePush\Core\Identity\Destination;
@@ -266,20 +267,34 @@ final class PendingSend
      * Durable profile: send() is synchronous and never writes the ledger (no effect row, no outbox, no receipt
      * marker); only queue() goes through the ledger. Use queue() when the push must survive a crash.
      *
+     * Nothing is sent until every connection of the send has passed its pre-flight (the message compiled against
+     * one destination of each connection, no network). A message that is invalid for SOME connections only (a
+     * subtitle reaches iOS but has no Android equivalent) concerns only their destinations: they get Rejected
+     * results (PayloadInvalid, the compiler's message as hint) and the other connections send normally. A message
+     * invalid for EVERY connection throws, before any request.
+     *
      * @throws ConfigurationException|InvalidDestinationException before the network
+     * @throws ValidationException when the message is invalid for every connection of the send
      */
     public function send(Message $message): SendReport
     {
         $scope = $this->resolvedScope();
         $pending = $this->effectKey === null ? $this->effectKey((string) Str::ulid()) : $this;
+        $plan = $this->plan($scope);
+        $refused = $this->preflight($plan, $message);
         $reports = [];
-        foreach ($this->plan($scope) as $group) {
+        foreach ($plan as $index => $group) {
             if ($group['binding'] === null) {
                 $reports[] = $this->manager->mismatch($scope, $group['name'], null, $group['current'], $group['items'], $this->trafficClass);
 
                 continue;
             }
             $binding = $group['binding'];
+            if (isset($refused[$index])) {
+                $reports[] = $this->manager->refused($binding, $refused[$index], $group['items'], $this->trafficClass);
+
+                continue;
+            }
             foreach ($pending->badged($binding, $message, $group['items'], false) as [$groupMessage, $items, $key]) {
                 $reports[] = $this->manager->send($binding, $groupMessage, $items, $pending->effectKey($key)->options($this->manager->defaultOptions($binding)));
             }
@@ -303,13 +318,20 @@ final class PendingSend
      * several connections, the effect ids of each connection joined by ",". The queue is chosen with
      * onQueueConnection() / onQueue() / delay() BEFORE calling queue().
      *
+     * Validated before anything is queued, with the same pre-flight as send(): a connection whose message cannot
+     * compile queues nothing and writes nothing to the ledger; its destinations are recorded as Rejected now (send
+     * log, events) and it contributes no effect id. A message invalid for every connection throws before anything
+     * is queued.
+     *
      * @throws ConfigurationException when no QueuedSender is bound
+     * @throws ValidationException when the message is invalid for every connection of the send
      */
     public function queue(Message $message): string
     {
         $queued = $this->manager->queuedSender();
         $scope = $this->resolvedScope();
         $groups = $this->plan($scope);
+        $refused = $this->preflight($groups, $message);
         $pending = $this;
         if ($this->effectKey === null && (count($groups) > 1 || $this->needsBadge($message))) {
             // One logical effect across connections (and a stable key for the badge decision).
@@ -317,13 +339,19 @@ final class PendingSend
         }
 
         $ids = [];
-        foreach ($groups as $group) {
+        foreach ($groups as $index => $group) {
             if ($group['binding'] === null) {
                 $this->manager->mismatch($scope, $group['name'], null, $group['current'], $group['items'], $this->trafficClass)->count();
 
                 continue;
             }
             $binding = $group['binding'];
+            if (isset($refused[$index])) {
+                // Nothing queued, nothing written to the ledger: the destinations are recorded as Rejected now.
+                $this->manager->refused($binding, $refused[$index], $group['items'], $this->trafficClass)->count();
+
+                continue;
+            }
             foreach ($pending->badged($binding, $message, $group['items'], true) as [$groupMessage, $items, $key]) {
                 $destinations = (static function () use ($items): \Generator {
                     foreach ($items as $item) {
@@ -344,6 +372,51 @@ final class PendingSend
     }
 
     // ---------------------------------------------------------------- internals
+
+    /**
+     * Pre-flight of every connection of the send BEFORE the first one touches the network or the queue: the message
+     * is compiled once per connection against its first destination (no receipt marker, nothing sent). A connection
+     * whose destinations arrive as a lazy stream (a named connection fed by a generator) is not sampled: its Sender
+     * still raises a message-level error before its first request.
+     *
+     * @param  list<array{name: string, binding: BindingRef|null, current: BindingRef|null, items: iterable<Destination|SendItem>}>  $plan
+     * @return array<int, ValidationException> plan index => the error of a connection whose message is invalid
+     *
+     * @throws ValidationException when the message is invalid for every connection of the send (nothing was sent)
+     */
+    private function preflight(array $plan, Message $message): array
+    {
+        $refused = [];
+        $checked = 0;
+        foreach ($plan as $index => $group) {
+            if ($group['binding'] === null || ! is_array($group['items']) || $group['items'] === []) {
+                continue;
+            }
+            $first = $group['items'][array_key_first($group['items'])];
+            $error = $this->manager->preflight($group['binding'], $message, $first instanceof SendItem ? $first->destination : $first, $this->validateOnly);
+            $checked++;
+            if ($error !== null) {
+                $refused[$index] = $error;
+            }
+        }
+        if ($refused !== [] && count($refused) === $checked && ! $this->hasUncheckedGroup($plan)) {
+            throw $refused[array_key_first($refused)];
+        }
+
+        return $refused;
+    }
+
+    /** @param  list<array{name: string, binding: BindingRef|null, current: BindingRef|null, items: iterable<Destination|SendItem>}>  $plan */
+    private function hasUncheckedGroup(array $plan): bool
+    {
+        foreach ($plan as $group) {
+            if ($group['binding'] !== null && ! is_array($group['items'])) {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     private function add(mixed $target): void
     {

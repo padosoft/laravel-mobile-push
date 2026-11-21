@@ -5,7 +5,7 @@
 //   node art/render.mjs --svg art/favicon.svg --out /tmp/fav.png --width 64 --height 64 --scale 1 --quantize 0
 //
 // --quantize N (default 256, 0 = off) reduces the PNG to an N-colour palette
-// with Floyd-Steinberg dithering through Python Pillow, which keeps the 2x
+// (median cut refined by k-means, Floyd-Steinberg dithering) through Python Pillow, which keeps the 2x
 // banner around 0.5 MB instead of ~3.6 MB. If Pillow is missing the
 // full-colour PNG is kept and a warning is printed.
 //
@@ -64,7 +64,7 @@ alpha = im.getchannel('A') if im.mode == 'RGBA' else None
 if alpha is not None and alpha.getextrema()[0] < 255:
     q = im.quantize(colors=int(sys.argv[2]), method=Image.Quantize.FASTOCTREE, dither=Image.Dither.FLOYDSTEINBERG)
 else:
-    q = im.convert('RGB').quantize(colors=int(sys.argv[2]), method=Image.Quantize.MEDIANCUT, dither=Image.Dither.FLOYDSTEINBERG)
+    q = im.convert('RGB').quantize(colors=int(sys.argv[2]), method=Image.Quantize.MEDIANCUT, kmeans=3, dither=Image.Dither.FLOYDSTEINBERG)
 q.save(sys.argv[1], optimize=True)`;
     const r = spawnSync('python3', ['-c', py, outPath, String(quantize)], { encoding: 'utf8' });
     if (r.status !== 0) console.warn(`quantize skipped (python3 + Pillow needed): ${(r.stderr || r.error || '').toString().trim()}`);

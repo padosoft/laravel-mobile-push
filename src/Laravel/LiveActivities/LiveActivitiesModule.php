@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace Padosoft\MobilePush\Laravel\LiveActivities;
 
 use Illuminate\Contracts\Foundation\Application;
-use Illuminate\Support\ServiceProvider;
 use Padosoft\MobilePush\Core\Privacy\TokenCipher;
 use Padosoft\MobilePush\Core\Privacy\TokenIndex;
 use Padosoft\MobilePush\Laravel\Contracts\PushDispatcher;
+use Padosoft\MobilePush\Laravel\Integration\ModuleMigrations;
 use Padosoft\MobilePush\Laravel\LiveActivities\Console\ConsoleCommands;
 use Padosoft\MobilePush\Laravel\LiveActivities\Transition\Rows;
 use Padosoft\MobilePush\Laravel\Module;
@@ -65,34 +65,12 @@ final class LiveActivitiesModule implements Module
 
     public static function boot(Application $app): void
     {
-        $paths = self::migrationPaths();
+        $enabled = (bool) config('mobile-push.live_activities.enabled', false);
 
-        // Single file paths: other modules' migrations in the same directory are not loaded by accident.
-        if ((bool) config('mobile-push.live_activities.enabled', false) && $app->bound('migrator')) {
-            foreach ($paths as $path) {
-                $app->make('migrator')->path($path);
-            }
-        }
+        ModuleMigrations::wire($app, self::migrationPaths(), self::PUBLISH_TAG, $enabled);
 
-        if ($app->runningInConsole() && (bool) config('mobile-push.live_activities.enabled', false)) {
+        if ($app->runningInConsole() && $enabled) {
             ConsoleCommands::register();
-        }
-
-        if ($app->runningInConsole()) {
-            $published = [];
-            foreach ($paths as $i => $path) {
-                $published[$path] = $app->databasePath('migrations/'.date('Y_m_d_His', time() + $i).'_'.substr(basename($path), 18));
-            }
-
-            // publishes() is protected: a throwaway provider registers the tag without touching the main provider.
-            (new class($app) extends ServiceProvider
-            {
-                /** @param  array<string, string>  $paths */
-                public function publishTagged(array $paths, string $tag): void
-                {
-                    $this->publishes($paths, $tag);
-                }
-            })->publishTagged($published, self::PUBLISH_TAG);
         }
     }
 

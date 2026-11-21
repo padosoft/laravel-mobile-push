@@ -9,12 +9,12 @@ use Illuminate\Contracts\Bus\Dispatcher as Bus;
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Contracts\Events\Dispatcher as Events;
 use Illuminate\Contracts\Foundation\Application;
-use Illuminate\Support\ServiceProvider;
 use Padosoft\MobilePush\Core\Ledger\Ledger;
 use Padosoft\MobilePush\Core\Privacy\TokenCipher;
 use Padosoft\MobilePush\Laravel\Campaigns\Audience\AudienceRegistry;
 use Padosoft\MobilePush\Laravel\Campaigns\Console\ConsoleCommands;
 use Padosoft\MobilePush\Laravel\Contracts\PushDispatcher;
+use Padosoft\MobilePush\Laravel\Integration\ModuleMigrations;
 use Padosoft\MobilePush\Laravel\Module;
 use Padosoft\MobilePush\Laravel\Queue\QueueSettings;
 use Padosoft\MobilePush\Laravel\Queue\SendJobDispatcher;
@@ -95,27 +95,10 @@ final class CampaignsModule implements Module
 
     public static function boot(Application $app): void
     {
-        $migration = self::migrationPath();
-
-        if (self::usable($app) && $app->bound('migrator')) {
-            $app->make('migrator')->path($migration);
-        }
+        ModuleMigrations::wire($app, [self::migrationPath()], self::PUBLISH_TAG, self::usable($app));
 
         if ($app->runningInConsole() && (bool) config('mobile-push.campaigns.enabled', false)) {
             ConsoleCommands::register();
-        }
-
-        if ($app->runningInConsole()) {
-            $target = $app->databasePath('migrations/'.date('Y_m_d_His').'_create_mobile_push_campaigns_table.php');
-
-            (new class($app) extends ServiceProvider
-            {
-                /** @param  array<string, string>  $paths */
-                public function publishTagged(array $paths, string $tag): void
-                {
-                    $this->publishes($paths, $tag);
-                }
-            })->publishTagged([$migration => $target], self::PUBLISH_TAG);
         }
 
         $schedule = static function (Schedule $schedule) use ($app): void {

@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Padosoft\MobilePush\Laravel\Ledger;
 
 use Illuminate\Contracts\Foundation\Application;
-use Illuminate\Support\ServiceProvider;
 use Padosoft\MobilePush\Core\Exceptions\ConfigurationException;
 use Padosoft\MobilePush\Core\Ledger\ClientReceiptStore;
 use Padosoft\MobilePush\Core\Ledger\DeliveryStore;
@@ -17,6 +16,7 @@ use Padosoft\MobilePush\Core\Privacy\TokenCipher;
 use Padosoft\MobilePush\Core\Privacy\TokenIndex;
 use Padosoft\MobilePush\Core\Retry\RetryPolicy;
 use Padosoft\MobilePush\Core\Retry\UnknownOutcomeRetry;
+use Padosoft\MobilePush\Laravel\Integration\ModuleMigrations;
 use Padosoft\MobilePush\Laravel\Module;
 use Padosoft\MobilePush\Laravel\Receipts\ReceiptMarkerIssuer;
 use Psr\Clock\ClockInterface;
@@ -61,30 +61,7 @@ final class LedgerModule implements Module
 
     public static function boot(Application $app): void
     {
-        $paths = self::migrationPaths();
-
-        if (self::durable() && $app->bound('migrator')) {
-            foreach ($paths as $path) {
-                $app->make('migrator')->path($path);
-            }
-        }
-
-        if ($app->runningInConsole()) {
-            $stamp = date('Y_m_d_His');
-            $publish = [];
-            foreach ($paths as $i => $path) {
-                $publish[$path] = $app->databasePath('migrations/'.$stamp.'_'.($i + 10).'_'.substr(basename($path), 18));
-            }
-
-            (new class($app) extends ServiceProvider
-            {
-                /** @param  array<string, string>  $paths */
-                public function publishTagged(array $paths, string $tag): void
-                {
-                    $this->publishes($paths, $tag);
-                }
-            })->publishTagged($publish, self::PUBLISH_TAG);
-        }
+        ModuleMigrations::wire($app, self::migrationPaths(), self::PUBLISH_TAG, self::durable());
     }
 
     public static function durable(): bool

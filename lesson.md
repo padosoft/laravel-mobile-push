@@ -338,3 +338,8 @@ Modello di voce:
 - **Contesto:** `local_expires_at` delle Live Activities era applicata solo da `ActivityPruner::prune()`, che nessuno pianificava: un'attività scaduta restava aggiornabile.
 - **Fatto:** la regola va valutata nel punto di decisione (`TransitionRules`, con l'orologio iniettato) e il cambio di stato fatto nella stessa compare-and-set che rifiuta la transizione; il batch resta solo per ordinare la tabella e cancellare le righe chiuse.
 - **Regola:** ogni scadenza che promette «dopo X non si invia più» si controlla al momento dell'invio; un job periodico può solo anticiparla, mai esserne l'unica garanzia.
+
+## 2026-11-21 — Font e quantizzazione per il banner (W6-B)
+- **Contesto:** `art/render.mjs`, rendering SVG con Playwright/Chromium.
+- **Fatto:** nel container ci sono Inter, Inter Display (tutti i pesi) e JetBrains Mono; JetBrains Mono applica di default la legatura `->` → freccia, che falsa il codice PHP mostrato (serve `font-variant-ligatures: none`). Non ci sono pngquant/optipng/oxipng, ma c'è Pillow 12: il PNG 2× full colour pesa ~3.6 MB; `quantize(256, MEDIANCUT)` lo porta a ~490 KB ma sposta i colori di piccoli elementi (un pallino ciano diventa grigio), `FASTOCTREE` fa bande nelle ombre, `MEDIANCUT` con `kmeans=3` dà ~480 KB con errore minimo.
+- **Regola:** nei render di codice disattivare le legature; per ridurre PNG usare Pillow MEDIANCUT + kmeans e controllare a occhio i dettagli piccoli.

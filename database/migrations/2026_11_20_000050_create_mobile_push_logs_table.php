@@ -22,7 +22,14 @@ return new class extends Migration
 
     public function up(): void
     {
-        Schema::connection($this->getConnection())->create($this->table(), function (Blueprint $table): void {
+        $schema = Schema::connection($this->getConnection());
+
+        // Idempotent: a second run (a published copy next to an auto-loaded file) must not fail on an existing table.
+        if ($schema->hasTable($this->table())) {
+            return;
+        }
+
+        $schema->create($this->table(), function (Blueprint $table): void {
             $table->id();
             $table->dateTime('created_at', 3);              // UTC
 
