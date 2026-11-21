@@ -82,6 +82,9 @@ final class SendRun
     /** @var array<string, true> bearer generations already refreshed after a rejection in this send */
     private array $refreshed = [];
 
+    /** @var array<string, true> refused bearers for which no other bearer could be obtained: never sent again in this send */
+    private array $notReplaced = [];
+
     /**
      * @param  \Closure(int): void  $sleeper
      * @param  \Closure(\Closure(SendObserver): void): void  $notify
@@ -326,6 +329,11 @@ final class SendRun
             } catch (\Throwable $e) {
                 return $this->tokenUnavailable(array_column($compiledItems, 0), $generation, $e, $results);
             }
+            if (isset($this->notReplaced[$generation.':'.$token->generation()])) {
+                // The provider refused exactly this bearer and no other could be obtained (the refresh failed, or
+                // Apple's 20-minute floor forbids minting again): sending it once more would only spend an attempt.
+                return $this->bearerNotReplaced(array_column($compiledItems, 0), $now, $results);
+            }
         }
 
         // Build the requests, grouped by connection pool.
@@ -504,6 +512,27 @@ final class SendRun
         }
 
         return $retry;
+    }
+
+    /**
+     * The bearer the provider just refused is still the only one available: nothing is sent again, and the
+     * destinations are deferred (or stay unknown when an earlier attempt of theirs had an unknown outcome).
+     *
+     * @param  list<WorkItem>  $items
+     * @param  array<int, SendResult>  $results
+     * @return list<WorkItem> always empty: none of them is retried in this send
+     */
+    private function bearerNotReplaced(array $items, \DateTimeImmutable $now, array &$results): array
+    {
+        $reason = Reason::of(ReasonCode::AuthTokenExpired, null,
+            'The provider refused the bearer and a new one could not be obtained yet: it was not sent again. Attempt again at nextAttemptAt.');
+        foreach ($items as $work) {
+            $unknown = $work->budget->unknownOutcomeSeen;
+            $this->emit($work, $unknown ? SendStatus::OutcomeUnknown : SendStatus::Deferred, $reason, $work->lastDecision,
+                $unknown ? null : $now->modify('+'.self::DEFAULT_DEFER_SECONDS.' seconds'), $results);
+        }
+
+        return [];
     }
 
     /**
@@ -688,9 +717,15 @@ final class SendRun
             }
             $this->refreshed[$key] = true;
             try {
-                $provider->refreshAfterRejection($token);
+                $fresh = $provider->refreshAfterRejection($token);
             } catch (\Throwable) {
-                // The retry asks for a token again; if none can be obtained the destinations fail without a send.
+                $this->notReplaced[$key] = true;   // the next pass must not send the refused bearer again
+
+                continue;
+            }
+            if ($fresh->generation() === $token->generation()) {
+                $this->notReplaced[$key] = true;   // same token back (e.g. inside Apple's 20-minute floor): no refresh happened
+
                 continue;
             }
             $identity = $this->driver->credentialIdentityFor($generation);
