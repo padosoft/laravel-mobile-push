@@ -1,14 +1,21 @@
+/* Brand colour taken from the banner (coral). docmd's default theme colours links and the
+   active navigation through --link-color; theme.primaryColor alone does not reach them. */
 :root {
-  --docmd-color-primary: #4f46e5;
-  --color-primary: #4f46e5;
-  --color-primary-hover: #4338ca;
-  --color-primary-light: rgba(79, 70, 229, 0.12);
+  --link-color: #c9304c;
+  --link-color-hover: #a82640;
+  --sidebar-link-active-bg: rgba(201, 48, 76, 0.1);
+  --docmd-color-primary: #e8445e;
 }
 
-.docmd-container.callout {
-  border-radius: 8px;
+:root[data-theme="dark"] {
+  --link-color: #ff7a8c;
+  --link-color-hover: #ffa0ad;
+  --sidebar-link-active-bg: rgba(255, 122, 140, 0.14);
+  --glow-color: rgba(255, 122, 140, 0.18);
+  --glow-color-strong: rgba(255, 122, 140, 0.28);
 }
 
+.docmd-container.callout,
 .docmd-container.card {
   border-radius: 8px;
 }
@@ -20,4 +27,9 @@ code {
 /* Wide reference tables scroll inside their wrapper instead of the page. */
 .table-wrapper {
   overflow-x: auto;
+}
+
+/* Long inline code (class names, paths, option lists) wraps instead of widening the page on phones. */
+:not(pre) > code {
+  overflow-wrap: anywhere;
 }

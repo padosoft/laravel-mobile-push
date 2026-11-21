@@ -190,7 +190,7 @@ final class ConfigSchema
                 self::k('privacy.encryption_key_current', 'int', 0, 'MOBILE_PUSH_ENCRYPTION_KEY_VERSION', 'Version used for new writes; 0 = the highest.', 'privacy'),
             ]),
             self::section('devices', 'Device registry', 'Installations stored per owner so MobilePush::to($user) works. Tokens are encrypted at rest and looked up through the keyed index; the environment is the one the app declares at registration.', [
-                self::k('devices.enabled', 'bool', false, 'MOBILE_PUSH_DEVICES_ENABLED', 'Enable the registry (and load its migration).', 'devices'),
+                self::k('devices.enabled', 'bool', false, 'MOBILE_PUSH_DEVICES_ENABLED', 'Enable the registry (its migration is published by mobile-push:install, or auto-loaded with migrations.autoload).', 'devices'),
                 self::k('devices.table', 'string', 'mobile_push_devices', 'MOBILE_PUSH_DEVICES_TABLE', 'Table name.', 'devices'),
                 self::k('devices.connection', 'string|null', null, 'MOBILE_PUSH_DEVICES_CONNECTION', 'Database connection; null = default.', 'devices'),
                 self::k('devices.model', 'class-string', PushDevice::class, null, 'Eloquent model (extend PushDevice to customise).', 'devices'),
@@ -272,7 +272,7 @@ final class ConfigSchema
                 self::k('alerts.error_rate.window_seconds', 'int', 300, null, 'Error-rate window.', 'health', constraint: '>= 60'),
             ]),
             self::section('live_activities', 'Live Activities', 'Activity registry, push-to-start and update tokens, broadcast channels. Coalesced same-second updates and planned retries are flushed every minute by the scheduler when enabled.', [
-                self::k('live_activities.enabled', 'bool', false, 'MOBILE_PUSH_LIVE_ACTIVITIES_ENABLED', 'Enable the module (and load its migrations).', 'live_activities'),
+                self::k('live_activities.enabled', 'bool', false, 'MOBILE_PUSH_LIVE_ACTIVITIES_ENABLED', 'Enable the module (its migrations are published by mobile-push:install, or auto-loaded with migrations.autoload).', 'live_activities'),
                 self::k('live_activities.binding', 'string', 'apns', 'MOBILE_PUSH_LA_BINDING', 'APNs connection used by default.', 'live_activities'),
                 self::k('live_activities.connection', 'string|null', null, 'MOBILE_PUSH_LA_DB_CONNECTION', 'Database connection of the tables.', 'live_activities'),
                 self::k('live_activities.table', 'string', 'mobile_push_live_activities', null, 'Activities table.', 'live_activities'),
@@ -307,7 +307,7 @@ final class ConfigSchema
                 self::k('fallback.cache_store', 'string|null', null, 'MOBILE_PUSH_FALLBACK_CACHE_STORE', 'Cache store of that memory; null = cache.store.', 'notifications'),
             ]),
             self::section('campaigns', 'Campaigns', 'Durable profile only: a stable upper bound fixed at planning time, a final eligibility check before the network, pause/resume/cancel.', [
-                self::k('campaigns.enabled', 'bool', false, 'MOBILE_PUSH_CAMPAIGNS_ENABLED', 'Enable campaigns (and load their migration).', 'campaigns'),
+                self::k('campaigns.enabled', 'bool', false, 'MOBILE_PUSH_CAMPAIGNS_ENABLED', 'Enable campaigns (the migration is published by mobile-push:install, or auto-loaded with migrations.autoload).', 'campaigns'),
                 self::k('campaigns.table', 'string', 'mobile_push_campaigns', null, 'Campaigns table.', 'campaigns'),
                 self::k('campaigns.connection', 'string|null', null, null, 'Database connection; null = default.', 'campaigns'),
                 self::k('campaigns.slice', 'int', 1000, null, 'Destinations per planner job.', 'campaigns', constraint: '1..5000'),

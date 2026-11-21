@@ -88,7 +88,7 @@ foreach ($names as $name) {
 }
 Scenarios::stopServer();
 
-$json = json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR | JSON_PARTIAL_OUTPUT_ON_ERROR);
+$json = json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
 if (isset($opts['out']) && is_string($opts['out'])) {
     file_put_contents($opts['out'], $json."\n");
 }

@@ -18,6 +18,8 @@ run() { # name, args...
 run transport-warm-d0      --scenario=transport-warm --count=20000 --server-delay-ms=0  --repeat=5
 run transport-warm-d20     --scenario=transport-warm --count=20000 --server-delay-ms=20 --repeat=5
 run transport-cold-d0      --scenario=transport-cold --count=20000 --server-delay-ms=0  --repeat=5
+run transport-warm-single --scenario=transport-warm --count=1 --server-delay-ms=0 --repeat=30
+run transport-cold-single --scenario=transport-cold --count=1 --server-delay-ms=0 --repeat=30
 run pipeline-apns-d0       --scenario=pipeline-apns  --count=20000 --server-delay-ms=0  --repeat=5
 run pipeline-apns-d20      --scenario=pipeline-apns  --count=20000 --server-delay-ms=20 --repeat=5
 run pipeline-fcm-d0        --scenario=pipeline-fcm   --count=20000 --server-delay-ms=0  --repeat=5

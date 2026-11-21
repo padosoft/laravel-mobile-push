@@ -298,7 +298,7 @@ final class Scenarios
             $runs[] = Harness::measure($server, $rec, function (Recorder $rec) use ($sender, $driver, $message, $destinations, $o, $every): void {
                 $k = 0;
                 foreach ($sender->send($driver, $message, $destinations($o['count']), Kit::options())->results() as $result) {
-                    $rec->outcome($result->status->value.($result->reason ? '/'.$result->reason->code->value : ''));
+                    $rec->outcome($result->status->value.'/'.$result->reason->code->value);
                     if ($every > 0 && (++$k % $every) === 0) {
                         $rec->checkpoint($k);
                     }

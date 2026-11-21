@@ -64,6 +64,9 @@ final class CampaignWorld
     /** @var list<array{pattern: string, left: int}> armed kill points (see killOn()) */
     private static array $kills = [];
 
+    /** Set once a kill point fired: the process is dead, every later statement of that job fails too. */
+    private static bool $dead = false;
+
     /**
      * @param  array<string, mixed>  $config  extra mobile-push.* config
      * @param  (\Closure(SendKit): Guards)|null  $guards
@@ -81,10 +84,15 @@ final class CampaignWorld
         (require CampaignsModule::migrationPath())->up();
         $this->ran = new \SplObjectStorage;
         self::$kills = [];
+        self::$dead = false;
         DB::connection()->beforeExecuting(static function (string $sql): void {
+            if (self::$dead) {
+                throw new WorkerKilled('The worker is dead: nothing after the kill point runs.');
+            }
             foreach (self::$kills as $i => $kill) {
                 if (preg_match($kill['pattern'], $sql) === 1 && --self::$kills[$i]['left'] === 0) {
                     unset(self::$kills[$i]);
+                    self::$dead = true;
 
                     throw new WorkerKilled('The worker was killed at: '.$kill['pattern']);
                 }
@@ -132,7 +140,8 @@ final class CampaignWorld
 
     /**
      * Kill the worker (throw WorkerKilled) right before the `$nth` SQL statement matching `$pattern` runs: the
-     * statement does not execute, nothing after it in that job runs.
+     * statement does not execute, and nothing after it in that job reaches the database either (a dead process
+     * cannot retry a write: code that catches the first error and tries again fails as well).
      */
     public static function killOn(string $pattern, int $nth = 1): void
     {
@@ -147,6 +156,13 @@ final class CampaignWorld
             try {
                 app()->call([$job, 'handle']);
             } catch (WorkerKilled) {
+                self::$dead = false;
+
+                return $job;
+            }
+            if (self::$dead) {
+                self::$dead = false;   // the job swallowed the kill: it died all the same
+
                 return $job;
             }
         }

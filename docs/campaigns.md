@@ -6,7 +6,7 @@ honest progress. Campaigns are optional, **off by default**, and need the **dura
 | | |
 |---|---|
 | Enable | `mobile-push.campaigns.enabled` = `true` (env `MOBILE_PUSH_CAMPAIGNS_ENABLED=true`) **and** `mobile-push.delivery.profile` = `durable` (env `MOBILE_PUSH_DELIVERY_PROFILE=durable`) |
-| Migration tags | the ledger: `php artisan vendor:publish --tag=mobile-push-migrations-ledger`; the campaigns table: `--tag=mobile-push-migrations-campaigns`; then `php artisan migrate`. For the device audience also the devices tag (`mobile-push-migrations-devices`) |
+| Migration tags | the ledger: `php artisan vendor:publish --tag=mobile-push-migrations-ledger`; the campaigns table: `--tag=mobile-push-migrations-campaigns`; then `php artisan migrate` (or `php artisan mobile-push:install`; with `MOBILE_PUSH_MIGRATIONS_AUTOLOAD=true` nothing is published). For the device audience also the devices tag (`mobile-push-migrations-devices`) |
 | Without them | creating a campaign throws a `ConfigurationException` that says which of the two is missing |
 | Needs | a queue worker for the bulk queue (`queue.bulk_queue`, default `push-bulk`) and the scheduler (the sweeper) |
 
@@ -26,8 +26,8 @@ progress go through `Padosoft\MobilePush\Laravel\Campaigns\CampaignManager`, res
 (`app(CampaignManager::class)`). A campaign starts when you `dispatch()` it (or call `start()` on a draft); there is no
 built-in "start at 09:00".
 
-What is **not** there when this page was written: no `mobile-push:campaign:*` console commands (another task was adding
-them; run `php artisan list mobile-push` to see whether your version has them) and no "start later" option.
+The eight `mobile-push:campaign:*` commands (list, status, pause, resume, cancel, reconcile, sweep, prune) are in
+[commands](commands.md#campaign-commands). What is **not** there: a "start later" option.
 
 ## The shape of a campaign
 

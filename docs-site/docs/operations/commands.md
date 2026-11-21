@@ -31,26 +31,26 @@ Related pages: [safe mode](/reliability/safe-mode), [troubleshooting](/operation
 
 | Command | What it does | Exit codes | In simulate mode |
 |---|---|---|---|
-| [`install`](#mobile-pushinstall) | Guided first setup | 0, 2 | local |
-| [`doctor`](#mobile-pushdoctor) | Checks environment, config, credentials, cache, queue, database | 0, 1, 2 | `--live` refused (2) |
-| [`send`](#mobile-pushsend) | Sends a push on the fly | 0 to 4 | results `simulated`, exit 3 |
-| [`preview`](#mobile-pushpreview) | Shows what a message compiles to | 0, 2 | local |
-| [`explain`](#mobile-pushexplain) | Explains a reason | 0, 1, 2 | local |
-| [`simulator`](#mobile-pushsimulator) | Builds an iOS Simulator payload | 0, 2, 5 | local |
-| [`connections`](#mobile-pushconnections) | Lists connections | 0, 2 | local |
-| [`circuit`](#mobile-pushcircuit) | Shows and resets breakers | 0, 1, 2 | local |
-| [`relay`](#mobile-pushrelay) | Runs the durable relay inline | 0, 1 | sends simulated |
-| [`sweep`](#mobile-pushsweep) | Runs the ledger sweeper | 0, 1 | local |
-| [`deliveries:prune`](#mobile-pushdeliveriesprune) | Deletes finished ledger rows | 0, 1 | local |
-| [`devices:prune`](#mobile-pushdevicesprune) | Deletes dead registrations | 0, 1 | local |
-| [`logs:prune`](#mobile-pushlogsprune) | Deletes old send-log rows | 0, 1 | local |
-| [`health`](#mobile-pushhealth) | Liveness and readiness report | 0, 1, 2 | local |
-| [`credentials:check`](#mobile-pushcredentialscheck) | Credential expiry and validity | 0, 1, 2 | local |
-| [`forget`](#mobile-pushforget) | Erases one owner's data | 0, 1 | local |
-| [`export`](#mobile-pushexport) | Exports one owner's data | 0, 1 | local |
-| [`devices:probe-environment`](#mobile-pushdevicesprobe-environment) | Repairs quarantined tokens' environment | 0, 1, 2 | `not_sent` |
-| [`fcm:topic-subscription`](#mobile-pushfcmtopic-subscription) | FCM topic subscribe / unsubscribe / list | 0, 1 | reported simulated, 0 |
-| [`live-activity:start`](#live-activity-and-channel-commands) ... | Live Activities and broadcast channels (11) | 0, 1, 2 | "nothing was sent and nothing was written", 0 |
+| [`install`](/operations/commands#artisan-commands-mobile-pushinstall) | Guided first setup | 0, 2 | local |
+| [`doctor`](/operations/commands#artisan-commands-mobile-pushdoctor) | Checks environment, config, credentials, cache, queue, database | 0, 1, 2 | `--live` refused (2) |
+| [`send`](/operations/commands#artisan-commands-mobile-pushsend) | Sends a push on the fly | 0 to 4 | results `simulated`, exit 3 |
+| [`preview`](/operations/commands#artisan-commands-mobile-pushpreview) | Shows what a message compiles to | 0, 2 | local |
+| [`explain`](/operations/commands#artisan-commands-mobile-pushexplain) | Explains a reason | 0, 1, 2 | local |
+| [`simulator`](/operations/commands#artisan-commands-mobile-pushsimulator) | Builds an iOS Simulator payload | 0, 2, 5 | local |
+| [`connections`](/operations/commands#artisan-commands-mobile-pushconnections) | Lists connections | 0, 2 | local |
+| [`circuit`](/operations/commands#artisan-commands-mobile-pushcircuit) | Shows and resets breakers | 0, 1, 2 | local |
+| [`relay`](/operations/commands#artisan-commands-mobile-pushrelay) | Runs the durable relay inline | 0, 1 | sends simulated |
+| [`sweep`](/operations/commands#artisan-commands-mobile-pushsweep) | Runs the ledger sweeper | 0, 1 | local |
+| [`deliveries:prune`](/operations/commands#artisan-commands-mobile-pushdeliveriesprune) | Deletes finished ledger rows | 0, 1 | local |
+| [`devices:prune`](/operations/commands#artisan-commands-mobile-pushdevicesprune) | Deletes dead registrations | 0, 1 | local |
+| [`logs:prune`](/operations/commands#artisan-commands-mobile-pushlogsprune) | Deletes old send-log rows | 0, 1 | local |
+| [`health`](/operations/commands#artisan-commands-mobile-pushhealth) | Liveness and readiness report | 0, 1, 2 | local |
+| [`credentials:check`](/operations/commands#artisan-commands-mobile-pushcredentialscheck) | Credential expiry and validity | 0, 1, 2 | local |
+| [`forget`](/operations/commands#artisan-commands-mobile-pushforget) | Erases one owner's data | 0, 1 | local |
+| [`export`](/operations/commands#artisan-commands-mobile-pushexport) | Exports one owner's data | 0, 1 | local |
+| [`devices:probe-environment`](/operations/commands#artisan-commands-mobile-pushdevicesprobe-environment) | Repairs quarantined tokens' environment | 0, 1, 2 | `not_sent` |
+| [`fcm:topic-subscription`](/operations/commands#artisan-commands-mobile-pushfcmtopic-subscription) | FCM topic subscribe / unsubscribe / list | 0, 1 | reported simulated, 0 |
+| [`live-activity:start`](/operations/commands#artisan-commands-live-activity-and-channel-commands) ... | Live Activities and broadcast channels (11) | 0, 1, 2 | "nothing was sent and nothing was written", 0 |
 
 ## `mobile-push:install`
 

@@ -45,7 +45,7 @@ version, with deprecation first.
   the first level of the config array. If your published `config/mobile-push.php` defines a whole section (for example `queue`), keys that a later
   version adds to that section are not merged into your array: they take their built-in default. Nothing breaks, but you
   do not see the new key in your file. Diff your file against the new `config/mobile-push.php` after an upgrade.
-- [`docs/configuration.md`](configuration.md) is **generated** from the config schema of the installed version (key,
+- [`docs/configuration.md`](/get-started/configuration) is **generated** from the config schema of the installed version (key,
   environment variable, default, allowed values), and a test fails when the schema and the config file disagree. Use it as
   the reference for the version you run.
 - After changing the configuration or upgrading: `php artisan config:clear` (and `config:cache` again on production), then

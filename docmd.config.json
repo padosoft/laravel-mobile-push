@@ -15,7 +15,7 @@
   "theme": {
     "name": "default",
     "appearance": "system",
-    "primaryColor": "#4f46e5",
+    "primaryColor": "#e8445e",
     "customCss": [
       "docs-site/assets/custom.css"
     ]

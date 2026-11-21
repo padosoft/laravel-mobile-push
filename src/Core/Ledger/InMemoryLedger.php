@@ -54,8 +54,7 @@ final class InMemoryLedger implements ClientReceiptStore, DeliveryBatches, Ledge
         if ($intent->effectKey !== null) {
             $slot = $scope.'|'.$identity.'|'.LedgerRules::dedupeKey($intent->effectKey);
             $existingId = $this->effectKeys[$slot] ?? null;
-            // A key is not released while its effect still has open deliveries (same rule as the database ledger).
-            if ($existingId !== null && (Row::int($this->effects[$existingId], 'dedupe_until') > $now || $this->hasOpenDeliveries($scope, $existingId))) {
+            if ($existingId !== null && Row::int($this->effects[$existingId], 'dedupe_until') > $now) {
                 $effect = $this->effects[$existingId];
                 if (! $this->rules->sameMessage(Row::str($effect, 'fingerprint'), $intent->message, $scope)) {
                     throw new IdempotencyConflictException('The effect key was already used with a different message.');

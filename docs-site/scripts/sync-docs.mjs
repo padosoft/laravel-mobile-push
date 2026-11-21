@@ -162,9 +162,16 @@ function mapProse(lines, fn) {
       return line;
     }
     if (fence) return line;
-    return splitCode(line)
-      .map((seg) => (seg.code ? seg.text : fn(seg.text)))
+    // Mask inline code spans so link labels such as [`x`](y.md) stay in one piece.
+    const spans = [];
+    const masked = splitCode(line)
+      .map((seg) => {
+        if (!seg.code) return seg.text;
+        spans.push(seg.text);
+        return `\u0000${spans.length - 1}\u0000`;
+      })
       .join('');
+    return fn(masked).replace(/\u0000(\d+)\u0000/g, (_, n) => spans[Number(n)]);
   });
 }
 

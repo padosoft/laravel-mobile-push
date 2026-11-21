@@ -89,34 +89,42 @@ and, in the durable profile:  chunk deadline  <  ledger lease
 | Link | Where it is set | Default |
 |---|---|---|
 | transport timeout | `transport.timeout_ms` (or the largest `connections.*.timeout_ms`) | 30000 ms (30 s) |
-| chunk deadline | `queue.chunk_deadline` (`MOBILE_PUSH_QUEUE_CHUNK_DEADLINE`): wall time of one relay run before it hands over | 60 s |
-| job timeout | `queue.timeout` (`MOBILE_PUSH_QUEUE_TIMEOUT`): the `$timeout` of every package job | 120 s |
+| chunk deadline | `queue.chunk_deadline` (`MOBILE_PUSH_QUEUE_CHUNK_DEADLINE`): wall time of one relay run before it hands over | 40 s |
+| job timeout | `queue.timeout` (`MOBILE_PUSH_QUEUE_TIMEOUT`): the `$timeout` of every package job | 50 s |
 | worker timeout | Horizon supervisor `timeout`, or `queue:work --timeout`; declare it in `queue.worker_timeout` when it cannot be read | not set |
 | `retry_after` | `queue.connections.<connection>.retry_after`; for SQS the queue's visibility timeout, declared in `queue.visibility_timeout` | the connection's |
 | ledger lease | `ledger.lease_seconds` | 120 s |
 
-The **margin** of each link is `max(5 s, 10 % of the lower value)`. With the defaults the required order is satisfied up
-to the job timeout (30 < 60 < 120). The worker timeout must then be at least `120 + 12 = 132` s and `retry_after` at
-least `132 + 13.2`, rounded up to **146 s**: that is what `mobile-push:install` prints. Laravel's stock queue config
-files commonly set `retry_after` to 90 (the framework falls back to 60 when a connection sets none), which is **below**
-the package's 120 s job timeout: with the defaults, `mobile-push:doctor` reports a violation until you raise
-`retry_after` or lower `queue.timeout`.
+The **margin** of each link is `max(5 s, 10 % of the lower value)`. The defaults are chosen to fit a **stock Laravel
+application with no change**, whose `database` and `redis` queue connections use `retry_after` 90:
+30 s (transport) < 40 s (chunk deadline) < 50 s (job timeout) < 55 s (worker timeout, the value `mobile-push:install`
+prints) < 90 s (`retry_after`), and, in the durable profile, 40 s < 120 s (ledger lease). The worker timeout must be at
+least `50 + 5 = 55` s and `retry_after` at least `55 + 5.5`, rounded up to **61 s**: that is what `mobile-push:install`
+prints. A connection that sets no `retry_after` falls back to the framework's 60, which still fits. The chain is checked
+as a whole: if you raise one value (a slower transport, a bigger chunk), raise the ones above it too, and
+`mobile-push:doctor` tells you which link breaks.
 
 ### How `doctor` reports it
 
-`php artisan mobile-push:doctor` prints one line per link in the section "Queue timeouts" (a real run, with a database
-queue connection whose `retry_after` is 90):
+`php artisan mobile-push:doctor` prints one line per link in the section "Queue timeouts" (a real run of the defaults,
+durable profile, with a database queue connection whose `retry_after` is 90 as in a fresh Laravel application):
 
 ```text
 Queue timeouts
-  ✓ transport_timeout (30 s) < chunk_deadline (60 s), margin 5 s
-  ✓ chunk_deadline (60 s) < job_timeout (120 s), margin 6 s
-  ! not verifiable: job_timeout (120 s) < worker_timeout (?), margin 12 s: not verifiable
+  ✓ transport_timeout (30 s) < chunk_deadline (40 s), margin 5 s
+  ✓ chunk_deadline (40 s) < job_timeout (50 s), margin 5 s
+  ! not verifiable: job_timeout (50 s) < worker_timeout (?), margin 5 s: not verifiable
       Remedy: worker_timeout cannot be read here: check it by hand or declare it (the Horizon supervisor "timeout" or `queue:work --timeout` (declare it in mobile-push.queue.worker_timeout)).
   ! not verifiable: worker_timeout (?) < retry_after (90 s), margin 5 s: not verifiable
-  ✗ failed: job_timeout (120 s) < retry_after (90 s), margin 12 s: violation
-      Remedy: Raise retry_after to at least 132 s (...), or lower job_timeout to at most 81.818 s (mobile-push.queue.timeout).
+      Remedy: worker_timeout cannot be read here: check it by hand or declare it (the Horizon supervisor "timeout" or `queue:work --timeout` (declare it in mobile-push.queue.worker_timeout)).
+  ✓ job_timeout (50 s) < retry_after (90 s), margin 5 s
+  ✓ chunk_deadline (40 s) < lease_seconds (120 s), margin 5 s
 ```
+
+There is no violation. The two "not verifiable" lines are about the one value the application cannot read, the
+`queue:work --timeout` flag (see below); the line that follows them proves the rule that matters most, job timeout below
+`retry_after`. With a higher `queue.timeout` (for example 120) and the same `retry_after` of 90 the last two lines turn
+into a violation with a remedy such as `Raise retry_after to at least 132 s, or lower job_timeout to at most 81.818 s`.
 
 Each link is one of:
 
@@ -145,7 +153,7 @@ What can and cannot be read:
 ## What to run
 
 `php artisan mobile-push:install` prints the block below with the values of **your** settings (timeout =
-`ceil(queue.timeout + margin)`, here 132; memory 256 MB). Take the text from the command, not from this page, when
+`ceil(queue.timeout + margin)`, here 55; memory 256 MB). Take the text from the command, not from this page, when
 your timeouts differ.
 
 ### Horizon
@@ -158,7 +166,7 @@ your timeouts differ.
     'balance' => false,          // fixed, always-on processes for one-to-one pushes
     'processes' => 3,
     'tries' => 1,                // the package owns retries; the job never re-runs blindly
-    'timeout' => 132,
+    'timeout' => 55,
     'memory' => 256,
 ],
 'push-bulk' => [
@@ -170,14 +178,14 @@ your timeouts differ.
     'balanceMaxShift' => 1,
     'balanceCooldown' => 3,
     'tries' => 1,
-    'timeout' => 132,
+    'timeout' => 55,
     'memory' => 256,
 ],
 ```
 
 The printed `connection` is `redis`; change it if your queue connection has another name. `tries => 1` is right for
 `SendPushJob`; `RelayDeliveriesJob` declares its own `tries = 3` (a job-level value wins over the worker option) and is
-safe to rerun. Remember `retry_after` of that Redis connection must be at least **146** s.
+safe to rerun. Remember `retry_after` of that Redis connection must be at least **61** s.
 
 ### Plain `queue:work`
 
@@ -185,8 +193,8 @@ Without Horizon, two workers under Supervisor or systemd (the connection is `que
 connection, else `redis`):
 
 ```bash
-php artisan queue:work redis --queue=push --tries=1 --timeout=132 --memory=256
-php artisan queue:work redis --queue=push-bulk --tries=1 --timeout=132 --memory=256
+php artisan queue:work redis --queue=push --tries=1 --timeout=55 --memory=256
+php artisan queue:work redis --queue=push-bulk --tries=1 --timeout=55 --memory=256
 ```
 
 `--memory=256` makes the worker exit when it grows past 256 MB so the process manager restarts it. (A test that runs a

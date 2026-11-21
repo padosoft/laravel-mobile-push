@@ -214,7 +214,7 @@ attempt. The same id is sent as the APNs `apns-id` on every attempt (FCM assigns
 ### Leases and timing
 
 The lease (`ledger.lease_seconds`, default 120) must be longer than the chunk deadline (`queue.chunk_deadline`, default
-60), which must be longer than the transport timeout. `mobile-push:doctor` checks the chain with a margin of
+40), which must be longer than the transport timeout. `mobile-push:doctor` checks the chain with a margin of
 `max(5 s, 10 %)` per link ([queues](queues-and-horizon.md#the-timeout-chain)). A write from a stale lease is **ignored**:
 if a worker outlives its lease while a request is in flight, the real outcome it later reports is dropped and the
 sweeper's rule (`outcome_unknown`) stands.
@@ -286,18 +286,28 @@ history stay in place.
 
 ### Migrations
 
-The ledger migrations live in the package (`database/migrations/`, three files) and are **registered with the
-migrator by the package itself while the durable profile is on**: `php artisan migrate` creates the tables with no
-publishing. The same is true of the migrations of the other optional modules (devices, Live Activities, database log
-sink, campaigns), each while its module is enabled.
+One rule for every module with tables (ledger, devices, Live Activities, database log sink, campaigns): the migrations
+are **published, not auto-loaded**.
 
-> **Known trap, verified for the ledger on SQLite:** `php artisan vendor:publish --tag=mobile-push-migrations-ledger`
-> (which `php artisan mobile-push:install` runs) copies the files under **new names**. With the durable profile on, the
-> migrator then sees both the package files and the copies, and the second `create table` fails with
-> `table "mobile_push_effects" already exists`. The same registration pattern is used by the other modules (read in the
-> code, not run). Until this is changed in the package, do **one** of these: do not publish and let `migrate` use the
-> package files; or, if you publish to own the files, keep the module off while you migrate and be ready to mark the
-> package's own migration names as already run, because they will be pending as soon as the module is on.
+1. `php artisan mobile-push:install` copies the migrations of the modules and profile you chose into
+   `database/migrations` (the ledger group has four files: the two tables, the receipt columns, the scaling indexes).
+   Without the installer: `php artisan vendor:publish --tag=mobile-push-migrations-ledger` (tags: `-devices`,
+   `-live-activities`, `-logs`, `-campaigns`).
+2. `php artisan migrate` runs the copies. The modules register **nothing** with the migrator by default, so a table can
+   never be created by two files.
+3. Teams that prefer never to publish set `MOBILE_PUSH_MIGRATIONS_AUTOLOAD=true` (`migrations.autoload`). Then the
+   enabled modules hand their package files to `migrate` (the ledger while the profile is durable), **no publish tag
+   exists**, and `mobile-push:install` publishes nothing and says why. A published copy that already exists **wins**:
+   the package file is then not registered, so switching a project from published to autoload (or back, after deleting
+   the copies) never makes `migrate` run both.
+4. As a second line of defence every migration is **idempotent**: `create table` is skipped when the table exists,
+   column and index additions check what is there (`hasColumn`, `getIndexes`), and `down()` is symmetric and tolerates
+   a missing table, column or index. If both sets are ever registered by hand, the second set changes nothing and
+   `migrate:rollback` still drops everything. This is covered by `tests/Scenario/Laravel/Install` on SQLite; MySQL and
+   PostgreSQL were **not** run.
+
+An older build registered the package files **and** published copies, which failed with `table
+"mobile_push_effects" already exists`; see [troubleshooting](troubleshooting.md).
 
 Table names and the database connection: `ledger.tables.effects` (`MOBILE_PUSH_LEDGER_EFFECTS_TABLE`),
 `ledger.tables.deliveries` (`MOBILE_PUSH_LEDGER_DELIVERIES_TABLE`), `ledger.connection`

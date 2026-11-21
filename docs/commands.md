@@ -46,6 +46,7 @@ Related pages: [safe mode](safe-mode.md), [troubleshooting](troubleshooting.md),
 | [`devices:probe-environment`](#mobile-pushdevicesprobe-environment) | Repairs quarantined tokens' environment | 0, 1, 2 | `not_sent` |
 | [`fcm:topic-subscription`](#mobile-pushfcmtopic-subscription) | FCM topic subscribe / unsubscribe / list | 0, 1 | reported simulated, 0 |
 | [`live-activity:start`](#live-activity-and-channel-commands) ... | Live Activities and broadcast channels (11) | 0, 1, 2 | "nothing was sent and nothing was written", 0 |
+| [`campaign:list`](#campaign-commands) ... | Campaigns: list, status, pause, resume, cancel, reconcile, sweep, prune (8) | 0, 1, 2 | local (they read and change campaign rows; nothing is sent) |
 
 ## `mobile-push:install`
 
@@ -71,11 +72,15 @@ reminds you that until `MOBILE_PUSH_MODE=live` (or `APP_ENV=production`) every s
 | 0 | Installed |
 | 2 | Invalid option (unknown module or profile, receipts without durable): nothing was published |
 
-> **Known trap.** Publishing the migrations copies them under new names, while the package also registers its own copies
-> with the migrator whenever a module is enabled. After you enable the durable profile (or another module) `php artisan
-> migrate` can fail with `table ... already exists`. See [delivery profiles](delivery-profiles.md#migrations) before you
-> publish and migrate. The interactive question describes the durable profile in terms stronger than the guarantees
-> listed in [delivery profiles](delivery-profiles.md): trust that page.
+> **Migrations.** The package follows one rule: migrations are published, not auto-loaded. `install` publishes the
+> files of the modules you chose and `php artisan migrate` runs the copies; nothing is registered twice. With
+> `MOBILE_PUSH_MIGRATIONS_AUTOLOAD=true` `install` publishes nothing and says why (the modules load their own files);
+> a copy you already published takes precedence. See [delivery profiles](delivery-profiles.md#migrations).
+>
+> The question about the delivery profile describes it in one sentence: **light** is best effort (a crash can lose or
+> duplicate a push); **durable** keeps intents across crashes and never re-sends an accepted push, reports an outcome
+> that cannot be known as unknown instead of guessing, and a replaceable message retried after an unknown outcome can
+> arrive twice. The exact windows are in [delivery profiles](delivery-profiles.md).
 
 ## `mobile-push:doctor`
 
@@ -107,7 +112,7 @@ Connection "ios"
   ✓ The APNs key parses and is EC P-256.
   ✓ apns: com.example.shop (production, team ABCDE12345, key id KEY1234567), generation e56c21da2d23.
 Queue timeouts
-  ✓ transport_timeout (30 s) < chunk_deadline (60 s), margin 5 s
+  ✓ transport_timeout (30 s) < chunk_deadline (40 s), margin 5 s
   ✗ failed: job_timeout (120 s) < retry_after (90 s), margin 12 s: violation
       Remedy: Raise retry_after to at least 132 s (...), or lower job_timeout to at most 81.818 s (mobile-push.queue.timeout).
 
@@ -521,7 +526,8 @@ mobile-push:devices:probe-environment
     {--limit=10 : Devices to probe in one run (1-100): every rejected token counts against Apple's error budget}
     {--allow-cross-environment : Required: acknowledge that tokens are sent to the other APNs environment}
     {--scope= : Scope (tenant); default is the current scope}
-    {--force : Do not ask for confirmation}
+    {--ignore-cooldown : Also probe devices probed less than devices.probe.cooldown_hours ago (always asks, --force does not skip it)}
+    {--force : Do not ask for the usual confirmation (it does NOT bypass the cooldown: use --ignore-cooldown)}
     {--json : Print the result as JSON}
 ```
 
@@ -537,12 +543,23 @@ $ php artisan mobile-push:devices:probe-environment --quarantined --allow-cross-
 ```
 
 Outcomes: `relabelled`, `still_rejected`, `untouched`, `conflict`, `changed`, `not_sent`, `blocked`, `no_connection`,
-`authentication_error`, `not_contacted`, `unreadable`.
+`authentication_error`, `not_contacted`, `unreadable`, `cooling_down`.
+
+**Frequency limit.** Every rejected probe counts against Apple's error budget, so a device is contacted **at most once
+per `devices.probe.cooldown_hours`** (`MOBILE_PUSH_DEVICES_PROBE_COOLDOWN_HOURS`, default 24; 0 switches the protection
+off). When a probe sent a request, the time and the outcome are stored in the device row (`metadata.environment_probe`:
+no new column, survives restarts and is shared by every host). A device still inside its cooldown is **not contacted**:
+it appears in the table as `cooling_down` with the time of its last probe, its outcome and the instant it may be probed
+again, and it does not use one of the `--limit` places, so a cron that runs every hour moves on to the next devices
+instead of repeating the same ones. `--force` does **not** bypass the cooldown. `--ignore-cooldown` does, after an
+interactive confirmation that `--force` does not replace; a non-interactive run with `--ignore-cooldown` is refused.
+`--limit` (default 10, at most 100) remains the per-run cap. In JSON the result carries `cooling_down` (how many were
+skipped); at most 100 skipped devices are listed per run.
 
 | Exit | Meaning |
 |---|---|
-| 0 | Every device got a clean answer (`relabelled`, `still_rejected`, `not_sent`), or nothing matched |
-| 1 | Something needs attention (`untouched`, `blocked`, `conflict`, `changed`, `no_connection`, `unreadable`, `not_contacted`), or the run was refused (no `--allow-cross-environment`, nothing selected, `--limit` over 100, devices module off, non-interactive without `--force`, declined) |
+| 0 | Every device got a clean answer (`relabelled`, `still_rejected`, `not_sent`, `cooling_down`), or nothing matched |
+| 1 | Something needs attention (`untouched`, `blocked`, `conflict`, `changed`, `no_connection`, `unreadable`, `not_contacted`), or the run was refused (no `--allow-cross-environment`, nothing selected, `--limit` over 100, devices module off, non-interactive without `--force`, `--ignore-cooldown` in a non-interactive run, declined) |
 | 2 | The run was **stopped by an authentication error** (a key limited to one environment answers like this) |
 
 ## `mobile-push:fcm:topic-subscription`
@@ -597,14 +614,48 @@ are masked. For the model of Live Activities see [live activities](live-activiti
   `"+10 minutes"`. `update` with a second update in the same second reports `Deferred: another update was already sent
   in this second` (exit 0): the latest state goes out from the next second, through `flush` or the scheduler.
 - `flush` sends the transitions that are due (the package schedules it every minute when the module is on).
-- `prune` expires activities past their local expiry (the server stops sending; the device may still show them) and deletes
-  old closed rows.
+- `prune` deletes old closed rows (`ended` and `expired` activities older than `--days`) and still marks as `expired` any
+  open row whose local expiry passed without a transition. The expiry itself is enforced at transition time (every
+  `update` and `end` checks it), so a **daily** prune is enough; see [live activities](live-activities.md).
 - `channels:*` manage APNs **broadcast channels** (iOS 18+): `create`, `delete` (irreversible), `publish` (one publication,
   not N deliveries), `sync` (reconcile with the list APNs holds, in both directions; `--cleanup` deletes channels no
   open activity references, `--force` is for the scheduler). Channel management needs `live.allow_channel_management`
   outside production, and `sync` exits 1 when an orphan channel remains.
 - In simulate mode or when safe mode blocks, these commands ask the guard **before** the first database write: nothing is
   sent and **nothing is written** (no `requested` row, no transition number, no `creating` channel row).
+
+## Campaign commands
+
+Eight commands over the [campaigns](campaigns.md) module (registered while `campaigns.enabled` is true; they need the
+durable profile and refuse otherwise, exit 1). `--scope` defaults to the current scope; `--json` prints one JSON document
+(one compact line per refresh with `--watch`). Exit codes: **0** done (or consistent, or already in the wanted state);
+**1** refused (module disabled, light profile), not allowed in the campaign's current state, declined, or a difference
+found by `reconcile`; **2** invalid input or campaign not found in this scope. None of them contacts a provider: they read
+the ledger and change campaign rows.
+
+| Command and arguments | Options |
+|---|---|
+| `mobile-push:campaign:list` | `--scope=` `--status=draft|planning|running|paused|completed|cancelled|failed` `--limit=20` (1 to 200, newest first) `--json` |
+| `mobile-push:campaign:status {campaign}` | `--scope=` `--watch=N` (refresh every N seconds, 1 to 3600, until completed, cancelled or failed) `--json` |
+| `mobile-push:campaign:pause {campaign}` | `--scope=` `--json` |
+| `mobile-push:campaign:resume {campaign}` | `--scope=` `--json` |
+| `mobile-push:campaign:cancel {campaign}` | `--scope=` `--force` (skip the question; required with `--json`) `--json` |
+| `mobile-push:campaign:reconcile {campaign}` | `--scope=` `--json` |
+| `mobile-push:campaign:sweep` | `--json` |
+| `mobile-push:campaign:prune` | `--days=` (default `campaigns.retention_days`) `--scope=` (default every scope) `--pretend` `--json` |
+
+- `status` shows where a campaign is, with every count read from the ledger.
+- `pause` stops planning; `resume` continues a **paused or failed** campaign from its stored cursor. Both are safe to
+  repeat (already paused / already running exit 0).
+- `cancel` plans and sends nothing more and cancels the deliveries not yet sent. It asks for confirmation (interactive;
+  `--force` or a refusal in `--json` without it) because it **cannot undo** what the provider already accepted or what is
+  in flight at that moment.
+- `reconcile` compares the planner's count with the deliveries in the ledger and **never corrects**: it exits 1 when it
+  finds a difference.
+- `sweep` restarts stalled planner chains and completes finished campaigns in every scope; it is the command form of the
+  job the scheduler runs every minute (`campaigns.sweeper.schedule`), so it is safe to schedule or run by hand.
+- `prune` deletes finished campaign rows (`completed`, `cancelled`, `failed`) older than the retention; `--pretend`
+  counts and changes nothing. The ledger rows prune themselves with [`deliveries:prune`](#mobile-pushdeliveriesprune).
 
 ## Not verified
 

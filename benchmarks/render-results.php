@@ -10,7 +10,7 @@ declare(strict_types=1);
 
 $dir = __DIR__.'/results';
 $order = [
-    'transport-warm-d0', 'transport-warm-d20', 'transport-cold-d0',
+    'transport-warm-d0', 'transport-warm-d20', 'transport-cold-d0', 'transport-warm-single', 'transport-cold-single',
     'pipeline-apns-d0', 'pipeline-apns-d20', 'pipeline-fcm-d0', 'pipeline-fcm-d20', 'pipeline-mixed-d0',
     'window-sweep', 'connections-sweep', 'large-batch-memory', 'many-tenants',
     'compare-pushok-w100', 'compare-pushok-w20', 'compare-pushok-d0',
@@ -145,6 +145,8 @@ $titles = [
     'transport-warm-d0' => ['Raw transport, warm pool, no server delay', 'CPU-bound: the cost of the PHP side per request.'],
     'transport-warm-d20' => ['Raw transport, warm pool, 20 ms server delay', 'Latency-bound: throughput is about window / delay until the client or server saturates.'],
     'transport-cold-d0' => ['Raw transport, new pool for every run', 'Each run pays one TCP + TLS + HTTP/2 connection setup.'],
+    'transport-warm-single' => ['One request on a warm pool (30 runs)', 'The latency columns are the time of that single request: median over the 30 runs.'],
+    'transport-cold-single' => ['One request on a new pool (30 runs)', 'Same, but each run first opens a TCP + TLS + HTTP/2 connection inside the measured request: the difference to the warm table is the connection setup. cpu ms/req here is the whole CPU of that one request.'],
     'pipeline-apns-d0' => ['Full pipeline, APNs, warm, no server delay', null],
     'pipeline-apns-d20' => ['Full pipeline, APNs, warm, 20 ms server delay', null],
     'pipeline-fcm-d0' => ['Full pipeline, FCM, warm, no server delay', null],

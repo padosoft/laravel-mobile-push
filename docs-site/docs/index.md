@@ -5,7 +5,7 @@ description: "Send push notifications from Laravel directly to Apple APNs and Go
 
 # Laravel Mobile Push
 
-![Laravel Mobile Push: APNs, FCM and Live Activities for Laravel](/assets/laravel-mobile-push-banner.png)
+![Laravel Mobile Push: APNs, FCM and Live Activities for Laravel](../assets/laravel-mobile-push-banner.png)
 
 [![tests](https://github.com/padosoft/laravel-mobile-push/actions/workflows/tests.yml/badge.svg)](https://github.com/padosoft/laravel-mobile-push/actions/workflows/tests.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/padosoft/laravel-mobile-push/blob/main/LICENSE)

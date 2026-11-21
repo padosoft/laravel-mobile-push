@@ -103,9 +103,9 @@ Cache
   ✓ The cache store takes locks.
 
 Queue timeouts
-  ✓ transport_timeout (30 s) < chunk_deadline (60 s), margin 5 s
-  ✓ chunk_deadline (60 s) < job_timeout (120 s), margin 6 s
-  i job_timeout (120 s) < worker_timeout (?), margin 0 s: not applicable (The sync driver runs the job in-process: there is no worker timeout and no redelivery.)
+  ✓ transport_timeout (30 s) < chunk_deadline (40 s), margin 5 s
+  ✓ chunk_deadline (40 s) < job_timeout (50 s), margin 5 s
+  i job_timeout (50 s) < worker_timeout (?), margin 0 s: not applicable (The sync driver runs the job in-process: there is no worker timeout and no redelivery.)
   i worker_timeout (?) < retry_after (?), margin 0 s: not applicable (The sync driver runs the job in-process: there is no worker timeout and no redelivery.)
 
 Database

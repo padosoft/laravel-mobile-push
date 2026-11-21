@@ -1,0 +1,49 @@
+name: docs-site
+
+# Builds the documentation site (docmd) and checks that its generated pages are in sync with
+# README.md / docs/*.md. Deployment is done by Cloudflare Pages, not by this workflow.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - 'docs-site/**'
+      - 'docs/**'
+      - 'README.md'
+      - 'CHANGELOG.md'
+      - 'CONTRIBUTING.md'
+      - 'SECURITY.md'
+      - 'benchmarks/RESULTS.md'
+      - 'resources/laravel-mobile-push-banner.png'
+      - 'art/favicon.svg'
+      - 'docmd.config.json'
+      - '.github/workflows/docs-site.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  docs-site:
+    runs-on: ubuntu-latest
+    name: Docs site (sync check and build)
+    defaults:
+      run:
+        working-directory: docs-site
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: docs-site/.node-version
+          cache: npm
+          cache-dependency-path: docs-site/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Sync check (strict: no pending page, no broken link or anchor)
+        run: node scripts/sync-docs.mjs --check --strict
+      - name: Checks (no raw HTML, config consistency, docmd validate)
+        run: npm run check
+      - name: Build
+        run: npm run build
+      - name: Verify the built site (links, anchors, assets)
+        run: npm run verify

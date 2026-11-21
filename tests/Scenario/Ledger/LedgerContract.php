@@ -215,7 +215,16 @@ function ledgerContract(Closure $make): void
 
         expect($b->created)->toBeTrue()
             ->and($b->effect->id)->not->toBe($a->effect->id)
-            ->and($b->added)->toBe(1);
+            ->and($b->added)->toBe(1)
+            // "window expired, created again" is told apart from a first use: the effect that held the key is named.
+            ->and($b->previousEffectId)->toBe($a->effect->id)
+            ->and($b->reusedExpiredKey())->toBeTrue()
+            ->and($a->previousEffectId)->toBeNull()
+            ->and($a->reusedExpiredKey())->toBeFalse();
+
+        // A replay of the new effect is a plain replay: nothing created, no previous effect.
+        $c = $h->ledger->recordIntent(H::intent(H::alert('different'), 'daily-news'), [H::topic('news')]);
+        expect($c->created)->toBeFalse()->and($c->previousEffectId)->toBeNull()->and($c->effect->id)->toBe($b->effect->id);
     });
 
     it('the alert expired while deferred: never handed to a worker, it ends Expired', function () use ($make): void {

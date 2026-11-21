@@ -50,7 +50,7 @@ it('publishes both migration stubs under its own tag', function (): void {
     $published = ServiceProvider::pathsToPublish(null, LedgerModule::PUBLISH_TAG);
 
     expect(array_keys($published))->toBe(LedgerModule::migrationPaths())
-        ->and(array_values($published))->each->toContain('_create_mobile_push_ledger_');
+        ->and(array_values($published))->each->toContain('_mobile_push_ledger_');
     foreach (LedgerModule::migrationPaths() as $path) {
         expect(is_file($path))->toBeTrue();
     }

@@ -6,7 +6,7 @@ carrying tokens around. It is optional and **off by default**.
 | | |
 |---|---|
 | Enable | `mobile-push.devices.enabled` = `true` (env `MOBILE_PUSH_DEVICES_ENABLED=true`) |
-| Migration tag | `php artisan vendor:publish --tag=mobile-push-migrations-devices` then `php artisan migrate` |
+| Migration tag | `php artisan vendor:publish --tag=mobile-push-migrations-devices` then `php artisan migrate` (or `php artisan mobile-push:install`; with `MOBILE_PUSH_MIGRATIONS_AUTOLOAD=true` nothing is published and `migrate` loads the package files) |
 | Table / connection | `mobile-push.devices.table` (`MOBILE_PUSH_DEVICES_TABLE`, default `mobile_push_devices`), `mobile-push.devices.connection` (`MOBILE_PUSH_DEVICES_CONNECTION`, default: the default connection) |
 | Model | `mobile-push.devices.model` (default `Padosoft\MobilePush\Laravel\Devices\PushDevice`; yours must extend it) |
 | Pruning | `mobile-push.devices.prune.invalidated_days` (30), `mobile-push.devices.prune.inactive_days` (365) |

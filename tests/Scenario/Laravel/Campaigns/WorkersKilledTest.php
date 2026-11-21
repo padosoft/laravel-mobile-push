@@ -111,13 +111,14 @@ it('dies after advancing and the job is lost for good: the sweeper restarts the 
 });
 
 it('a relay dies in the middle of a chunk: nothing is sent twice, what was about to leave ends unknown, the rest is sent after the lease', function (): void {
-    // Plan everything first (the planner queues one relay per slice), then kill the first relay at its 150th start.
+    // Plan everything first (the planner queues one relay per slice), then kill the first relay in the middle of
+    // writing the outcomes of its second window (the 150th outcome written): that window was on the network.
     while ($this->w->pending(PlanCampaignJob::class) !== []) {
         $this->w->rerun($job = $this->w->pending(PlanCampaignJob::class)[0]);
         $this->w->lose($job);
         ($this->invariant)();
     }
-    CampaignWorld::killOn('/^update "mobile_push_deliveries" set "state" = \?, "attempt_started_at"/', 150);
+    CampaignWorld::killOn('/^update "mobile_push_deliveries" set "state" = \?, "attempts"/', 150);
     $killed = $this->w->runUntilKilled();
     expect($killed)->toBeInstanceOf(RelayDeliveriesJob::class);
     ($this->invariant)();

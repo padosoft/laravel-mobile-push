@@ -5,7 +5,7 @@ description: "This page compares padosoft/laravel-mobile-push with the libraries
 
 # Comparison with other PHP push libraries
 
-This page compares `padosoft/laravel-mobile-push` with the libraries a Laravel developer usually considers. It lists **capabilities read in each library's source code**, pinned to a tag, a commit and a file, so you can check every cell yourself. It makes no performance claim and quotes no number: measurements (made against a local HTTP/2 mock server, with the hardware and method stated there, including any comparison run against another library) are in [`benchmarks/RESULTS.md`](../benchmarks/RESULTS.md).
+This page compares `padosoft/laravel-mobile-push` with the libraries a Laravel developer usually considers. It lists **capabilities read in each library's source code**, pinned to a tag, a commit and a file, so you can check every cell yourself. It makes no performance claim and quotes no number: measurements (made against a local HTTP/2 mock server, with the hardware and method stated there, including any comparison run against another library) are in [`benchmarks/RESULTS.md`](/reference/benchmarks).
 
 The sources were read on 2026-11-21 at these refs:
 

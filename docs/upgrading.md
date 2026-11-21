@@ -50,11 +50,14 @@ version, with deprecation first.
 
 - A schema change ships as a **new migration file** with a later name, never as an edit of one that has been released.
   (Before the first release the files may still be edited; do not build on a pre-release schema.)
-- While a module is enabled, the package registers its own migration directory with the migrator, so `php artisan
-  migrate` after an upgrade picks up the new files with no re-publishing. **If you published the migrations to your own
-  `database/migrations`, the package's copies still register, and the two sets collide** (`table ... already exists`):
-  see the "Known trap" in [delivery profiles](delivery-profiles.md#migrations). If you maintain published copies, publish
-  the new ones yourself and keep both sets consistent.
+- Migrations are **published, not auto-loaded** (`migrations.autoload`, `MOBILE_PUSH_MIGRATIONS_AUTOLOAD`, default
+  `false`): after an upgrade, run `php artisan vendor:publish --tag=mobile-push-migrations-<module>` (or
+  `php artisan mobile-push:install`, which publishes a module's group when any of its files is missing). Publishing copies
+  the whole group under new names; the files you already had run once and the copies are skipped by their
+  `hasTable` / `hasColumn` / index guards, so you may delete the older duplicates afterwards. Then `php artisan migrate`. With autoload on, the enabled modules hand their package files to `migrate` and the new
+  files arrive with the upgrade; nothing is published, and a copy you published earlier takes precedence over the package
+  file ([delivery profiles](delivery-profiles.md#migrations)). Upgrading from a build that auto-loaded **and** published:
+  see [troubleshooting](troubleshooting.md).
 - Receipts add columns to the deliveries table through their own migration (`..._create_mobile_push_ledger_receipt_columns`),
   which is part of the ledger set.
 - Stored data carries format versions where it matters (a stored retry budget has a `v` field; an encrypted value names

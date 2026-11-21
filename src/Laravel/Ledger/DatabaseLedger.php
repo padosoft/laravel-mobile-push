@@ -130,8 +130,7 @@ final class DatabaseLedger implements ClientReceiptStore, DeliveryBatches, Ledge
     /**
      * The effect currently owning (scope, binding identity, key), or null. An effect past its dedupe window releases
      * its key (dedupe_key = NULL; NULLs never collide in a unique index) so a new effect can take it, and its id is
-     * reported in `$previous`. A key is never released while its effect still has an open delivery (waiting or in
-     * flight): until it settled, a replay is still deduplicated, whatever the window (see docs/contracts/ledger.md).
+     * reported in `$previous` (see docs/contracts/ledger.md, "Deduplication window").
      *
      * @return array<string, mixed>|null
      */
@@ -148,7 +147,7 @@ final class DatabaseLedger implements ClientReceiptStore, DeliveryBatches, Ledge
         }
         $found = Row::of($found);
 
-        if (Row::int($found, 'dedupe_until') <= $now && ! $this->hasOpenDeliveries($scope, Row::str($found, 'id'))) {
+        if (Row::int($found, 'dedupe_until') <= $now) {
             $this->effects()->where('id', Row::str($found, 'id'))->update(['dedupe_key' => null, 'updated_at' => $now]);
             $previous = Row::str($found, 'id');
 
