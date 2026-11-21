@@ -498,11 +498,14 @@ final class DatabaseLedger implements ClientReceiptStore, DeliveryBatches, Ledge
         foreach ($groups as $group) {
             $first = $group[0];
             $ids = array_map(static fn (Lease $l): string => $l->deliveryId, $group);
-            // Lease owner + version prove the lease (and so the scope and an in-flight state: every other state change
-            // bumps the version). No scope/state condition: it would let the planner pick a (scope, state, ...) index
-            // and walk every leased row instead of the primary key.
+            // Lease owner + version prove an in-flight state (every other state change bumps the version). No state
+            // condition: it would let the planner pick a (scope, state, ...) index and walk every leased row instead
+            // of the primary key. The scope is checked like in markAttemptStarted() (a lease presented under another
+            // scope starts nothing), but through an expression no index can serve, for the same reason: with a plain
+            // "scope = ?" SQLite walks the claim index.
             $guard = fn (): Builder => $this->deliveries()
                 ->whereIn('id', $ids)
+                ->whereRaw("coalesce(scope, '') = ?", [LedgerRules::scope($first->scope)])
                 ->where('lease_owner', $first->owner)
                 ->where('version', $first->version);
             $updated = $guard()
@@ -594,6 +597,8 @@ final class DatabaseLedger implements ClientReceiptStore, DeliveryBatches, Ledge
             }
 
             $changes = LedgerRules::recordChanges($row, $result, $budget, $now, $this->rules->settings->markerIssued);
+            // Defensive: a row that still holds this lease is leased or sending, and the rules accept a record from
+            // both, so no test reaches this. It is what keeps a future state from being written over.
             if ($changes === null) {
                 return Recording::IgnoredStaleLease;
             }
@@ -610,6 +615,8 @@ final class DatabaseLedger implements ClientReceiptStore, DeliveryBatches, Ledge
             }
         }
 
+        // Defensive: the flag flips only once (false -> true) under a valid lease, so the second read settles it and
+        // a third lost round is not reachable today; the bound is what keeps this loop finite whatever changes.
         return Recording::IgnoredStaleLease;
     }
 

@@ -9,6 +9,7 @@ use Padosoft\MobilePush\Core\Ledger\ClientReceiptStore;
 use Padosoft\MobilePush\Core\Ledger\DeliveryState;
 use Padosoft\MobilePush\Core\Ledger\EffectIntent;
 use Padosoft\MobilePush\Core\Ledger\EffectOrigin;
+use Padosoft\MobilePush\Core\Ledger\Lease;
 use Padosoft\MobilePush\Core\Ledger\MessageId;
 use Padosoft\MobilePush\Core\Ledger\RecordedDestination;
 use Padosoft\MobilePush\Core\Ledger\Recording;
@@ -288,6 +289,26 @@ function ledgerContract(Closure $make): void
             ->and($h->ledger->counts('beta', $beta->id)->of(DeliveryState::Cancelled))->toBe(2)
             ->and($h->ledger->delivery('acme', $acmeIds[0])->ownerId)->toBe('1')
             ->and($h->claimIds('beta', 'w', 10))->toBe([]);
+    });
+
+    it('a lease presented under another tenant starts nothing, one at a time or as a batch', function () use ($make): void {
+        /** @var H $h */
+        $h = $make();
+        $effect = $h->ledger->recordIntent(H::intent(H::alert(), 'k', 'acme'), [H::token(1), H::token(2)])->effect;
+        $claimed = $h->ledger->claimDue('acme', 'w', 10);
+        $asBeta = array_map(
+            static fn ($c): Lease => new Lease($c->lease->deliveryId, 'beta', $c->lease->owner, $c->lease->version, $c->lease->expiresAt),
+            $claimed,
+        );
+
+        expect($h->ledger->markAttemptStarted($asBeta[0]))->toBeFalse()
+            ->and($h->ledger->markAttemptsStarted($asBeta))->toBe([])
+            ->and($h->ledger->counts('acme', $effect->id)->of(DeliveryState::Leased))->toBe(2);
+
+        // The real leases still work, and a batch that mixes both starts only the real one.
+        $started = $h->ledger->markAttemptsStarted([$claimed[0]->lease, $asBeta[1]]);
+        expect($started)->toBe([$claimed[0]->id()])
+            ->and($h->ledger->counts('acme', $effect->id)->of(DeliveryState::Sending))->toBe(1);
     });
 
     it('forget me with jobs pending: cancelled, unclaimable, not re-created, no personal data left', function () use ($make): void {
