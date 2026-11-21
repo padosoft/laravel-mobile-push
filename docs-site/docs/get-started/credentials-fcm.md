@@ -60,7 +60,7 @@ composer require google/auth
 ],
 ```
 
-The package asks `Google\Auth\ApplicationDefaultCredentials` for a credential with the FCM scope and caches its tokens like the service-account ones. Without `google/auth` installed, or when no default credentials are found, the connection fails with a `ConfigurationException` that says what to do. ADC has only been tested in this project through the library's interfaces, not on Google Cloud.
+The package asks `Google\Auth\ApplicationDefaultCredentials` for a credential with the FCM scope and caches its tokens like the service-account ones. Without `google/auth` installed, or when no default credentials are found, the connection fails with a `ConfigurationException` that says what to do. What was run: ADC through `GOOGLE_APPLICATION_CREDENTIALS`, and the "attached service account" path with the metadata server played by a handler under `google/auth`'s HTTP client (`AdcOnGoogleCloudTest`: a connection with `auth => adc` sends to FCM with the token the metadata server gives, asked for once, with the FCM scope). It has **not** been run on Google Cloud itself (Cloud Run, GKE, Compute Engine), nor with Workload Identity Federation.
 
 This is also what to use when the key must not be exportable: unlike APNs (see the `signer` key in [APNs credentials](/get-started/credentials-apns#apns-credentials-where-to-put-the-key-secret-sources-keeping-the-key-in-a-kmshsm)), an FCM connection has no custom `signer` setting, so a KMS/HSM-held Google key is reached through the attached service account or Workload Identity Federation, not through the package's own signing.
 
