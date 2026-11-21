@@ -1,0 +1,53 @@
+name: mutation
+
+# Mutation testing of the dense, fragile parts of the core (signatures, retry planning, classifiers, the ledger state
+# machine, truncation). It is slow and its score is a quality signal, not a gate: weekly, and by hand from the Actions
+# tab. Each group runs only the tests that are meant to pin that code.
+
+on:
+  schedule:
+    - cron: '47 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mutate:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: auth
+            classes: 'Padosoft\MobilePush\Core\Auth\DerSignature,Padosoft\MobilePush\Core\Auth\JwtEncoder'
+            tests: tests/Unit/Core/Auth tests/Scenario/Auth
+          - name: retry
+            classes: 'Padosoft\MobilePush\Core\Retry'
+            tests: tests/Unit/Core/Retry
+          - name: apns-outcome
+            classes: 'Padosoft\MobilePush\Core\Apns\Outcome'
+            tests: tests/Unit/Core/Apns/Outcome
+          - name: fcm-outcome
+            classes: 'Padosoft\MobilePush\Core\Fcm\Outcome'
+            tests: tests/Unit/Core/Fcm/Outcome
+          - name: ledger-rules
+            classes: 'Padosoft\MobilePush\Core\Ledger\DeliveryStateMachine,Padosoft\MobilePush\Core\Ledger\PayloadFingerprint'
+            tests: tests/Unit/Core/Ledger
+          - name: message-support
+            classes: 'Padosoft\MobilePush\Core\Message\Support'
+            tests: tests/Unit/Core/Message
+          - name: guards
+            classes: 'Padosoft\MobilePush\Core\Guard\RateLimiter,Padosoft\MobilePush\Core\Guard\AuthBreaker,Padosoft\MobilePush\Core\Guard\DestinationQualityBreaker,Padosoft\MobilePush\Core\Guard\ThrottleGate'
+            tests: tests/Unit/Core/Guard
+    name: Mutation · ${{ matrix.name }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: curl, openssl, json, intl
+          coverage: pcov
+      - run: composer update --prefer-dist --no-interaction
+      - name: Mutate
+        run: vendor/bin/pest --mutate --parallel --class='${{ matrix.classes }}' ${{ matrix.tests }}
