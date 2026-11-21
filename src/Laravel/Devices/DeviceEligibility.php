@@ -8,8 +8,11 @@ use Padosoft\MobilePush\Core\Identity\BindingRef;
 use Padosoft\MobilePush\Core\Identity\DestinationRef;
 
 /**
- * The check run immediately before the network for a registry destination: row present, active, same
- * generation, same owner. One indexed query per chunk.
+ * The check run immediately before the network for a registry destination: row present, active, same owner, same
+ * generation. One indexed query per chunk.
+ *
+ * When several rules fail, the most informative cause is reported: a phone that changed owner AND was registered
+ * again says `owner_changed` (the status is the same Skipped/PolicyIneligible either way).
  */
 final readonly class DeviceEligibility
 {
@@ -25,24 +28,7 @@ final readonly class DeviceEligibility
      */
     public function checkMany(array $refs, ?BindingRef $binding = null): array
     {
-        if ($refs === []) {
-            return [];
-        }
-
-        $model = new (PushDevice::modelClass());
-        $query = $model->newQuery()
-            ->whereIn($model->getKeyName(), array_values(array_unique(array_map(static fn (DestinationRef $r): string => $r->id, $refs))))
-            ->select([$model->getKeyName(), 'state', 'generation', 'owner_type', 'owner_id']);
-
-        if ($binding !== null) {
-            $query->forBinding($binding);
-        }
-
-        /** @var array<string, PushDevice> $rows */
-        $rows = [];
-        foreach ($query->get() as $row) {
-            $rows[PushDevice::keyOf($row)] = $row;
-        }
+        $rows = $this->rows($refs, $binding, ['state', 'generation', 'owner_type', 'owner_id']);
 
         $out = [];
         foreach ($refs as $ref) {
@@ -52,13 +38,65 @@ final readonly class DeviceEligibility
         return $out;
     }
 
+    /**
+     * The verdict AND the full device row of every reference, in one query (what a relay needs to build the
+     * destinations it is about to send).
+     *
+     * @param  list<DestinationRef>  $refs
+     * @param  BindingRef|null  $binding  when given, a row of another scope/binding counts as missing
+     * @return array<string, ResolvedDevice> keyed by DestinationRef::$id
+     */
+    public function resolveMany(array $refs, ?BindingRef $binding = null): array
+    {
+        $rows = $this->rows($refs, $binding, null);
+
+        $out = [];
+        foreach ($refs as $ref) {
+            $row = $rows[$ref->id] ?? null;
+            $out[$ref->id] = new ResolvedDevice($this->evaluate($ref, $row), $row);
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  list<DestinationRef>  $refs
+     * @param  list<string>|null  $columns  null = every column
+     * @return array<string, PushDevice>
+     */
+    private function rows(array $refs, ?BindingRef $binding, ?array $columns): array
+    {
+        if ($refs === []) {
+            return [];
+        }
+
+        $model = new (PushDevice::modelClass());
+        $query = $model->newQuery()
+            ->whereIn($model->getKeyName(), array_values(array_unique(array_map(static fn (DestinationRef $r): string => $r->id, $refs))));
+        if ($columns !== null) {
+            $query->select([$model->getKeyName(), ...$columns]);
+        }
+        if ($binding !== null) {
+            $query->forBinding($binding);
+        }
+
+        $rows = [];
+        foreach ($query->get() as $row) {
+            if ($row instanceof PushDevice) {
+                $rows[PushDevice::keyOf($row)] = $row;
+            }
+        }
+
+        return $rows;
+    }
+
     private function evaluate(DestinationRef $ref, ?PushDevice $row): Eligibility
     {
         return match (true) {
             $row === null => Eligibility::no(Ineligibility::RowMissing),
             $row->state !== DeviceState::Active => Eligibility::no(Ineligibility::StateNotActive),
-            $row->generation !== $ref->generation => Eligibility::no(Ineligibility::GenerationChanged),
             $row->owner_type !== $ref->ownerType || $row->owner_id !== $ref->ownerId => Eligibility::no(Ineligibility::OwnerChanged),
+            $row->generation !== $ref->generation => Eligibility::no(Ineligibility::GenerationChanged),
             default => Eligibility::yes(),
         };
     }

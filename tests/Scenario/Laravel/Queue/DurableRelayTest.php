@@ -75,7 +75,7 @@ it('the phone changed hands while queued: the device now belongs to another owne
     expect($this->w->transport->sentCount())->toBe(0)
         ->and($row->state)->toBe('skipped')
         ->and($row->reason_code)->toBe('policy_ineligible')
-        ->and($row->raw_reason)->toBeIn(['owner_changed', 'generation_changed']);
+        ->and($row->raw_reason)->toBe('owner_changed');
 });
 
 it('a registry device that is still the same phone and owner is resolved and sent', function (): void {

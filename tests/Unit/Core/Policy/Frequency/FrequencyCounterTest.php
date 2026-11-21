@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+require_once dirname(__DIR__, 4).'/Scenario/Policy/Frequency/PolicyKit.php';
+
 use Padosoft\MobilePush\Core\Guard\InMemoryGuardStore;
 use Padosoft\MobilePush\Core\Policy\Frequency\BucketLimits;
 use Padosoft\MobilePush\Core\Policy\Frequency\FrequencyCounter;
