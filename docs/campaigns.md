@@ -7,7 +7,7 @@ honest progress. Campaigns are optional, **off by default**, and need the **dura
 |---|---|
 | Enable | `mobile-push.campaigns.enabled` = `true` (env `MOBILE_PUSH_CAMPAIGNS_ENABLED=true`) **and** `mobile-push.delivery.profile` = `durable` (env `MOBILE_PUSH_DELIVERY_PROFILE=durable`) |
 | Migration tags | the ledger: `php artisan vendor:publish --tag=mobile-push-migrations-ledger`; the campaigns table: `--tag=mobile-push-migrations-campaigns`; then `php artisan migrate` (or `php artisan mobile-push:install`; with `MOBILE_PUSH_MIGRATIONS_AUTOLOAD=true` nothing is published). For the device audience also the devices tag (`mobile-push-migrations-devices`) |
-| Without them | creating a campaign throws a `ConfigurationException` that says which of the two is missing |
+| Without them | `draft()` / `dispatch()` throw a `ConfigurationException` that says which of the two is missing |
 | Needs | a queue worker for the bulk queue (`queue.bulk_queue`, default `push-bulk`) and the scheduler (the sweeper) |
 
 Related pages: [delivery profiles](delivery-profiles.md), [queues and Horizon](queues-and-horizon.md),
@@ -20,11 +20,14 @@ device run exists only in the `slow` test group, which was not part of the verif
 exercised on SQLite with a fake transport: **MySQL and PostgreSQL were not exercised**, nothing was sent to a real
 provider, and the queue was not run on Redis, SQS or Horizon.
 
-The entry point is `MobilePush::campaign($message)` (the manager forwards to the campaigns module and throws a
-`ConfigurationException` that says what to set when the module is off or the profile is not durable). Control and
-progress go through `Padosoft\MobilePush\Laravel\Campaigns\CampaignManager`, resolved from the container
-(`app(CampaignManager::class)`). A campaign starts when you `dispatch()` it (or call `start()` on a draft); there is no
-built-in "start at 09:00".
+The entry point is `MobilePush::campaign($message)`: the manager forwards to the campaigns module and returns the
+`CampaignBuilder` described below. Building it checks nothing and writes nothing. The module's checks run when the campaign
+is **created**, that is on `draft()` or `dispatch()`: on the light delivery profile, or with `campaigns.enabled` false,
+they throw a `ConfigurationException` that says what to set ("Campaigns need the durable delivery profile: ..." or
+"Campaigns are disabled: ..."), before anything is written. A builder without `audience()`, or without `via()` and a
+`mobile-push.default`, throws a `ConfigurationException` too. Control and progress go through
+`Padosoft\MobilePush\Laravel\Campaigns\CampaignManager`, resolved from the container (`app(CampaignManager::class)`). A
+campaign starts when you `dispatch()` it (or call `start()` on a draft); there is no built-in "start at 09:00".
 
 The eight `mobile-push:campaign:*` commands (list, status, pause, resume, cancel, reconcile, sweep, prune) are in
 [commands](commands.md#campaign-commands). What is **not** there: a "start later" option.

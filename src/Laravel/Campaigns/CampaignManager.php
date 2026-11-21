@@ -269,12 +269,34 @@ final readonly class CampaignManager
         return ['restarted' => $restarted, 'completed' => $completed];
     }
 
-    /** Delete finished campaign rows older than the retention (the ledger prunes its own rows). */
+    /**
+     * Delete final campaign rows (completed, cancelled) finished before the retention (the ledger prunes its own
+     * rows). A failed campaign is kept: it is resumable; cancel it to make it prunable.
+     */
     public function prune(?int $retentionDays = null, ?string $scope = null): int
     {
-        $days = $retentionDays ?? $this->settings->retentionDays;
+        return $this->store->pruneFinished($this->pruneCutoff($retentionDays), 500, $scope);
+    }
 
-        return $this->store->pruneFinished($this->store->nowMs() - $days * 86_400_000, 500, $scope);
+    /** How many campaign rows prune() would delete now (same criteria, nothing deleted). */
+    public function countPrunable(?int $retentionDays = null, ?string $scope = null): int
+    {
+        return $this->store->countPrunable($this->pruneCutoff($retentionDays), $scope);
+    }
+
+    /**
+     * The campaigns of a scope, newest first.
+     *
+     * @return list<Campaign>
+     */
+    public function list(string $scope, ?CampaignStatus $status = null, int $limit = 20): array
+    {
+        return $this->store->list($scope, $status, $limit);
+    }
+
+    private function pruneCutoff(?int $retentionDays): int
+    {
+        return $this->store->nowMs() - ($retentionDays ?? $this->settings->retentionDays) * 86_400_000;
     }
 
     public function planner(): CampaignPlanner

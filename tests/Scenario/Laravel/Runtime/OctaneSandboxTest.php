@@ -138,7 +138,7 @@ it('a manager resolved during boot (warm) is shared by every sandbox: per-reques
         ->and($second[1])->toBe('tenant-a'); // the scope of the previous request
 });
 
-it('DEFECT (Octane only): log records buffered by a sandbox-resolved SinkManager are never flushed at terminate', function (): void {
+it('flushes the log records of a sandboxed request when that sandbox terminates', function (): void {
     $sink = new SandboxProbeSink;
     SinkManager::extend('probe', static fn (): LogSink => $sink);
     $world = W::install(['connections' => ['ios' => W::apns()], 'log.sinks' => ['probe'], 'log.buffer.size' => 100]);
@@ -148,8 +148,8 @@ it('DEFECT (Octane only): log records buffered by a sandbox-resolved SinkManager
     app()->terminate();
     $flushedOnPlainApp = count($sink->written);
 
-    // In a sandbox: the manager and the SinkManager are resolved in the clone; LoggingModule's terminating hook
-    // closes over the BOOTED application, sees the SinkManager as unresolved there, and does not flush.
+    // In a sandbox the manager and the SinkManager are resolved in the clone: the terminating hook must flush the
+    // SinkManager of the application it is called on, not the one of the application that booted the module.
     W::forgetSingletons();
     $buffered = inSandbox(static function (Application $app): int {
         W::all(MobilePush::connection('ios')->toToken(Platform::Ios, W::apnsToken('sandboxed'))->send(PushMessage::make('Hi')));
@@ -160,7 +160,7 @@ it('DEFECT (Octane only): log records buffered by a sandbox-resolved SinkManager
     expect($flushedOnPlainApp)->toBe(1)
         ->and(count($world->pushRequests()))->toBe(2)
         ->and($buffered)->toBe(1)
-        ->and(count($sink->written))->toBe(1); // the sandboxed request's record was lost with its clone
+        ->and(count($sink->written))->toBe(2); // the sandboxed request's record was written when the sandbox terminated
 });
 
 it('KNOWN LIMITATION: with the "array" cache store resolved per request, every sandboxed request mints a new APNs token', function (): void {

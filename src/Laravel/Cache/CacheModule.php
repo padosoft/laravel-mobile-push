@@ -43,6 +43,7 @@ final class CacheModule implements Module
             self::repository($app),
             $app->make(CacheHealth::class),
             self::prefix($app),
+            $app->make(ClockInterface::class),
         ));
     }
 

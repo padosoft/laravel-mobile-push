@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Padosoft\MobilePush\Laravel\Queue;
 
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Padosoft\MobilePush\Laravel\Queue\Events\RelayRunFinished;
 
 /**
  * Durable profile: relays the due deliveries of one effect (or, from the sweeper, of a whole scope).
@@ -39,13 +41,19 @@ final class RelayDeliveriesJob implements ShouldQueue
         $this->timeout = $timeout;
     }
 
-    public function handle(DeliveryRelay $relay, RelayFollowUps $followUps): void
+    public function handle(DeliveryRelay $relay, RelayFollowUps $followUps, ?Dispatcher $events = null): void
     {
         if ($this->followUpAt !== null) {
             $followUps->started($this->scope, $this->effectId, $this->followUpAt);
         }
 
-        $relay->run($this->scope, $this->effectId);
+        $report = $relay->run($this->scope, $this->effectId);
+
+        try {
+            $events?->dispatch(new RelayRunFinished($this->scope, $this->effectId, $report));
+        } catch (\Throwable) {
+            // a listener never fails the run whose outcomes are already stored (the sweeps are the safety net)
+        }
     }
 
     /** @return list<string> */

@@ -187,3 +187,14 @@ Remaining:
 - [x] `PushManager::campaign()`.
 - [ ] `src/Laravel/Console/Ops/ProbeEnvironmentCommand.php` (edited by another agent at 01:04) has 2 phpstan errors (`cast.string`, lines 113 and 140).
 - [ ] With `IntegrationModule` now in MODULES, three health tests that expect "not verifiable" without a credentials source are red (`HealthScenariosTest`, `SpatieCheckTest`, `HealthAndCredentialsTest` "not verifiable"): ManagerCredentialsSource is always available now; the tests must bind `NullConnectionCredentialsSource` themselves (not in W5-T2's lane).
+
+### Resolved by W6-F (2026-11-21)
+- [x] **Migrations run twice.** One rule for every module: migrations are published, not auto-loaded (`ModuleMigrations::wire()` in `src/Laravel/Integration`); opt-in `mobile-push.migrations.autoload` (`MOBILE_PUSH_MIGRATIONS_AUTOLOAD`, default false) registers the package files instead, publishes nothing, and a published copy wins over the package file. Every migration is idempotent (`hasTable`/`hasColumn`/index checks, symmetric `down()`). Tests: `tests/Scenario/Laravel/Install`.
+- [x] `mobile-push:install` no longer claims that a crashed worker "never loses or duplicates a push": one accurate sentence per profile, taken from `docs/delivery-profiles.md`.
+- [x] Default config fails `doctor`: defaults are now transport 30 s < `queue.chunk_deadline` 40 s < `queue.timeout` 50 s < worker 55 s (printed by install) < `retry_after` 90 s; lease stays 120 s. **Still to align by the owners of `src/Laravel/Queue`:** the literal fallbacks in `QueueSettings::fromConfig()` (`queue.timeout` 120, `queue.chunk_deadline` 60) and the constructor defaults of `QueueSettings`/`SendPushJob` if any; they only matter when the config key is missing (config not merged).
+- [x] Environment probe frequency limit: `devices.probe.cooldown_hours` (24), last probe stored in `devices.metadata.environment_probe`, `cooling_down` outcome, `--ignore-cooldown` (asks, `--force` does not skip it).
+- [x] Stale text in `docs/contracts/{ledger,modes,retry,classification,messages,outcomes,identity}.md` and `contracts/README.md`.
+- [x] `docs/live-activities.md` (local expiry enforced at transition time), `docs/commands.md` (eight `campaign:*` commands, probe options), `docs/campaigns.md` (commands exist).
+- [ ] For the orchestrator: `AGENTS.md` still says migrations are "also loaded by the module only when that module is enabled"; it should say they are published, with `migrations.autoload` as the opt-in.
+- [ ] `InstallPlan` campaigns group has no file suffixes (its "already published" detection does not run); `CampaignsModule::migrationPath()` could be used.
+- [ ] `tests/Scenario/Laravel/Console/InstallTest.php` publishes into `vendor/orchestra/testbench-core/laravel` (and cleans up); move it to a temporary application path like `tests/Scenario/Laravel/Install`.

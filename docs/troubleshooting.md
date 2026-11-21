@@ -259,7 +259,8 @@ MobilePush::toToken(Platform::Ios, $iosToken)->send(PushMessage::make('Order shi
         );
     });
 
-// $lines[0] starts with "status=outcome_unknown" and ends with "fallback_allowed=no".```
+// $lines[0] starts with "status=outcome_unknown" and ends with "fallback_allowed=no".
+```
 
 ## Environment probe
 

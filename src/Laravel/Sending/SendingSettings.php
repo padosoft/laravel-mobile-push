@@ -8,6 +8,7 @@ use Padosoft\MobilePush\Core\Exceptions\ConfigurationException;
 use Padosoft\MobilePush\Core\Identity\Scope;
 use Padosoft\MobilePush\Core\Retry\RetryPolicy;
 use Padosoft\MobilePush\Core\Retry\UnknownOutcomeRetry;
+use Padosoft\MobilePush\Core\Transport\Curl\CurlPoolRegistry;
 
 /**
  * The top-level sending configuration (`config('mobile-push')` minus the connections), parsed and validated once.
@@ -47,7 +48,11 @@ final readonly class SendingSettings
         public ?array $routes = null,
         public int $connectionCacheSize = 64,
         public array $transport = self::TRANSPORT_DEFAULTS,
+        /** Cap of the per-process transport pool registry (transport.max_pools). */
+        public int $transportMaxPools = self::DEFAULT_MAX_POOLS,
     ) {}
+
+    public const DEFAULT_MAX_POOLS = CurlPoolRegistry::DEFAULT_MAX_POOLS;
 
     public const TRANSPORT_DEFAULTS = [
         'window' => 100,
@@ -121,6 +126,7 @@ final readonly class SendingSettings
             routes: $routes,
             connectionCacheSize: $c->int('connection_cache.size', 64, 1, 100_000),
             transport: $transport,
+            transportMaxPools: $c->int('transport.max_pools', self::DEFAULT_MAX_POOLS, 1),
         );
     }
 }

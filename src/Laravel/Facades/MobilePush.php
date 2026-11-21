@@ -26,7 +26,10 @@ use Padosoft\MobilePush\Laravel\Testing\TestingSession;
  * @method static \Padosoft\MobilePush\Laravel\Sending\PendingSend toCondition(string $condition)
  * @method static void register(string $name, array<mixed> $config, ?string $scope = null)
  * @method static void resolveConnectionUsing(callable(string, string): (array<mixed>|null) $resolver)
- * @method static void scopeUsing(callable(): string $resolver)
+ * @method static void scopeUsing((callable(): string)|null $resolver) Supply the current scope; null restores the default (`mobile-push.scope`)
+ * @method static void forgetScopeResolver() Undo scopeUsing() (same as scopeUsing(null)); use it to reset per-request state under Octane
+ * @method static void forgetConnectionResolver() Undo resolveConnectionUsing(); cached drivers are kept until forgetConnection()/flush()
+ * @method static \Padosoft\MobilePush\Core\Fcm\Topics\TopicSubscriptionClient topicSubscriptions(?string $connection = null) Topic subscription client of an FCM connection, behind the same safe-mode gate as a send
  * @method static void eligibleUsing(callable(mixed, mixed): mixed $check, bool $batch = false)
  * @method static string currentScope()
  * @method static list<string> connectionNames(?string $scope = null)

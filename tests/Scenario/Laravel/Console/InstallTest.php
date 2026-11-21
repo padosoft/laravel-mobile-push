@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Padosoft\MobilePush\Laravel\Devices\DevicesModule;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Console\ConsoleWorld as C;
 
 function cleanInstalled(): void
@@ -26,7 +27,7 @@ it('lets a junior install the light profile with the devices module from options
 
     expect($code)->toBe(0)
         ->and(is_file(config_path('mobile-push.php')))->toBeTrue()
-        ->and(publishedMigrations())->toHaveCount(1)
+        ->and(publishedMigrations())->toHaveCount(count(DevicesModule::migrationPaths()))
         ->and(publishedMigrations()[0])->toEndWith('create_mobile_push_devices_table.php')
         ->and($out)->toContain('MOBILE_PUSH_APNS_TEAM_ID=')
         ->toContain('MOBILE_PUSH_APNS_KEY_ID=')
@@ -56,7 +57,7 @@ it('does not publish a second copy of migrations that are already there, and ref
     C::run('mobile-push:install', ['--modules' => 'devices', '--profile' => 'light']);
     [, $out] = C::run('mobile-push:install', ['--modules' => 'devices', '--profile' => 'light']);
 
-    expect(publishedMigrations())->toHaveCount(1)->and($out)->toContain('already');
+    expect(publishedMigrations())->toHaveCount(count(DevicesModule::migrationPaths()))->and($out)->toContain('already');
 
     cleanInstalled();
     [$bad, $badOut] = C::run('mobile-push:install', ['--modules' => 'receipts', '--profile' => 'light']);

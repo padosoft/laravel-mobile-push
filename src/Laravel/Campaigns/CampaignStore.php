@@ -167,23 +167,57 @@ final readonly class CampaignStore
     }
 
     /**
-     * Delete finished campaigns whose finish is older than `$cutoffMs`, in chunks. Returns the rows deleted.
+     * The campaigns of one scope, newest first, optionally in one status.
+     *
+     * @return list<Campaign>
+     */
+    public function list(string $scope, ?CampaignStatus $status = null, int $limit = 20): array
+    {
+        $rows = $this->query()
+            ->where('scope', Scope::normalize($scope))
+            ->when($status !== null, static fn (Builder $q): Builder => $q->where('status', $status?->value))
+            ->orderByDesc('created_at')->orderByDesc('id')
+            ->limit(max(1, $limit))
+            ->get();
+
+        return array_values(array_map(static fn (object $row): Campaign => Campaign::fromRow($row), $rows->all()));
+    }
+
+    /**
+     * Delete final campaigns (completed, cancelled) whose finish is older than `$cutoffMs`, in chunks. Returns the
+     * rows deleted. A `failed` campaign is never pruned: it is resumable from its cursor (CampaignStatus); cancel
+     * it first to make it prunable.
      */
     public function pruneFinished(int $cutoffMs, int $chunk = 500, ?string $scope = null): int
     {
         $deleted = 0;
         do {
-            $ids = $this->query()
-                ->whereIn('status', CampaignStatus::values(CampaignStatus::Completed, CampaignStatus::Cancelled, CampaignStatus::Failed))
-                ->when($scope !== null, static fn (Builder $q): Builder => $q->where('scope', Scope::normalize((string) $scope)))
-                ->where(static fn (Builder $q): Builder => $q->where('finished_at', '<', $cutoffMs)
-                    ->orWhere(static fn (Builder $q): Builder => $q->whereNull('finished_at')->where('updated_at', '<', $cutoffMs)))
-                ->limit($chunk)
-                ->pluck('id')->all();
+            $ids = $this->prunable($cutoffMs, $scope)->limit($chunk)->pluck('id')->all();
             $deleted += $ids === [] ? 0 : $this->query()->whereIn('id', $ids)->delete();
         } while (count($ids) === $chunk);
 
         return $deleted;
+    }
+
+    /** How many rows pruneFinished() would delete now, with exactly the same criteria. */
+    public function countPrunable(int $cutoffMs, ?string $scope = null): int
+    {
+        return $this->prunable($cutoffMs, $scope)->count();
+    }
+
+    private function prunable(int $cutoffMs, ?string $scope): Builder
+    {
+        return $this->query()
+            ->whereIn('status', CampaignStatus::values(...self::prunableStatuses()))
+            ->when($scope !== null, static fn (Builder $q): Builder => $q->where('scope', Scope::normalize((string) $scope)))
+            ->where(static fn (Builder $q): Builder => $q->where('finished_at', '<', $cutoffMs)
+                ->orWhere(static fn (Builder $q): Builder => $q->whereNull('finished_at')->where('updated_at', '<', $cutoffMs)));
+    }
+
+    /** @return list<CampaignStatus> the final statuses (CampaignStatus::isFinal()) */
+    private static function prunableStatuses(): array
+    {
+        return array_values(array_filter(CampaignStatus::cases(), static fn (CampaignStatus $s): bool => $s->isFinal()));
     }
 
     private function query(): Builder

@@ -158,7 +158,7 @@ it('eight processes on a cold shared store agree on one provider token and stay 
     // "Guard state is too contended to update" on redis: measured and reported in docs/runtimes.md.
 })->with(['redis', 'database', 'file']);
 
-it('KNOWN LIMITATION: with the shared store unreachable, each process uses its own token and the rate limiter gives up with an exception', function (): void {
+it('with the shared store unreachable, each process uses its own token and the rate limiter fails open: every take is granted, none throws', function (): void {
     $dir = sys_get_temp_dir().'/mp-cache-down-'.bin2hex(random_bytes(5));
     mkdir($dir, 0700, true);
 
@@ -180,10 +180,11 @@ it('KNOWN LIMITATION: with the shared store unreachable, each process uses its o
         removeTree($dir);
     }
 
-    // Designed fallback for the token (local reuse, one signature per process); for the limiter the cache failure
-    // surfaces as StateCell's "Guard state is too contended to update" RuntimeException on every take.
+    // Designed fallbacks: the token is reused locally (one signature per process); the limiter cannot coordinate
+    // without the store, so it stops limiting instead of stopping the sends (StateCell fails open when the store
+    // reports itself unavailable).
     expect(array_unique(array_column($results, 'token')))->toHaveCount(CONTENDERS)
         ->and(array_sum(array_column($results, 'signatures')))->toBe(CONTENDERS)
-        ->and(array_sum(array_column($results, 'granted')))->toBe(0)
-        ->and(array_sum(array_column($results, 'contended')))->toBe(CONTENDERS * 3);
+        ->and(array_sum(array_column($results, 'granted')))->toBe(CONTENDERS * 3)
+        ->and(array_sum(array_column($results, 'contended')))->toBe(0);
 });

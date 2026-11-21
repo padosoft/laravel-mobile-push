@@ -7,8 +7,8 @@ Every key of `config/mobile-push.php`, its environment variable, default and all
 ## Sections
 
 - [General](#general) (4 keys)
-- [Connections](#connections) (29 keys)
-- [Transport](#transport) (7 keys)
+- [Connections](#connections) (30 keys)
+- [Transport](#transport) (8 keys)
 - [Retry budget](#retry-budget) (10 keys)
 - [Guards: rate limits and circuit breakers](#guards-rate-limits-and-circuit-breakers) (9 keys)
 - [Delivery profile and events](#delivery-profile-and-events) (3 keys)
@@ -26,6 +26,7 @@ Every key of `config/mobile-push.php`, its environment variable, default and all
 - [Frequency cap and badge](#frequency-cap-and-badge) (7 keys)
 - [Fallback to another channel](#fallback-to-another-channel) (4 keys)
 - [Campaigns](#campaigns) (8 keys)
+- [Scheduled maintenance](#scheduled-maintenance) (2 keys)
 - [Laravel Pulse, Telescope and test fakes](#laravel-pulse-telescope-and-test-fakes) (5 keys)
 
 ## General
@@ -52,6 +53,7 @@ Keys of one connection (`connections.<name>.<key>`). Transport keys left out fal
 | `team_id` | – | `string` |  | APNs: Apple team id (10 characters). |
 | `key_id` | – | `string` |  | APNs token auth: id of the .p8 key. |
 | `key` | – | `secret source` |  | APNs token auth: the .p8 key. |
+| `signer` | – | `string\|null` |  | APNs token auth: container binding or class name of a Padosoft\MobilePush\Core\Auth\Signer (algorithm ES256, signature as raw 64-byte R\|\|S, keyId()) that keeps the key in a KMS/HSM. When set, key is not required and never read, the key id comes from the signer (a key_id that differs is a ConfigurationException) and team_id is still required. Not available for FCM. The credential cannot be inspected: expiry not verifiable. |
 | `certificate` | – | `secret source` |  | APNs certificate auth: the PEM certificate (may also contain the key). |
 | `certificate_key` | – | `secret source` |  | APNs certificate auth: the private key when it is a separate file. |
 | `passphrase` | – | `string\|secret source` |  | APNs certificate auth: the key passphrase. |
@@ -119,6 +121,7 @@ HTTP/2 transport defaults for every connection that does not set its own value.
 | `transport.timeout_ms` | `MOBILE_PUSH_TIMEOUT_MS` | `30000` | `int` | >= connect_timeout_ms | Request timeout, milliseconds (first link of the queue timeout chain). | sending |
 | `transport.max_idle_seconds` | `MOBILE_PUSH_MAX_IDLE_SECONDS` | `3600` | `int` | >= 1 | An idle pooled connection is closed after this many seconds. | sending |
 | `transport.proxy` | `MOBILE_PUSH_PROXY` | `null` | `string\|null` |  | HTTP proxy URL, e.g. http://proxy.internal:3128. | sending |
+| `transport.max_pools` | `MOBILE_PUSH_TRANSPORT_MAX_POOLS` | `32` | `int` | >= 1 | Cap of the per-process registry of HTTP/2 connection pools (one pool per provider endpoint, credential and settings). When a new pool would exceed it, the least recently used idle pool is closed. Raise it when one process serves many distinct connections (multi-tenant). | sending |
 | `transport.ca_bundle` | `MOBILE_PUSH_CA_BUNDLE` | `null` | `string\|null` |  | Path of a CA bundle; null = the system store. | sending |
 
 ## Retry budget
@@ -373,6 +376,15 @@ Durable profile only: a stable upper bound fixed at planning time, a final eligi
 | `campaigns.retention_days` | – | `30` | `int` | >= 1 | Finished campaigns are pruned after this many days (also the ledger dedupe window of a campaign). | campaigns |
 | `campaigns.sweeper.schedule` | – | `true` | `bool` |  | Schedule the campaign sweeper every minute. | campaigns |
 | `campaigns.audiences` | – | `[]` | `map<string, class-string>` |  | Alias => Audience class. | campaigns |
+
+## Scheduled maintenance
+
+Once a day the package schedules the prune commands of the modules that are ENABLED (`mobile-push:deliveries:prune` on the durable profile, `mobile-push:devices:prune`, `mobile-push:logs:prune` with the database log sink, `mobile-push:live-activity:prune`, `mobile-push:campaign:prune` with campaigns on the durable profile) and `mobile-push:credentials:check`, which runs whenever scheduling is on. With `alerts.enabled` off, `credentials:check` sends nothing: it only computes the findings, visible through its exit code (a failed scheduled task on warnings or errors) and `mobile-push:health`. Each event uses withoutOverlapping() (one-hour lock) and onOneServer() only when the default cache store is shared between servers (redis, memcached, database, dynamodb). The application needs the scheduler running (`schedule:run` every minute). The minutely sweepers and the alert evaluation are scheduled separately and are not affected.
+
+| Key | Env | Default | Type | Allowed | Description | Module |
+|---|---|---|---|---|---|---|
+| `maintenance.schedule` | `MOBILE_PUSH_MAINTENANCE_SCHEDULE` | `true` | `bool` |  | Schedule the daily maintenance commands; false = schedule none of them (run the commands yourself). | integration |
+| `maintenance.daily_at` | `MOBILE_PUSH_MAINTENANCE_DAILY_AT` | `'03:17'` | `string` | HH:MM, 24 hours | Time of day of the maintenance run, in the scheduler time zone. | integration |
 
 ## Laravel Pulse, Telescope and test fakes
 

@@ -7,11 +7,11 @@
 1. **Scope** is a tenant boundary. It is a string, defaults to `default`, and comes from `MobilePush::scopeUsing()` or `->scope()`. It is never taken from client payload (plan §4.2).
 2. `Scope::normalize()` trims the value; an empty value becomes `default`; anything else must match `[A-Za-z0-9._:-]` with at most 64 characters, otherwise it throws `\InvalidArgumentException` (note: not a `PushException`).
 3. **App binding**: `BindingRef { scope, name, provider, appId, environment, generation }`. The generation changes on every credential rotation or reconfiguration (plan §4.2, code comment).
-4. A job carries a `BindingRef` (and the destination reference and generation), never the secret. At consume time the current credential is resolved for that identity. If it does not match, the result is `Skipped` with `ReasonCode::BindingMismatch` and an event, with no fallback to the default connection (plan §4.2).
+4. A job carries a `BindingRef` (and the destination reference and generation), never the secret. At consume time the current credential is resolved for that identity. If it does not match, the result is `Skipped` with `ReasonCode::BindingMismatch` and no fallback to the default connection (plan §4.2). A **generation change alone is not a mismatch**: the current credential of the same identity is used. A mismatch is a different identity (scope, provider, app id or environment) behind the same name, or an identity that no longer resolves (orchestrator's resolution, `README.md`). Direct `send()` also dispatches `Sending\Events\BindingMismatchDetected`; the durable relay and the light job handle it in their own way (`docs/delivery-profiles.md`).
 5. **Destinations are typed.** Provider, token type, bundle and environment are never inferred from the shape of a string. Each destination is built with `::of($value)`, which normalizes and validates and throws `InvalidDestinationException` (a `ValidationException`) before any network call.
 6. Destinations are disjoint classes; a value of one type cannot be passed as another.
-7. `ConnectionProfile::$poolKey` is an opaque string. Requests with different pool keys never share a connection. The plan requires it to include the effective TLS or authorization identity, the endpoint role, the environment, the proxy/TLS profile and the credential generation (plan §6.1). The code does not build the key yet.
-8. The scope applies to caches, locks, deduplication, receipts, `export`/`forget` and channel actions (plan §4.2). Only `Scope::normalize()` exists in code today.
+7. `ConnectionProfile::$poolKey` is an opaque string. Requests with different pool keys never share a connection. `Core\Driver\PoolKey` builds it from the provider, endpoint role, host and port, the **effective credential identity** (APNs token: team id and key id; mTLS: SHA-256 certificate fingerprint; FCM: the Google principal), environment, HTTP version, proxy (only hashed: it may hold a password), CA bundle, credential generation and binding generation. The scope is deliberately **not** an input: two tenants that share one credential may share a connection; two different credentials never do.
+8. The scope applies to caches, locks, deduplication, receipts, `export`/`forget`, devices, Live Activities, campaigns and channel actions (plan §4.2); every ledger and registry query is scoped.
 
 ## Scope, binding and generation
 
@@ -70,20 +70,19 @@
 - The package: normalizes to `news`.
 - The caller sees: `value() === 'news'`.
 
-**D. Job after credential rotation (open).**
+**D. Job after credential rotation.**
 - Situation: a job was queued for generation 7; the credential is now generation 8.
-- The plan says a mismatch means `Skipped(BindingMismatch)`, but does not say whether a generation change alone is a mismatch. See Open points.
+- The package: the identity is the same, so the current credential (generation 8) is used. Only a different identity (for example the connection now points to another bundle id) is a mismatch.
+- The caller sees: the normal result of the send; for a mismatch, `Skipped` with `BindingMismatch`.
 
 ## Plan vs code
 
-- Plan §4.2 lists eight destination classes. The code has nine: it adds `ApnsVoipToken`. Plan §6.3 mentions VoIP payload limits, so VoIP is in scope; §4.2 is simply incomplete.
-- Plan §4.2 says FCM `app_id` is "project + package". `BindingRef` only has `appId`, and its docblock says Firebase project ID.
+- Plan §4.2 lists eight destination classes. The code has nine: it adds `ApnsVoipToken` on purpose (a PushKit token is a different registration from a device token). Plan §6.3 mentions VoIP payload limits, so VoIP is in scope.
+- Plan §4.2 says FCM `app_id` is "project + package". `BindingRef` only has `appId` (the Firebase project id); the Android package restriction is a message option (`restricted_package_name`), not part of the identity (orchestrator's resolution).
 - Plan §4.2 says `Scope` values come from `MobilePush::scopeUsing()`. That is the Laravel layer, not in `src/Core`.
-- `FcmCondition` validation only checks for the substring `in topics`. This is a shape check, not a parse of the condition expression. Plan §4.2 forbids inference from shape, so treat it as a weak check, not a guarantee.
+- `FcmCondition` validation only checks for the substring `in topics`: a syntax sanity check on an explicitly typed value, not inference and not a parse of the expression. Google validates it.
 - `BindingRef::$generation` is a string, while `DestinationRef::$generation` is an int. The plan does not specify either type.
 
 ## Open points
 
-- Whether a generation change alone (same identity, new generation) causes `Skipped(BindingMismatch)`, or only a change of identity does (plan §4.2 says "non combacia" without defining it).
-- Exact format of `ConnectionProfile::$poolKey` (plan §6.1 lists the components, not the encoding).
-- Whether the FCM `environment` is always `Production` (code docblock) or declared by the app (plan §4.2 applies that rule to devices generally).
+- Whether the FCM `environment` is always `Production` (code docblock) or may be declared by the app (plan §4.2 applies that rule to devices generally). The code always uses `Production` for FCM; nothing in the package needs another value.

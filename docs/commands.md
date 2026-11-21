@@ -1,9 +1,9 @@
 # Artisan commands
 
-The package registers **30** `mobile-push:*` commands: 19 core and operational ones (always, when running in the
-console) and 11 for Live Activities and broadcast channels (only when `live_activities.enabled` is true). Signatures,
-options and exit codes below are read from the command classes. There are **no `campaign:*` commands**: campaigns are
-driven from PHP (see [campaigns](campaigns.md)).
+The package registers **38** `mobile-push:*` commands: 19 core and operational ones (always, when running in the
+console), 11 for Live Activities and broadcast channels (only when `live_activities.enabled` is true) and 8 for
+[campaigns](campaigns.md) (only when `campaigns.enabled` is true). Signatures, options and exit codes below are read
+from the command classes.
 
 Related pages: [safe mode](safe-mode.md), [troubleshooting](troubleshooting.md), [queues and Horizon](queues-and-horizon.md),
 [security and privacy](security-and-privacy.md), [delivery profiles](delivery-profiles.md).

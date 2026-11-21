@@ -97,7 +97,10 @@ For each notifiable the channel looks, in this order:
 3. For on-demand notifications, the route given with `Notification::route('push', $destinations)`.
 
 A notifiable without any destination produces an **empty report, not an error**. The `apns` and `fcm` channels keep only
-the destinations (and the connections) of their provider.
+the destinations (and the connections) of their provider. Without a named connection (`pushConnection()` returns `null`),
+those two channels route **by provider**: each destination goes to the connection of its own provider among `routes`, or to
+the connection a registry device was registered on. They never go through `mobile-push.default`, which may belong to the
+other provider. The `push` channel without a named connection behaves like `MobilePush::to($notifiable)`.
 
 ## Hooks a notification can define
 
@@ -173,15 +176,16 @@ There is exactly one owner of queueing, never two jobs for one push:
 | Your notification | What happens |
 |---|---|
 | implements `ShouldQueue` | Laravel's `SendQueuedNotifications` job is the owner (one job **per channel**). The push is sent **inline inside that job**; the channel never calls `PendingSend::queue()`. The report is consumed and becomes the `response` of `NotificationSent` |
-| not queued, implements `QueuesPush` (or `pushQueue()` returns `true` or an options array) | the channel hands the push to the **package queue** (`PendingSend::queue()`), nothing is sent inline, the returned report is **empty** and **no fallback is evaluated** (the outcome is not known yet) |
+| not queued, implements `QueuesPush` (or `pushQueue()` returns `true` or an options array) | the channel hands the push to the **package queue** (`PendingSend::queue()`), nothing is sent inline, the returned report is **empty** and the channel evaluates **no fallback at that moment** (the outcome is not known yet). On the durable profile a fallback can still fire later: see [Fallback of a queued push](#fallback-of-a-queued-push-durable-profile) |
 | neither | sent inline (synchronously) |
 
 `pushQueue($notifiable)` may return an array with `connection` (queue connection), `queue` (queue name), `delay`
 (seconds or `DateTimeInterface`) and `after_commit` (bool). Package-level queueing uses the profile you configured:
 light profile = encrypted `SendPushJob`s, durable profile = the ledger and its relay ([queues and Horizon](queues-and-horizon.md)).
 
-Pick `ShouldQueue` when you want Laravel's retry/backoff semantics and the fallback; pick `QueuesPush` when you want the
-durable ledger, campaigns-style chunking and the receipts, and accept that the fallback cannot be evaluated by the channel.
+Pick `ShouldQueue` when you want Laravel's retry/backoff semantics and the fallback decided inline; pick `QueuesPush` when
+you want the durable ledger, campaigns-style chunking and the receipts. With `QueuesPush` the fallback is decided later, once
+the ledger has settled the push, and only on the durable profile.
 
 ## Fallback to another channel
 
@@ -284,25 +288,63 @@ Configuration:
 | `fallback.enabled` | `MOBILE_PUSH_FALLBACK_ENABLED` | `true` |
 | `fallback.when_no_destination` | `MOBILE_PUSH_FALLBACK_WHEN_NO_DESTINATION` | `true` |
 | `fallback.idempotency_ttl` | `MOBILE_PUSH_FALLBACK_IDEMPOTENCY_TTL` | `86400` |
-| `fallback.cache_store` | `MOBILE_PUSH_FALLBACK_CACHE_STORE` | `null` (the package cache store) |
+| `fallback.cache_store` | `MOBILE_PUSH_FALLBACK_CACHE_STORE` | `null` (the application's default cache store) |
 
-### When a fallback never fires, and the durable-profile gap
+### When a fallback never fires
 
-- The channel only evaluates the fallback after an **inline** send: either a plain `notify()` or a `ShouldQueue`
-  notification (inline inside Laravel's job). The `QueuesPush` path returns an empty report and evaluates nothing.
-- A `Deferred` result means "not decided": with the light profile **nothing calls the evaluator again**, so a failure
-  that happens after a deferral never falls back.
-- **Durable profile: not wired.** The package queue (`QueuesPush`, `queue()`) records the effect in the ledger. When every
-  delivery of an effect reaches a final state, `Padosoft\MobilePush\Laravel\Integration\IntegrationModule` dispatches an
-  `EffectSettled` event (scope, effect id, per-state counts, origin), once per effect. **Nothing in the package turns that
-  event into a fallback**, and the channel does not store the original notification or fill the event's `origin`, so a
-  listener cannot rebuild the notification from the event alone. If you need a fallback for durable sends, either use a
-  `ShouldQueue` notification (the fallback is then evaluated inline), or keep your own record keyed by the effect key
-  (`EffectKeys::forPush($notifiable, $notification)`) and call
-  `app(FallbackEvaluator::class)->evaluate($user, $notification, $results, $effectKey)` from your `EffectSettled` listener
-  with `DeliveryStore::results($scope, $effectId)`. An `OutcomeUnknown` result never allows a fallback.
-- `IntegrationModule` (registered by the service provider) is what dispatches `EffectSettled`: after every
-  `RelayDeliveriesJob` of an effect in the durable profile it checks whether the effect settled and announces it once.
+- **Inline sends** (a plain `notify()` or a `ShouldQueue` notification, where the push is sent inline inside Laravel's job):
+  the channel evaluates the fallback right after the push, from the results it just consumed.
+- A `QueuesPush` push on the **light profile** never falls back: nothing records the outcome, so there is nothing to decide
+  from.
+- A `Deferred` result on an inline send means "not decided": nothing calls the evaluator again for it, so a failure that
+  happens after a deferral never falls back there. (On the durable profile a queued push is decided when it settles, see
+  below.)
+- An `OutcomeUnknown` result never allows a fallback, inline or durable.
+
+### Fallback of a queued push (durable profile)
+
+On the durable profile a push queued by the channel (`QueuesPush` or `pushQueue()`) is recorded in the ledger and its final
+outcome may arrive much later (an APNs 410 an hour after a deferral). The package keeps what the fallback needs and decides
+when the push has settled.
+
+**When a pending fallback is stored.** At queue time, only if **all** of these hold:
+
+- `mobile-push.fallback.enabled` is `true`;
+- `mobile-push.delivery.profile` is `durable`;
+- the notification defines `pushFallback()` and it returns at least one channel name (an empty list opts out);
+- the push has an effect key (the notification has an id, or `pushEffectKey()` returns one);
+- `queue()` returned at least one ledger effect id (a connection refused by the pre-flight contributes none, see
+  [sending](sending.md#multi-connection-sends-and-the-pre-flight));
+- the stored record is at most **64 KiB** (65,536 bytes). A bigger one is not kept: a warning is logged (notification class,
+  size, limit) and nothing else changes; the push itself is still queued and sent, only the fallback is lost.
+
+**What is stored, where, for how long.** The notifiable and the notification are serialised like a queued Laravel
+notification (Eloquent models as identifiers, reloaded fresh when the fallback fires), together with the push effect key,
+the scope and the ids of every ledger effect of the push. The record is **encrypted with the application key** and put in
+the fallback cache store (`fallback.cache_store`, `null` = the application's default cache store) with a TTL of
+`fallback.idempotency_ttl` seconds (default 86400), one entry per effect id. The device token is not part of it.
+
+**When it fires.** `IntegrationModule` dispatches `EffectSettled` once every delivery of a ledger effect is final. The
+package listens to it: when **every** effect of the push has settled, the results of all of them are read from the ledger and
+handed to the same `FallbackEvaluator` and the same decision table as an inline send (so an `Accepted`, a `Deferred`
+still waiting or an `OutcomeUnknown` never falls back), with the same permission callback and the same idempotency claim.
+The pending record is then removed. A repeated event sends nothing more.
+
+**Limits.**
+
+- A push that settles after the TTL has elapsed does not fall back (the record is gone).
+- A lost or flushed cache loses the pending fallback; so does a cache store that is not shared between the process that
+  queues and the worker that settles.
+- A notifiable (an Eloquent model) deleted in the meantime cannot be reloaded: no fallback.
+- A record that cannot be decrypted or restored (for example after an application key rotation or a changed class) is
+  dropped with a warning.
+- The light profile never falls back for a queued push.
+- Not verified against real providers: the behaviour is tested with the fake transport, SQLite and the `array` mailer.
+
+If you need different behaviour, the building blocks are public: keep your own record keyed by
+`EffectKeys::forPush($notifiable, $notification)` and call
+`app(FallbackEvaluator::class)->evaluate($user, $notification, $results, $effectKey)` from an `EffectSettled` listener with
+`DeliveryStore::results($scope, $effectId)`.
 
 ## Consent and eligibility checks
 

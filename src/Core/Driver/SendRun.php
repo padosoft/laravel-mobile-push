@@ -14,6 +14,7 @@ use Padosoft\MobilePush\Core\Guard\BreakerTransition;
 use Padosoft\MobilePush\Core\Guard\GuardRecord;
 use Padosoft\MobilePush\Core\Guard\Guards;
 use Padosoft\MobilePush\Core\Guard\GuardSource;
+use Padosoft\MobilePush\Core\Guard\GuardStateContended;
 use Padosoft\MobilePush\Core\Guard\GuardVerdict;
 use Padosoft\MobilePush\Core\Identity\BindingRef;
 use Padosoft\MobilePush\Core\Identity\Destination;
@@ -429,13 +430,17 @@ final class SendRun
         try {
             $verdict = $this->guards->before($this->bindingIdentity, $this->credentialIdentity, $this->accountKey, $this->options->trafficClass, $n);
         } catch (\Throwable $e) {
-            if ($this->nothingHappenedYet()) {
+            // Contended guard state is a temporary, local condition: never a thrown send. Anything else thrown
+            // before the first effect is a configuration problem and surfaces as such.
+            if (! $e instanceof GuardStateContended && $this->nothingHappenedYet()) {
                 throw $e;
             }
+            $hint = $e instanceof GuardStateContended
+                ? 'The shared rate-limit and circuit-breaker state was too contended to update (many workers writing the same keys): the destination was not sent and can be attempted again.'
+                : sprintf('The send guards could not be consulted (%s): the destination was not sent and can be attempted again.', $e::class);
             foreach ($ready as $work) {
-                $this->emit($work, SendStatus::Deferred, Reason::of(ReasonCode::ProviderUnavailable, null, sprintf(
-                    'The send guards could not be consulted (%s): the destination was not sent and can be attempted again.', $e::class,
-                )), $work->lastDecision, $now->modify('+'.self::DEFAULT_DEFER_SECONDS.' seconds'), $results);
+                $this->emit($work, SendStatus::Deferred, Reason::of($e instanceof GuardStateContended ? ReasonCode::QuotaExceeded : ReasonCode::ProviderUnavailable, null, $hint),
+                    $work->lastDecision, $now->modify('+'.self::DEFAULT_DEFER_SECONDS.' seconds'), $results);
             }
 
             return null;

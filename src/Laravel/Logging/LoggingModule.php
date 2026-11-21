@@ -77,15 +77,21 @@ final class LoggingModule implements Module
             self::databaseMode($app);
         }
 
-        // Flush hooks are cheap and lazy: they do nothing unless the manager was actually used.
-        $flush = static function () use ($app): void {
-            if ($app->resolved(SinkManager::class)) {
-                $app->make(SinkManager::class)->flush();
+        // Flush hooks are cheap and lazy: they do nothing unless the manager was actually used. The terminating
+        // callback takes the application it is called on (Laravel injects it): under Octane that is the per-request
+        // sandbox, where the SinkManager of that request lives, not the application that booted the module.
+        $flushIn = static function (Application $current): void {
+            if ($current->resolved(SinkManager::class)) {
+                $current->make(SinkManager::class)->flush();
             }
         };
-        $app->terminating($flush);
+        $app->terminating(static function (Application $current) use ($flushIn): void {
+            $flushIn($current);
+        });
         $events = $app->make(Dispatcher::class);
-        $events->listen([JobProcessed::class, JobFailed::class, JobExceptionOccurred::class], $flush);
+        $events->listen([JobProcessed::class, JobFailed::class, JobExceptionOccurred::class], static function () use ($app, $flushIn): void {
+            $flushIn($app);
+        });
 
         ModuleMigrations::wire($app, [self::migrationPath()], self::PUBLISH_TAG, in_array('database', $names, true));
     }

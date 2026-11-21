@@ -5,13 +5,17 @@ Two fakes, for two different questions. Neither needs credentials, a network or 
 | | `MobilePush::fake()` | `MobilePush::fakeTransport()` |
 |---|---|---|
 | Question it answers | "Did my code ask to send the right push, to the right people?" (**intent**) | "What exactly reaches APNs/FCM, and how does the package react to each answer?" (**bytes and behaviour**) |
-| What runs | The real manager, routing, gates and report; nothing is compiled for the wire | The whole real pipeline: compilers, safe-mode guard, guards, classifier, retry planner, events, log sinks, device registry updates. Only the HTTP/2 transport is replaced |
+| What runs | The real manager, routing, gates and report. Each message is **validated** by the real APNs / FCM compiler, but nothing is kept, no request is built and no receipt marker is issued | The whole real pipeline: compilers, safe-mode guard, guards, classifier, retry planner, events, log sinks, device registry updates. Only the HTTP/2 transport is replaced |
 | Answers | Scripted outcomes (default `Accepted`) | Scripted HTTP answers (default: APNs 200 / FCM 200) |
 | Assertions | `assertSent()`, `assertSentTo()`, `assertQueued()`, ... | `assertApnsRequest()`, `assertFcmRequest()`, `assertRequestCount()`, ... |
 
 They are deliberately separate: the intent fake is not an oracle for the bytes, and the transport fake is not a convenient way to check who received what. Activating one switches the other off.
 
-While a fake is active, every send runs **live** with every destination allowed (the `auto` mode does not simulate and no `live.only_to` allowlist is needed), because nothing can reach a provider anyway. The fakes refuse to start outside `APP_ENV=testing` (`FakeNotAllowedException`) unless you pass `true` (`MobilePush::fake(true)`) or set `mobile-push.testing.allow_fakes`. When your application configures no connection, the fakes provide two: `ios` (APNs, bundle `com.example.fake`) and `android` (FCM, project `fake-project`); `fakeTransport()` gives them keys generated at runtime.
+While a fake is active, every send runs **live** with every destination allowed (the `auto` mode does not simulate and no `live.only_to` allowlist is needed), because nothing can reach a provider anyway. The application environment is **not** touched: `app()->environment()` and `app()->isProduction()` keep their real values inside a faked test, so code of yours that branches on the environment behaves as it does in the test environment. The package gets there through the manager's own seams (an execution override and installed drivers, see [Extension and testing seams](#extension-and-testing-seams-on-the-manager)), not by pretending to be production.
+
+The fakes refuse to start outside `APP_ENV=testing` (`FakeNotAllowedException`) unless you pass `true` (`MobilePush::fake(true)`, `MobilePush::fakeTransport(true)`) or set `mobile-push.testing.allow_fakes` (a config key with no environment variable, default `false`). Do not switch it on in a real deployment: while a fake is active nothing reaches a provider.
+
+**When your application configures no connection** (`mobile-push.connections` is empty), the fakes provide two: `ios` (APNs, bundle `com.example.fake`, sandbox) and `android` (FCM, project `fake-project`). `fake()` installs fake drivers under those names; `fakeTransport()` writes two complete test connections with keys generated at runtime into `mobile-push.connections`. When the application configures connections of its own, the intent fake installs a fake driver for **each of them** (so your own names, `shop-ios` or whatever, work) and `fakeTransport()` leaves your config alone and runs your connections through the real pipeline: they must carry credentials that look real (keys can be throw-away ones generated with `openssl_pkey_new()`; no secret belongs in a test).
 
 Every example on this page is executed by the package's documentation test, with a `$user` that has one iPhone and one Android phone.
 
@@ -54,6 +58,42 @@ $push->assertSent(PushMessage::class, 2);        // two destinations: an iPhone 
 $push->assertSentOnConnection('ios');
 $push->assertSentOnConnection('android');
 $push->assertNotQueued();
+```
+
+### Validation: the real compilers still run
+
+By default every faked destination is compiled by the same APNs / FCM compiler a real send would use, **for validation only**: the result is thrown away, nothing touches the network, no request exists and no receipt marker is issued. So a message the real path would refuse fails your test as it would fail in production:
+
+- a message invalid for **every** connection the send targets throws (`InvalidMessageException` or another validation exception), before anything is recorded;
+- a message the real path rejects for **one destination** (for example a payload over the size limit) yields that destination's `Rejected` result (`PayloadTooLarge`), and the push is still recorded;
+- a message invalid for **some connections only** (an iOS-only `subtitle()` sent to an iPhone and an Android phone) follows the multi-connection rule of [sending.md](sending.md#multi-connection-sends-and-the-pre-flight): the other connections are recorded and answered normally, the refused one gets `Rejected` / `PayloadInvalid`.
+
+`$fake->withoutValidation()` switches the validation off for that fake (everything is then recorded and answered as scripted). Use it only when a test needs an arbitrary message; the validation is most of the value of the fake.
+
+<!-- example: testing-validation -->
+```php
+use Padosoft\MobilePush\Core\Exceptions\InvalidMessageException;
+use Padosoft\MobilePush\Core\Identity\Platform;
+use Padosoft\MobilePush\Core\Message\PushMessage;
+use Padosoft\MobilePush\Core\Outcome\ReasonCode;
+use Padosoft\MobilePush\Core\Outcome\SendStatus;
+use Padosoft\MobilePush\Laravel\Facades\MobilePush;
+
+// An oversized payload is a per-destination rejection, exactly as with APNs.
+$result = MobilePush::toToken(Platform::Ios, $iosToken)
+    ->send(PushMessage::make('Hi', str_repeat('x', 6000)))
+    ->retained()[0];
+expect($result->status)->toBe(SendStatus::Rejected)
+    ->and($result->reason->code)->toBe(ReasonCode::PayloadTooLarge);
+
+// A message invalid everywhere throws, as in production.
+expect(fn () => MobilePush::toToken(Platform::Ios, $iosToken)->send(PushMessage::make('Hi')->badge(-1)))
+    ->toThrow(InvalidMessageException::class);
+
+// Opting out: the same message is now just recorded.
+$fake->withoutValidation();
+$accepted = MobilePush::toToken(Platform::Ios, $iosToken)->send(PushMessage::make('Hi')->badge(-1))->retained()[0];
+expect($accepted->status)->toBe(SendStatus::Accepted);
 ```
 
 ### Assertions
@@ -194,9 +234,15 @@ $user->notify(new class extends Notification
 $push->assertSentTo($user, fn (SentPush $p) => $p->message->title === 'Order shipped');
 ```
 
+### Your own connections, and `reset()`
+
+`$fake->connection(string $name, string $driver, ?string $appId = null, ?string $scope = null)` declares a connection of your own (`'apns'` or `'fcm'`) for a name your config does not have or for a scope other than the current one. It installs a fake driver for it.
+
+`MobilePush::fake()` and `MobilePush::fakeTransport()` call `reset()` first, so activating one switches the other off. `reset()` puts everything back: the transport, the queued-sender binding, the manager's forced execution, the fake drivers it installed (including those of `connection()`), the recording gate it registered with `eligibleUsing()` and, for `fakeTransport()`, the application's own `mobile-push.connections` (and the drivers built from the test credentials). Nothing stays between two tests; `connectionNames()`, the number of eligibility checks and `executionForced()` are exactly what they were before. Call it yourself with `app(TestingSession::class)->reset()`, or let `InteractsWithMobilePush` do it after each test (`resetMobilePushFakes()`).
+
 ## The transport fake: `MobilePush::fakeTransport()`
 
-The real pipeline runs and the requests are captured instead of being written to a socket. Google's OAuth token exchange is answered automatically and never counted. Bearer tokens are redacted from failure messages and from the decoded headers.
+The real pipeline runs (compilers, guards, classifier, retries, events, log sinks, device registry updates) and only the transport is replaced: the requests are captured instead of being written to a socket, so the bytes your app would send are real. Answers are scripted (default: accepted). The package's `Transport` binding is wrapped, not replaced, so a test double you bound yourself keeps working underneath. Google's OAuth token exchange is answered automatically and never counted. Bearer tokens are redacted from failure messages and from the decoded headers.
 
 <!-- example: testing-wire -->
 ```php
@@ -304,10 +350,50 @@ $wire->assertFcmRequest(fn (array $message, bool $validateOnly) => $validateOnly
     && $message['data']['order_id'] === '42');   // FCM data values are strings
 ```
 
+## Extension and testing seams on the manager
+
+The fakes are built on public methods of the manager (`MobilePush::...`, the facade documents them). You can use them directly for your own test doubles or extension points; the ones marked `@internal` in the facade (`forceExecution()`, `resolve()`, `preflight()`, ...) are not part of the API.
+
+| Method | Effect |
+|---|---|
+| `useDriver(string $name, Driver $driver, ?string $scope = null, ?LiveSettings $live = null)` | Send through this driver for the connection `$name` in the scope (`null` = current), instead of building one from configuration. It wins over a runtime `register()`, the resolver and `mobile-push.connections`, is listed by `connectionNames()` while installed, is never cached and owns no transport pool. The driver's binding must carry the same scope and name (`ConfigurationException` otherwise). `$live` defaults to no live settings, so outside production the safe-mode guard blocks a live send through it |
+| `forgetDriver(string $name, ?string $scope = null)` | Remove an installed driver; the connection resolves from configuration again. A no-op when none is installed |
+| `hasInstalledDriver(string $name, ?string $scope = null): bool` | Whether `useDriver()` installed a driver for this connection |
+| `unregister(string $name, ?string $scope = null)` | Undo `register()`: the runtime connection is removed and its cached driver closed. A configured connection of the same name, or one the resolver supplies, is used again from the next send. A no-op when nothing was registered |
+| `forgetEligibility(callable $check): int` | Undo `eligibleUsing()` for this very callable (the same closure instance, or an identical string/array callable); returns how many checks were removed |
+| `eligibilityChecks(): int` | Number of checks registered with `eligibleUsing()` |
+
+<!-- example: testing-manager-seams -->
+```php
+use Padosoft\MobilePush\Laravel\Facades\MobilePush;
+
+// Eligibility checks can be added and removed again, and counted.
+$before = MobilePush::eligibilityChecks();
+$check = fn ($destination, $context): bool => true;
+MobilePush::eligibleUsing($check);
+expect(MobilePush::eligibilityChecks())->toBe($before + 1);
+expect(MobilePush::forgetEligibility($check))->toBe(1);
+expect(MobilePush::eligibilityChecks())->toBe($before);
+
+// A runtime connection can be registered and removed again.
+MobilePush::register('ios-eu', ['driver' => 'apns', 'bundle_id' => 'com.example.eu', 'team_id' => 'TEAM123456', 'environment' => 'sandbox']);
+expect(MobilePush::connectionNames())->toContain('ios-eu');
+MobilePush::unregister('ios-eu');
+expect(MobilePush::connectionNames())->not->toContain('ios-eu');
+
+// The fake installs its drivers with useDriver(); you can see and drop them.
+$fake->connection('ios-us', 'apns', 'com.example.us');
+expect(MobilePush::hasInstalledDriver('ios-us'))->toBeTrue();
+MobilePush::forgetDriver('ios-us');
+expect(MobilePush::hasInstalledDriver('ios-us'))->toBeFalse();
+```
+
+`useDriver()` takes any `Padosoft\MobilePush\Core\Driver\Driver`: a fake of your own, or a decorator around a real one. It is illustrative only here, because building a driver by hand needs a binding, a compiler, a classifier and a transport; for most tests `fake()` and `fakeTransport()` are enough.
+
 ## Tips
 
 - **Assert the outcome you care about, not the mechanism.** With the intent fake, check who got what; with the transport fake, check the headers and the JSON your app depends on (topic, collapse id, data keys).
 - **Test the unknown outcome.** It is the case most code handles wrongly. `unknownFor()` and `connectionLost()` make it a one-liner.
 - **Consume the report** in your code under test (`counts()`, `each()`): an unread report leaves later windows unsent, in tests as in production.
-- **Queued pushes**: with the intent fake, `queue()` is recorded (`assertQueued()`) and no job is dispatched. To test the job itself, run it with Laravel's queue tooling against `fakeTransport()`.
+- **Queued pushes**: with the intent fake, `queue()` is recorded (`assertQueued()`) and no job is dispatched. The pre-flight validation applies to `queue()` too. To test the job itself, run it with Laravel's queue tooling against `fakeTransport()`.
 - **Live Activities and campaigns** write to the database: use `RefreshDatabase` and the migrations of those modules (see [live-activities.md](live-activities.md), [campaigns.md](campaigns.md)).

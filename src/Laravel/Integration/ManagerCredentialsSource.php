@@ -81,6 +81,10 @@ final readonly class ManagerCredentialsSource implements ConnectionCredentialsSo
             $extra[] = new CheckResult([Finding::ok('credentials.adc', 'Application Default Credentials: checked by Google at the first token exchange, not inspectable locally.')]);
         }
 
+        if ($primary?->externalSigner === true) {
+            $extra[] = new CheckResult([Finding::ok('credentials.external_signer', 'External signer: expiry not verifiable (the key is held outside this application, in a KMS / HSM).')]);
+        }
+
         return new ConnectionCredentials(
             $binding,
             certificate: $primary?->certificate,

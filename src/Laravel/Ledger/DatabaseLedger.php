@@ -415,9 +415,9 @@ final class DatabaseLedger implements ClientReceiptStore, DeliveryBatches, Ledge
 
             $changes = LedgerRules::claimChanges($owner, 0, $now, $lease);
             $changes['version'] = new Expression('version + 1');
-            $this->deliveries()->whereIn('id', $ids)
-                ->whereIn('state', DeliveryState::values(...DeliveryStateMachine::sourcesOf(DeliveryEvent::Claim)))
-                ->update($changes);
+            // The rows are locked by this transaction (FOR UPDATE SKIP LOCKED): no further guard is needed, and none
+            // that would let the planner prefer a state index over the primary key.
+            $this->deliveries()->whereIn('id', $ids)->update($changes);
 
             return $ids;
         });
@@ -445,10 +445,13 @@ final class DatabaseLedger implements ClientReceiptStore, DeliveryBatches, Ledge
                 $attempted[] = $candidate['id'];
             }
             foreach ($byVersion as $version => $ids) {
+                // Guarded by (id, version) only. Every state change bumps the version (except leased -> sending, which
+                // starts from a claimed row), so an unchanged version proves the row is still in the claimable state
+                // it was read in. A `state IN (...)` condition here made SQLite walk the (state, updated_at) index,
+                // i.e. every pending row, for each 500-row claim (W5-P; EXPLAIN QUERY PLAN in ScalingQueryPlansTest).
                 $won += $this->deliveries()
                     ->whereIn('id', $ids)
                     ->where('version', $version)
-                    ->whereIn('state', DeliveryState::values(...DeliveryStateMachine::sourcesOf(DeliveryEvent::Claim)))
                     ->update(LedgerRules::claimChanges($owner, $version, $now, $lease));
             }
         }
@@ -485,14 +488,15 @@ final class DatabaseLedger implements ClientReceiptStore, DeliveryBatches, Ledge
         foreach ($groups as $group) {
             $first = $group[0];
             $ids = array_map(static fn (Lease $l): string => $l->deliveryId, $group);
+            // Lease owner + version prove the lease (and so the scope and an in-flight state: every other state change
+            // bumps the version). No scope/state condition: it would let the planner pick a (scope, state, ...) index
+            // and walk every leased row instead of the primary key.
             $guard = fn (): Builder => $this->deliveries()
                 ->whereIn('id', $ids)
-                ->where('scope', LedgerRules::scope($first->scope))
                 ->where('lease_owner', $first->owner)
                 ->where('version', $first->version);
             $updated = $guard()
                 ->where('lease_expires_at', '>', $now)
-                ->whereIn('state', DeliveryState::values(...DeliveryStateMachine::sourcesOf(DeliveryEvent::StartAttempt)))
                 ->update(['state' => DeliveryState::Sending->value, 'attempt_started_at' => $now, 'updated_at' => $now]);
             if ($updated === count($ids)) {
                 array_push($started, ...$ids);
@@ -500,7 +504,7 @@ final class DatabaseLedger implements ClientReceiptStore, DeliveryBatches, Ledge
                 continue;
             }
             // Some leases were lost: the rows this call marked are the ones holding this lease, sending, started now.
-            array_push($started, ...self::strings($guard()->where('state', DeliveryState::Sending->value)->where('attempt_started_at', $now)->pluck('id')->all()));
+            array_push($started, ...self::strings($guard()->where('attempt_started_at', $now)->pluck('id')->all()));
         }
 
         return $started;

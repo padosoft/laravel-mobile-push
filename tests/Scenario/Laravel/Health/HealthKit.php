@@ -26,6 +26,7 @@ use Padosoft\MobilePush\Core\Outcome\SendStatus;
 use Padosoft\MobilePush\Core\Retry\RetryBudget;
 use Padosoft\MobilePush\Laravel\Health\ConnectionCredentials;
 use Padosoft\MobilePush\Laravel\Health\ConnectionCredentialsSource;
+use Padosoft\MobilePush\Laravel\Health\NullConnectionCredentialsSource;
 use Padosoft\MobilePush\Laravel\Health\CredentialMonitor;
 use Padosoft\MobilePush\Laravel\Health\HealthInspector;
 use Padosoft\MobilePush\Laravel\Health\HealthSettings;
@@ -93,6 +94,9 @@ final class World
         $clock = new FakeClock('2026-11-20T10:00:00Z');
         $app->instance(ClockInterface::class, $clock);
         $app['env'] = $env;
+        // These scenarios are about the health module on its own: start without a credentials source (the
+        // integration module binds the manager's one by default); a scenario that needs one binds it after build().
+        $app->instance(ConnectionCredentialsSource::class, new NullConnectionCredentialsSource);
 
         $defaults = [
             'queue.default' => 'redis',

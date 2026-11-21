@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\Event;
+use Padosoft\MobilePush\Laravel\Queue\Events\RelayRunFinished;
 use Illuminate\Support\Facades\DB;
 use Padosoft\MobilePush\Laravel\Campaigns\Audience\DeviceAudience;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Campaigns\CampaignWorld;
@@ -33,8 +35,10 @@ it('reconcile: consistent exits 0; a deliberately broken counter exits 1 and pri
         ->and((int) CampaignWorld::row($campaign->id)->planned)->toBe(195);   // reported, never corrected
 });
 
-it('sweep completes a finished campaign nobody looked at', function (): void {
+it('sweep completes a finished campaign nobody looked at (the end-of-relay signal was lost)', function (): void {
     $c = $this->c;
+    // A campaign normally completes when its last relay run ends (RelayRunFinished); here that signal is lost.
+    Event::fake([RelayRunFinished::class]);
     $campaign = $c->world->dispatch(DeviceAudience::all());
     $c->world->drain();
     expect(CampaignWorld::row($campaign->id)->status)->toBe('running');

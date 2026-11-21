@@ -1,6 +1,6 @@
 # Messages, limits and capabilities
 
-**Purpose.** Defines the unified `PushMessage`, how platform overlays are applied, the size limits and what truncation may touch, logical expiry, the capability matrix rule, the difference between `actionCategory` and `policy`, and the FCM target rules. Sources: `docs/PLAN.md` §6.3 and §6.4, and `src/Core/Message`. The overlay classes `Core\Apns\Message\ApnsMessage` and `Core\Fcm\Message\FcmMessage` are being written in parallel by another task; this document relies only on the overlay contract stated in `AGENTS.md` and does not describe their internals.
+**Purpose.** Defines the unified `PushMessage`, how platform overlays are applied, the size limits and what truncation may touch, logical expiry, the capability matrix rule, the difference between `actionCategory` and `policy`, and the FCM target rules. Sources: `docs/PLAN.md` §6.3 and §6.4, and `src/Core/Message`, `src/Core/Apns/Message/ApnsMessage.php`, `src/Core/Fcm/Message/FcmMessage.php` (the overlays the unified message uses).
 
 ## Rules
 
@@ -10,13 +10,13 @@
    - FCM: 4096 bytes; topic or condition: 2048 bytes, measured on the FCM payload, not on the REST envelope (plan §6.3 and §6.4).
 3. **Reject by default.** Over-limit payloads throw `PayloadTooLargeException` unless `->truncate()` is set.
 4. **Truncation touches only title, subtitle and body.** Never IDs, URLs, custom data or Live Activity state (`TextFitter` docblock, plan §6.3).
-5. Truncation keeps whole grapheme clusters and includes the ellipsis in the byte count (`Truncator`). The plan also wants an `ext-intl` path when present; only the PCRE `\X` path exists in code.
-6. **Validation**: UTF-8 is checked; unrepresentable values throw `InvalidMessageException`; reserved keys and conflicts between `silent`, sound, alert and priority are rejected (plan §6.3; the conflict check is not written yet).
+5. Truncation keeps whole grapheme clusters and includes the ellipsis in the byte count (`Truncator`). Both grapheme paths exist: `ext-intl` (`grapheme_extract`) when present and the PCRE `\X` path otherwise; they are tested to agree.
+6. **Validation**: UTF-8 is checked; unrepresentable values throw `InvalidMessageException`; reserved keys and conflicts are rejected (plan §6.3).
 7. **Logical expiry.** `->expiresAt()` (absolute) or `->ttl()` (relative). The instant is pinned when the effect is created. Each attempt recomputes the APNs expiration and the FCM remaining TTL from `now`, without extending the expiry (`CompileContext` docblock, plan §6.3).
-8. **Capability matrix.** Each capability is native, requires app-side code, or unavailable. A missing capability is a validation error (`UnsupportedCapabilityException`), never a silent success. `->lenient()` drops it and records a warning (`CompiledMessage::$warnings`).
+8. **Capability matrix** (`Policy\CapabilityMatrix`, one `CapabilityCell` per capability and platform). Each capability is native, requires app-side code, or unavailable. A missing capability is a validation error (`UnsupportedCapabilityException`), never a silent success. `->lenient()` drops it and records a warning (`CompiledMessage::$warnings`). A few cells (Android badge, group, time-sensitive, iOS deep link conventions, Android broadcast) are marked "unverified" in the class docblock.
 9. **`actionCategory` is not `policy`.** `actionCategory` is the app-side action set (iOS category, Android `click_action`). `policy` is the sending bucket used for consent and caps (e.g. `marketing`); it is never sent to the device.
 10. **FCM target.** Exactly one target per request: `fid`, `token`, `topic` or `condition`. A `token` is deprecated but supported; its origin type is kept and never converted by heuristic. An installation with both FID and token receives one send per effect (`fcm.prefer = fid | token`).
-11. **`android` and `androidV2` are mutually exclusive.** The builder rejects both together.
+11. **`android` and `androidV2` are mutually exclusive.** `FcmMessage::android()` and `androidV2()` throw `InvalidMessageException` when the other is already set.
 12. Topic subscriptions (`topicSubscriptions`: create, get, list, patch, delete, per installation) are separate from publishing. There is no bulk operation and no use of the legacy IID API (plan §6.4).
 
 ## Limits
@@ -28,7 +28,7 @@
 | FCM message | 4096 bytes | Plan §6.3 |
 | FCM topic or condition | 2048 bytes | Plan §6.3 |
 
-The exact measurement rule for the 4096 and 2048 limits is to be verified (plan §13). `CompiledMessage::$payloadBytes` is the counted size, which is not necessarily `strlen($body)`.
+The code constants are `Apns\ApnsPayloadLimits` (`STANDARD` 4096, `VOIP` and `BROADCAST` 5120) and `Fcm\FcmPayloadLimits` (4096, and 2048 for topic and condition). **Unverified:** Google publishes the numbers but, as of the Discovery revision checked (20261112), not an exact measurement rule for the FCM limit; the package measures the FCM payload it builds, not the REST envelope. `CompiledMessage::$payloadBytes` is the counted size, which is not necessarily `strlen($body)`.
 
 ## Types
 
@@ -52,7 +52,7 @@ The exact measurement rule for the 4096 and 2048 limits is to be verified (plan 
 
 **C. Both FCM Android variants.**
 - Situation: a message sets `android` and `androidV2` together.
-- The package: the builder rejects it. The plan does not name the exception type; `InvalidMessageException` is documented for conflicting options.
+- The package: the builder rejects it with `InvalidMessageException`.
 - The caller sees: an exception before the network.
 
 **D. Unsupported capability with `->lenient()`.**
@@ -68,14 +68,11 @@ The exact measurement rule for the 4096 and 2048 limits is to be verified (plan 
 ## Plan vs code
 
 - The plan's API lists `->policy()` and `->actionCategory()` as distinct; the code's `PushMessage` docblocks say the same.
-- Plan §6.3 names `ext-intl` as the preferred grapheme path. The code only uses PCRE `\X` today.
-- Plan §6.4 says the FCM builder rejects `android` and `androidV2` together. That builder is part of a parallel task and is not described here.
+- Plan §6.3 names `ext-intl` as the preferred grapheme path; the code uses it when the extension is loaded and falls back to PCRE `\X`.
+- Over-limit and per-target validation failures: a message that is invalid for every destination is an exception before the network; an error that concerns one destination only (a limit that applies to that target type) becomes a `Rejected` result for that destination and the batch continues (orchestrator's resolution in `README.md`, implemented by the `Sender`).
 - `PushMessage::apns()` and `fcm()` call the overlay classes named above. The overlay contract (empty, serializable, returned by `overlay()`) comes from `AGENTS.md`.
 
 ## Open points
 
-- The exact measurement rule for 4096 and 2048 bytes (plan §13).
-- The capability matrix content (plan describes its three categories, not the rows).
-- Whether a per-target size failure is a compile exception or a per-destination result. Plan §4.1 says per-target errors are results; `MessageCompiler` documents throwing `ValidationException`.
-- The exception type for conflicting `android`/`androidV2` settings.
-- Whether `->lenient()` warnings appear in `SendReport` or only in `CompiledMessage`.
+- **Real-provider verification.** The exact measurement rule of the FCM 4096 and 2048 limits (see above) and the unverified capability cells.
+- Whether `->lenient()` warnings should also appear in `SendReport`: today they are in `CompiledMessage::$warnings` only.

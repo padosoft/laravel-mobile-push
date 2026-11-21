@@ -14,6 +14,8 @@ use Padosoft\MobilePush\Core\Privacy\TokenCipher;
 use Padosoft\MobilePush\Laravel\Campaigns\Audience\AudienceRegistry;
 use Padosoft\MobilePush\Laravel\Campaigns\Console\ConsoleCommands;
 use Padosoft\MobilePush\Laravel\Contracts\PushDispatcher;
+use Padosoft\MobilePush\Laravel\Integration\EffectSettled;
+use Padosoft\MobilePush\Laravel\Queue\Events\RelayRunFinished;
 use Padosoft\MobilePush\Laravel\Integration\ModuleMigrations;
 use Padosoft\MobilePush\Laravel\Module;
 use Padosoft\MobilePush\Laravel\Queue\QueueSettings;
@@ -99,6 +101,29 @@ final class CampaignsModule implements Module
 
         if ($app->runningInConsole() && (bool) config('mobile-push.campaigns.enabled', false)) {
             ConsoleCommands::register();
+        }
+
+        // Completion reacts to the end of the work (W5-P) instead of waiting for the sweep (still scheduled below).
+        if ($app->bound('events')) {
+            $complete = static function (string $scope, string $effectId) use ($app): void {
+                try {
+                    if (! self::usable($app)) {
+                        return;
+                    }
+                    $app->make(CampaignCompletion::class)->checkEffect($scope, $effectId);
+                } catch (\Throwable) {
+                    // never fails the relay job; the sweep completes the campaign later
+                }
+            };
+            $events = $app->make('events');
+            $events->listen(RelayRunFinished::class, static function (RelayRunFinished $e) use ($complete): void {
+                foreach ($e->report->effects as $effectId) {
+                    $complete($e->scope, $effectId);
+                }
+            });
+            $events->listen(EffectSettled::class, static function (EffectSettled $e) use ($complete): void {
+                $complete($e->scope, $e->effectId);
+            });
         }
 
         $schedule = static function (Schedule $schedule) use ($app): void {

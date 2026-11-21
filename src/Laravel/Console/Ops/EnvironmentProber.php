@@ -102,11 +102,18 @@ final class EnvironmentProber
         return ['devices' => $devices, 'cooling' => $cooling, 'cooling_total' => $coolingTotal, 'more' => max(0, $total - $examined)];
     }
 
+    /** The configured cooldown in hours (0 = off). */
+    public function cooldownHours(): int
+    {
+        $hours = config('mobile-push.devices.probe.cooldown_hours', 24);
+
+        return is_numeric($hours) ? max(0, (int) $hours) : 24;
+    }
+
     /** When the device may be probed again, or null when it may be probed now. */
     public function coolingUntil(PushDevice $device): ?\DateTimeImmutable
     {
-        $hours = config('mobile-push.devices.probe.cooldown_hours', 24);
-        $hours = is_numeric($hours) ? (int) $hours : 24;
+        $hours = $this->cooldownHours();
         $last = is_array($device->metadata) && is_array($device->metadata['environment_probe'] ?? null) ? ($device->metadata['environment_probe']['at'] ?? null) : null;
         if ($hours <= 0 || ! is_string($last)) {
             return null;

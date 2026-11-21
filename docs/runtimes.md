@@ -149,12 +149,10 @@ container and facade root, cloned config, `terminate()` at the end; Octane itsel
   tokens): Apple rejects frequent token updates (`TooManyProviderTokenUpdates`). Use a shared store.
 - A manager resolved at boot (e.g. by calling `MobilePush::resolveConnectionUsing()` in a service provider) is shared
   by every sandbox: the limitations of a shared manager apply.
-- **Defect (Logging module)**: records buffered by a `SinkManager` resolved inside a sandbox are **never flushed**:
-  `LoggingModule::boot()` registers `$app->terminating(fn () => $app->resolved(SinkManager::class) ? ... )` with the
-  booted `$app` captured, so at the end of a sandboxed request it looks at the booted application, sees no resolved
-  `SinkManager` and does nothing; the record is lost with the clone (pinned). Fix for the module owner: take the
-  application as the callback's parameter (`$app->terminating(function (Application $app) { ... })`, which
-  `Application::terminate()` injects), or flush after each `PushBatchCompleted`.
+- **Defect found and fixed (Logging module)**: the terminating hook used to look at the application that booted the
+  module, where a `SinkManager` resolved inside a sandbox is not visible, so the buffered records of a sandboxed
+  request were lost with the clone. It now flushes the `SinkManager` of the application being terminated (the
+  sandbox); a test pins it.
 
 Singletons registered by the package and what a long-lived process must know about them:
 
@@ -166,7 +164,7 @@ Singletons registered by the package and what a long-lived process must know abo
 | `TokenStore` (`CacheTokenStore`), `GuardStore` (`CacheGuardStore`), `CacheHealth` | none (refresh locks only during a call; warning throttle) | share; the **cache store** behind them must be shared across processes (not `array`) |
 | `Senders`, `Guards`, `Sender`, `SafeModeGuard`, `ConnectionFactory` | no per-request state (guard state is in the store) | share |
 | `PushManager` (`PushDispatcher`, facade `MobilePush`) | scope resolver, tenant resolver, runtime registrations, consent checks, bounded connection cache | **needs care**: configure at boot only (see above); per-request calls to `scopeUsing()` / `eligibleUsing()` / `register()` leak or accumulate. With Octane, either resolve it at boot and configure it once, or flush it per request (Octane `flush` list: `Padosoft\MobilePush\Laravel\Sending\PushManager` — but then connections are rebuilt per request; pools survive in the registry) |
-| `SinkManager` | buffered log records, sink stats; static `$extensions` | **needs a flush per request**; under Octane see the defect above (until fixed, add a listener on Octane's `RequestTerminated` that flushes `app(SinkManager::class)`) |
+| `SinkManager` | buffered log records, sink stats; static `$extensions` | flushed when the application (or the Octane sandbox) terminates and after each queued job; share |
 | `LogRecordFactory`, `LogPruner`, `DevicePruner`, `ActivityPruner`, `MessageVault`, `Rows` | none | share |
 | `DatabaseLedger`, `DeviceRegistrar`, `DeviceOutcomeApplier`, `DeviceEligibility`, `ReceiptRecorder`, `ReceiptFunnelReader` | none in PHP (state in the database) | share |
 | `ReceiptMarkerIssuer` | bounded set of message ids issued by this process | share (process-level by design) |
@@ -180,8 +178,7 @@ Singletons registered by the package and what a long-lived process must know abo
 | `TestingSession`, `StdinReader`, `XcrunRunner` | testing / console only | n/a |
 
 Octane `flush`/reset hooks are **not required** for correctness when the package is configured at boot. They would be
-needed only for `PushManager` (if the application calls its setters per request) and `SinkManager` (until the
-defect above is fixed).
+needed only for `PushManager` (if the application calls its setters per request).
 
 ### 6. Cache-backed coordination across real processes
 
@@ -196,12 +193,16 @@ for the APNs provider token and take 30 permits each (240 asked) from a rate lim
 | file (shared directory) | yes | one token | exactly 100 |
 | memcached, dynamodb | not available here | — | — |
 
-With the store **unreachable**: each process signs and uses its own token (the designed local fallback), and every
-`RateLimiter::acquire()` throws `RuntimeException('Guard state is too contended to update.')` after 50 failed
-compare-and-set attempts. **Defect (Core/Guard, not fixed here)**: `SendRun::guardsBefore()` rethrows that exception
-when nothing has been sent yet in the call, so with the cache down every send that has a rate ceiling (FCM has one by
-default, `guards.rate.fcm` = 500,000) **throws** instead of returning `Deferred` results, and the message is
-misleading (the store is down, not contended).
+With the store **unreachable**: each process signs and uses its own token (the designed local fallback), and the
+rate limiter and the circuit breakers **fail open**: they cannot coordinate without the store, so they stop limiting
+instead of stopping the sends (every take is granted, nothing throws; measured with 8 processes against a port with
+nothing listening). After a failure the cache backend is left alone for 5 seconds, so a dead cache server does not
+cost a connection timeout on every send, and a warning is logged at most once a minute per process. A store that is
+alive but so contended that 50 compare-and-set attempts lose is a different case: nothing is granted and the
+destinations come back `Deferred` (`quota_exceeded`), never as an exception.
+
+This was a **defect found and fixed** here: before the fix an unreachable store surfaced as
+`RuntimeException('Guard state is too contended to update.')` thrown out of the send.
 
 ## Not verified
 

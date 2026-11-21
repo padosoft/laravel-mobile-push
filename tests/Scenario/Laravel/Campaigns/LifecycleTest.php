@@ -130,3 +130,34 @@ it('prunes finished campaigns after the retention, never running ones', function
         ->and($w->campaigns()->find('default', $done->id))->toBeNull()
         ->and($w->campaigns()->find('default', $paused->id))->not->toBeNull();
 });
+
+it('a failed campaign is resumable, so prune keeps it; the prune count is exactly what prune deletes; the list is scoped', function (): void {
+    $w = CampaignWorld::boot(['campaigns.retention_days' => 7]);
+    CampaignWorld::seedDevices(3);
+    $done = $w->dispatch(DeviceAudience::all(), name: 'done');
+    $w->drain();
+    $w->queue->advance(1);
+    $cancelled = $w->dispatch(DeviceAudience::all(), name: 'cancelled');
+    $w->campaigns()->cancel('default', $cancelled->id);
+    $w->queue->advance(1);
+    $failing = $w->dispatch(DeviceAudience::all(), name: 'failing');
+    // The message snapshot became unreadable (erased): planning stops with a permanent error, resumable once fixed.
+    DB::table('mobile_push_effects')->where('id', $failing->effectId)->update(['message' => null]);
+    $w->drain();
+    $other = $w->dispatch(DeviceAudience::all(), scope: 'tenant-b', name: 'other tenant');
+    $w->campaigns()->cancel('tenant-b', $other->id);
+
+    expect($w->campaigns()->find('default', $failing->id)?->status)->toBe(CampaignStatus::Failed)
+        ->and(array_map(static fn ($c): string => $c->name, $w->campaigns()->list('default')))->toBe(['failing', 'cancelled', 'done'])
+        ->and(array_map(static fn ($c): string => $c->name, $w->campaigns()->list('default', CampaignStatus::Failed)))->toBe(['failing'])
+        ->and($w->campaigns()->list('default', limit: 1))->toHaveCount(1)
+        ->and(array_map(static fn ($c): string => $c->name, $w->campaigns()->list('tenant-b')))->toBe(['other tenant']);
+
+    $w->queue->advance(365 * 86_400);
+    $prunable = $w->campaigns()->countPrunable();
+    expect($prunable)->toBe(3)                                          // done + cancelled + the other tenant's
+        ->and($w->campaigns()->countPrunable(scope: 'tenant-b'))->toBe(1)
+        ->and($w->campaigns()->prune())->toBe($prunable)
+        ->and($w->campaigns()->find('default', $failing->id))->not->toBeNull()
+        ->and($w->campaigns()->countPrunable())->toBe(0);
+});

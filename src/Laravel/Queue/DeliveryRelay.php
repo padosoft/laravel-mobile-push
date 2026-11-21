@@ -117,7 +117,7 @@ final readonly class DeliveryRelay
             $this->followUps->schedule($scope, $effectId, $this->clock->now());
         }
 
-        return new RelayReport($claimedTotal, $handed, $lost, $recorder->byStatus, $recorder->ignored, $followUps, $deadlineReached);
+        return new RelayReport($claimedTotal, $handed, $lost, $recorder->byStatus, $recorder->ignored, $followUps, $deadlineReached, array_map('strval', array_keys($effects)));
     }
 
     /**

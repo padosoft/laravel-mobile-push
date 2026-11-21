@@ -75,17 +75,43 @@ push type, traffic class, destination kind / index / masked, status, reason code
 message id, attempts, duration in ms, payload bytes, payload level, payload, effect id, delivery id, campaign id, origin
 type / id, notification, time (UTC).
 
-**What the manager fills in today.** The send pipeline hands the sinks: operation, traffic class, duration, payload bytes,
-push type and the result itself (including the delivery id when it came from the ledger). It does **not** pass the
-payload, the effect id, the campaign id or the notification origin, so with the manager's own wiring:
+**What the manager fills in.** The send pipeline hands the sinks: operation, traffic class, duration, payload bytes, push
+type, the result itself (including the delivery id when it came from the ledger) and, depending on `log.payload`, the
+payload. It does **not** pass the effect id, the campaign id or the notification origin, so with the manager's own wiring
+`effect_id`, `campaign_id`, `origin_type`, `origin_id` and `notification` are empty in the table and the log lines (they
+are filled only for records you hand to `SinkManager::recordResult()` yourself with those context keys).
 
-- `log.payload = keys` or `full` records **no payload** (the field stays empty), because there is none to show. The
-  levels only take effect for records you hand to `SinkManager::recordResult()` yourself with a `payload` context;
-- `effect_id`, `campaign_id`, `origin_type`, `origin_id` and `notification` are empty in the table and the log lines.
+### The payload level
 
-Payload levels, when a payload is supplied: `none` writes nothing (default); `keys` writes only the dotted key names
-(`aps.alert.title`, never a value; list indexes are dropped; at most 200 keys); `full` writes the redacted payload,
-replaced by `{"truncated":true,"bytes":N}` when its JSON exceeds 8192 bytes.
+`log.payload` works on the manager's send path (`send()`, `queue()` through the relay, and the other pipeline users). The
+payload is the **JSON body of the last attempt made for that destination**, as it was sent to the provider. A destination
+that never reached the network (skipped by a gate, refused by the pre-flight, expired before sending) has no payload, and
+its `payload` field stays empty at every level. With the default `none` the payload is never decoded or copied, so the
+level costs nothing when off.
+
+| Level | What a record carries |
+|---|---|
+| `none` (default) | no payload (only `payload_bytes`, the size of the body) |
+| `keys` | the dotted key names only, never a value: `aps.alert.title`, `aps.alert.body`, `order` for APNs; `message.token`, `message.notification.title`, `message.data.order` for FCM. List indexes are dropped; at most 200 keys, each cut to 128 characters |
+| `full` | the payload with every value passed through the redactor; replaced by `{"truncated":true,"bytes":N}` when the redacted JSON exceeds 8192 bytes |
+
+**What is redacted at `full`** (replaced by `[redacted]` or a typed placeholder such as `[redacted:secret]`):
+
+- the secrets of that attempt, wherever they appear inside a string: the provider **bearer token**, the **receipt marker**
+  (`mp_r`) the package adds when receipts are on, and the **destination's own token**;
+- any value stored under a key whose name contains `token`, `secret`, `password`, `authorization`, `cookie`, `receipt`,
+  `credential`, `api_key`, `bearer`, `channel_id` and similar (so the FCM `message.token` field and an app field called
+  `debug_token` are masked by name);
+- strings shaped like a bearer header, a JWT or a PEM private key.
+
+The same redaction is applied to every text field of every record.
+
+**What is not redacted.** Anything else in the message is shown as the application wrote it: titles, bodies and the
+values of `data`. In particular, **another device's token that your code places in the message data is just data to the
+package**: only the token of the destination the record is about is known as a secret, so a different device's token under a
+neutral key name (`notify_device`, say) is written as is. Do not put tokens, personal data or secrets in a push if you log at
+`full`; use `keys` when the values must not be written anywhere. Sinks persist or ship what they are given: with the
+`database` sink the payload is stored in the `payload` column.
 
 ### The `log` sink
 

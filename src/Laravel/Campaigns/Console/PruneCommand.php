@@ -4,13 +4,11 @@ declare(strict_types=1);
 
 namespace Padosoft\MobilePush\Laravel\Campaigns\Console;
 
-use Illuminate\Database\Query\Builder;
-use Padosoft\MobilePush\Laravel\Campaigns\CampaignStatus;
 
 final class PruneCommand extends CampaignCommand
 {
     protected $signature = 'mobile-push:campaign:prune
-        {--days= : Delete finished campaigns older than this many days (default: mobile-push.campaigns.retention_days)}
+        {--days= : Delete completed or cancelled campaigns (failed ones are resumable and kept) older than this many days (default: mobile-push.campaigns.retention_days)}
         {--scope= : Only this tenant scope (default: every scope)}
         {--pretend : Only count what would be deleted; change nothing}
         {--json : Print the result as JSON}';
@@ -23,7 +21,7 @@ final class PruneCommand extends CampaignCommand
         $scope = $this->optionString('scope') === null ? null : $this->scope();
         $pretend = (bool) $this->option('pretend');
 
-        $count = $pretend ? $this->count($days, $scope) : $this->manager()->prune($days, $scope);
+        $count = $pretend ? $this->manager()->countPrunable($days, $scope) : $this->manager()->prune($days, $scope);
 
         if ($this->wantsJson()) {
             $this->json(['ok' => true, 'pretend' => $pretend, 'days' => $days, 'scope' => $scope, $pretend ? 'would_delete' : 'deleted' => $count]);
@@ -36,19 +34,5 @@ final class PruneCommand extends CampaignCommand
         }
 
         return self::EXIT_OK;
-    }
-
-    /** Mirrors CampaignStore::pruneFinished(), without deleting. */
-    private function count(int $days, ?string $scope): int
-    {
-        $store = $this->store();
-        $cutoff = $store->nowMs() - $days * 86_400_000;
-
-        return $store->connection()->table($this->settings()->table)
-            ->whereIn('status', CampaignStatus::values(CampaignStatus::Completed, CampaignStatus::Cancelled, CampaignStatus::Failed))
-            ->when($scope !== null, static fn (Builder $q): Builder => $q->where('scope', $scope))
-            ->where(static fn (Builder $q): Builder => $q->where('finished_at', '<', $cutoff)
-                ->orWhere(static fn (Builder $q): Builder => $q->whereNull('finished_at')->where('updated_at', '<', $cutoff)))
-            ->count();
     }
 }

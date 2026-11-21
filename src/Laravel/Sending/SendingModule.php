@@ -17,6 +17,7 @@ use Padosoft\MobilePush\Core\Policy\SafeModeGuard;
 use Padosoft\MobilePush\Core\Privacy\Redactor;
 use Padosoft\MobilePush\Core\Privacy\TokenIndex;
 use Padosoft\MobilePush\Core\Retry\RetryPolicy;
+use Padosoft\MobilePush\Core\Transport\Curl\CurlPoolRegistry;
 use Padosoft\MobilePush\Core\Transport\Curl\CurlTransport;
 use Padosoft\MobilePush\Core\Transport\Transport;
 use Padosoft\MobilePush\Laravel\Contracts\PushDispatcher;
@@ -29,7 +30,7 @@ use Psr\Log\LoggerInterface;
  * (singleton, also bound as PushDispatcher, facade MobilePush).
  *
  * Bindings:
- *  - Transport: the real CurlTransport (tests rebind FakeTransport with app()->instance(Transport::class, ...)
+ *  - Transport: the real CurlTransport, its pool registry capped by `transport.max_pools` (tests rebind FakeTransport with app()->instance(Transport::class, ...)
  *    before the first send);
  *  - Guards: breakers, throttle gates and rate buckets on the container's GuardStore, configured from
  *    `mobile-push.guards`, WITHOUT a rate ceiling (the manager's per-provider senders apply guards.rate.fcm and
@@ -53,7 +54,13 @@ final class SendingModule implements Module
             return SendingSettings::fromArray(is_array($config) ? $config : []);
         });
 
-        $app->singleton(Transport::class, static fn (): Transport => new CurlTransport);
+        // The pool registry of the process is capped by `transport.max_pools`; the shared process registry (default
+        // cap) is kept when the value is the default, so every CurlTransport of the process still shares its pools.
+        $app->singleton(Transport::class, static function (Application $app): Transport {
+            $max = $app->make(SendingSettings::class)->transportMaxPools;
+
+            return new CurlTransport($max === CurlPoolRegistry::DEFAULT_MAX_POOLS ? null : new CurlPoolRegistry($max));
+        });
 
         // The official endpoints for the application environment (overrides only outside production). Used by modules
         // that build their own clients on the driver's profiles (Live Activities channel management).
@@ -105,6 +112,7 @@ final class SendingModule implements Module
 
                 return $resolver;
             },
+            static fn (string $abstract): mixed => $app->make($abstract),
         ));
 
         $app->singleton(PushManager::class, static fn (Application $app): PushManager => new PushManager(

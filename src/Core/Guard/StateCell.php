@@ -7,6 +7,11 @@ namespace Padosoft\MobilePush\Core\Guard;
 /**
  * Optimistic read-modify-write of a small integer map through GuardStore::compareAndSet().
  *
+ * Guard state is a protection, not a prerequisite. When the store says it is unavailable (ReportsAvailability), the
+ * update FAILS OPEN: the mutation is computed on what could be read (normally nothing) and its result is returned
+ * without being stored, so sending continues with process-local decisions only. When the store is alive but the
+ * compare-and-set keeps losing, the update gives up with GuardStateContended and nothing is granted.
+ *
  * @internal
  */
 final class StateCell
@@ -18,6 +23,8 @@ final class StateCell
      *
      * @param  callable(array<string, int>): array{0: array<string, int>, 1: T}  $mutate  receives the current state (empty when absent)
      * @return T
+     *
+     * @throws GuardStateContended
      */
     public static function update(GuardStore $store, string $key, int $ttlSeconds, callable $mutate): mixed
     {
@@ -30,9 +37,12 @@ final class StateCell
             if ($store->compareAndSet($key, $raw, json_encode($next, JSON_THROW_ON_ERROR), $ttlSeconds)) {
                 return $result;
             }
+            if ($store instanceof ReportsAvailability && ! $store->available()) {
+                return $result;
+            }
         }
 
-        throw new \RuntimeException('Guard state is too contended to update.');
+        throw new GuardStateContended;
     }
 
     /** @return array<string, int> */

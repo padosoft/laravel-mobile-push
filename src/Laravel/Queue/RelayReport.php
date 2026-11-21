@@ -23,6 +23,8 @@ final readonly class RelayReport
         public array $followUps = [],
         /** True when the run stopped at its chunk deadline with work possibly left. */
         public bool $deadlineReached = false,
+        /** @var list<string> the effects whose deliveries this run claimed */
+        public array $effects = [],
     ) {}
 
     public function recordedAs(string $status): int

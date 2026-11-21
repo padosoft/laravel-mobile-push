@@ -1,18 +1,20 @@
 # Execution modes and endpoints
 
-**Purpose.** Defines when the package may touch the network, how a live send outside production is authorized, what the three non-network-or-validation outcomes mean, and which hosts a request may reach. Source: `docs/PLAN.md` §4.6. The mode and endpoint classes under `src/Core/Policy` are being written by a parallel task; this document states the contract from the plan and does not describe their code.
+**Purpose.** Defines when the package may touch the network, how a live send outside production is authorized, what the three non-network-or-validation outcomes mean, and which hosts a request may reach. Source: `docs/PLAN.md` §4.6 and the code in `src/Core/Policy`. The user-facing description is `docs/safe-mode.md`.
 
 ## Rules
 
 1. **Modes.** `mode = auto | live | simulate`. `auto` means `live` only when `APP_ENV=production`, otherwise `simulate`. In `simulate` no network is touched and the status is `Simulated`.
-2. **Live outside production** requires both `live.allow` on the binding **and** the destination listed in `live.only_to` (test destinations only).
-3. Topics, broadcast and channel management stay blocked unless explicitly authorized.
+2. **Live outside production** requires both `live.allow` on the binding **and** the destination listed in `live.only_to` (test destinations only; the tokens are converted to keyed indexes at load time and never stored raw).
+3. Topics and conditions (`live.allow_topics`), broadcast channels (`live.allow_broadcast`) and channel management (`live.allow_channel_management`) stay blocked outside production unless explicitly authorized on the binding.
 4. An inconsistency **blocks**. It never degrades to a live send.
 5. The check happens before any external effect and covers the CLI, workers, failover, fallback and channel management.
 6. `->validateOnly()` (FCM) is an authenticated remote call and yields `Validated`.
 7. APNs has no dry run. `preview` is local and does not verify credentials. `doctor --live` is a real request, and it is described as one.
-8. **Official hosts by role**, not free URLs: sending, channel management, broadcast publication (`broadcast_publish_host = standard | api-broadcast`, one of the two hosts Apple documents), and the Google token exchange. TLS and host, CA verification are always on.
-9. Test endpoints can be injected only with test credentials and never in production. A message cannot name a host.
+8. **Official hosts by role** (`EndpointRole`, resolved by `EndpointCatalog`), not free URLs: sending, channel management, broadcast publication (connection key `broadcast_host = standard | api-broadcast`, `ApnsBroadcastHost`), and the Google token exchange. TLS and host, CA verification are always on.
+9. Test endpoints (`EndpointOverride`) are accepted only when the caller affirms throw-away test credentials **and** the application environment is not production; origins are `https://host[:port]` with no path. A message cannot name a host.
+10. **Every operation is asked first**: `SafeModeGuard::decide()` takes an `OperationKind` (`Send`, `Validate`, `ChannelManagement`, `BroadcastPublish`, `TopicSubscription`, `Probe`) and returns a `SafeModeDecision`. The CLI commands, workers, failover, the environment probe and channel management all go through it.
+11. **A blocked live send is `Skipped` with `ReasonCode::PolicySafeMode`**; simulation is `Simulated` (decided at the orchestrator's resolutions, see `README.md`).
 
 ## Status meaning
 
@@ -33,8 +35,10 @@
 
 ## Types
 
-- Names from plan §5: `Policy\ExecutionMode`, `Policy\EndpointCatalog`, `Policy\EligibilityGuard`, `Policy\CapabilityMatrix` (the first two and the capability matrix already have files under `src/Core/Policy`, still in progress; `EligibilityGuard` has no file yet)
-- In code now: `Outcome\SendStatus::Simulated`, `Validated`; `Outcome\ReasonCode::Simulated`, `Validated`, `PolicySafeMode`; `Outcome\ClassifyContext::$validateOnly`
+- `Policy\ExecutionMode`, `ModeResolver` (mode and `APP_ENV` to live or simulate), `SafeModeGuard`, `SafeModeDecision`, `OperationKind`, `LiveSettings` (per-binding `allow`, `only_to`, `allow_topics`, `allow_broadcast`, `allow_channel_management`)
+- `Policy\EndpointCatalog`, `EndpointRole`, `EndpointOverride`, `ApnsBroadcastHost`, `CapabilityMatrix`
+- `Outcome\SendStatus::Simulated`, `Validated`; `ReasonCode::Simulated`, `Validated`, `PolicySafeMode`; `ClassifyContext::$validateOnly`
+- Eligibility checks that run before the network live in the Laravel layer (`DeviceEligibility`, the consent gates) and in `Core\Driver\DestinationGate`; there is no `Policy\EligibilityGuard` class.
 
 ## Worked cases
 
@@ -46,7 +50,7 @@
 **B. Staging with live allowed, wrong target.**
 - Situation: `live.allow` is on, but the destination is not in `live.only_to`.
 - The package: blocked before any external effect.
-- The caller sees: a blocked result. The plan says "blocca" but does not name the status (see Open points). The closest existing codes are `SendStatus::Skipped` with `ReasonCode::PolicySafeMode`.
+- The caller sees: `SendStatus::Skipped` with `ReasonCode::PolicySafeMode` and a hint that names the missing setting.
 
 **C. FCM dry run.**
 - Situation: a message is sent with `->validateOnly()`.
@@ -56,16 +60,16 @@
 **D. Production config inside a sandbox command.**
 - Situation: a CLI command runs with production configuration in a sandbox.
 - The package: no connection is opened (plan §11 requires this).
-- The caller sees: a blocked or simulated result, with no network trace.
+- The caller sees: a `Skipped` (`PolicySafeMode`) or `Simulated` result, with no network trace.
 
 ## Plan vs code
 
 - The `Simulated`, `Validated` and `Accepted` split matches the code's enum docblocks.
-- Plan §4.6 says a blocked live send is an "incoerenza" that blocks, but does not map it to a status.
+- Plan §4.6 does not map a blocked live send to a status; the code and the orchestrator's resolutions do (rule 11).
+- The plan did not name the test-override settings: they are `EndpointOverride` (used by the test seams of the package), with no config key on purpose.
 
 ## Open points
 
-- Status and `ReasonCode` for a live send blocked by the authorization rules (plan silent).
-- Names of the test-override settings (plan says they exist and are never allowed in production, but does not name them).
-- Which of the two Apple broadcast hosts is operational (plan §13, to verify by integration).
-- Whether `preview` may show the destination host (plan §8 says it never shows bearer, tokens or markers; hosts are not mentioned).
+- Which of the two Apple broadcast hosts Apple operates for a given app (`broadcast_host`): both are documented, the default is `standard`, and neither has been exercised against Apple.
+- Whether `preview` may show the destination host: the command prints the compiled message (headers without authorization, the body, the byte count); it does not print a host. Whether it ever should is not decided.
+- Everything that touches a real provider (`doctor --live`, FCM `validate_only`, channel management) is unverified against Apple and Google.

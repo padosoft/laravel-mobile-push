@@ -9,19 +9,12 @@ use Padosoft\MobilePush\Core\Fcm\Topics\TopicApiException;
 use Padosoft\MobilePush\Core\Fcm\Topics\TopicBatchResult;
 use Padosoft\MobilePush\Core\Fcm\Topics\TopicSubscriptionClient;
 use Padosoft\MobilePush\Core\Identity\BindingRef;
-use Padosoft\MobilePush\Core\Identity\Destination;
 use Padosoft\MobilePush\Core\Identity\Destination\FcmFid;
 use Padosoft\MobilePush\Core\Identity\Destination\FcmToken;
 use Padosoft\MobilePush\Core\Identity\Destination\FcmTopic;
 use Padosoft\MobilePush\Core\Identity\Provider;
 use Padosoft\MobilePush\Core\Outcome\ReasonCode;
-use Padosoft\MobilePush\Core\Policy\EndpointCatalog;
-use Padosoft\MobilePush\Core\Policy\EndpointRole;
-use Padosoft\MobilePush\Core\Policy\OperationKind;
-use Padosoft\MobilePush\Core\Policy\SafeModeDecision;
-use Padosoft\MobilePush\Core\Policy\SafeModeGuard;
 use Padosoft\MobilePush\Core\Privacy\TokenMasker;
-use Padosoft\MobilePush\Core\Transport\Transport;
 use Padosoft\MobilePush\Laravel\Sending\PushManager;
 
 /**
@@ -192,29 +185,11 @@ final class FcmTopicSubscriptionCommand extends OpsCommand
             if ($manager->providerOf($scope, $name) !== Provider::Fcm) {
                 throw new UsageError('The connection "'.$name.'" is not an FCM connection.');
             }
-            $binding = $manager->binding($name, $scope);
-            $driver = $manager->driver($binding);
+
+            return [$manager->topicSubscriptions($name, $scope), $manager->binding($name, $scope)];
         } catch (PushException $e) {
             throw new UsageError($e->getMessage());
         }
-
-        $provider = $driver->tokenProvider(0) ?? throw new UsageError('The connection "'.$binding->name.'" has no OAuth credential for the topic API.');
-        $options = $manager->defaultOptions($binding);
-        $guard = $this->laravel->make(SafeModeGuard::class);
-        $endpoints = $this->laravel->bound(EndpointCatalog::class) ? $this->laravel->make(EndpointCatalog::class) : new EndpointCatalog($options->applicationEnvironment ?? '');
-
-        $client = new TopicSubscriptionClient(
-            $this->laravel->make(Transport::class),
-            $driver->connectionProfile(EndpointRole::FcmApi, 0),
-            $endpoints,
-            $binding->appId,
-            $provider,
-            static fn (OperationKind $operation, Destination $destination): SafeModeDecision => $guard->decide(
-                $options->effectiveMode, $options->applicationEnvironment ?? '', $binding, $destination, $operation, $options->live,
-            ),
-        );
-
-        return [$client, $binding];
     }
 
     /** @return list<FcmToken|FcmFid> */

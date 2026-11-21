@@ -23,5 +23,7 @@ final readonly class InspectedCredential
         public ?ServiceAccountInfo $serviceAccount = null,
         /** FCM Application Default Credentials: verified by Google at the first token exchange, not inspectable here. */
         public bool $applicationDefault = false,
+        /** An external Signer (KMS / HSM): the key is never seen, so its type and expiry cannot be verified here. */
+        public bool $externalSigner = false,
     ) {}
 }

@@ -71,7 +71,7 @@ final class ProbeEnvironmentCommand extends OpsCommand
 
                 return self::SUCCESS;
             }
-            $this->emitCooling($coolingRows, $selection['cooling_total']);
+            $this->emitCooling($coolingRows, $selection['cooling_total'], $prober->cooldownHours());
 
             return self::SUCCESS;
         }
@@ -110,7 +110,7 @@ final class ProbeEnvironmentCommand extends OpsCommand
                 $this->components->warn($selection['more'].' more quarantined device(s) were not probed (limit '.$limit.'). Run the command again for the next batch.');
             }
             if ($selection['cooling_total'] > 0) {
-                $this->components->warn($selection['cooling_total'].' device(s) were skipped because they were probed less than '.(string) config('mobile-push.devices.probe.cooldown_hours', 24).' hour(s) ago (--ignore-cooldown overrides, after a confirmation).');
+                $this->components->warn($selection['cooling_total'].' device(s) were skipped because they were probed less than '.$prober->cooldownHours().' hour(s) ago (--ignore-cooldown overrides, after a confirmation).');
             }
             if ($stopped) {
                 $this->components->error('The run was stopped by an authentication error: the signing key may be limited to one environment. No further device was contacted.');
@@ -130,14 +130,14 @@ final class ProbeEnvironmentCommand extends OpsCommand
     }
 
     /** @param  list<ProbeRow>  $rows */
-    private function emitCooling(array $rows, int $total): void
+    private function emitCooling(array $rows, int $total, int $hours): void
     {
         if ($this->wantsJson()) {
             $this->emitJson(['rows' => array_map(static fn (ProbeRow $r): array => $r->toArray(), $rows), 'stopped' => false, 'not_probed_over_limit' => 0, 'cooling_down' => $total]);
 
             return;
         }
-        $this->components->info($total.' quarantined device(s) were probed less than '.(string) config('mobile-push.devices.probe.cooldown_hours', 24).' hour(s) ago: nobody was contacted.');
+        $this->components->info($total.' quarantined device(s) were probed less than '.$hours.' hour(s) ago: nobody was contacted.');
         $this->table(['Device', 'Token', 'App', 'From', 'To', 'Outcome', 'Detail'], array_map(
             static fn (ProbeRow $r): array => [$r->deviceId, $r->maskedToken, $r->appId, $r->from, $r->to ?? '-', $r->outcome->value, $r->detail],
             $rows,

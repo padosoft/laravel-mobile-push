@@ -60,6 +60,9 @@ return [
     |   team_id           Apple team id (10 characters)
     |   key_id            id of the .p8 key (token auth)
     |   key               secret source of the .p8 key (token auth)
+    |   signer            optional (token auth): container binding or class name of a
+    |                     Padosoft\MobilePush\Core\Auth\Signer (ES256, raw R||S) that keeps the key in a KMS/HSM.
+    |                     Replaces key (never read); key_id is optional and must match the signer's key id
     |   certificate       secret source of the PEM certificate (may also contain the key)  (certificate auth)
     |   certificate_key   secret source of the private key when it is a separate file       (certificate auth)
     |   passphrase        the key passphrase, as a string or a secret source                (certificate auth)
@@ -169,6 +172,7 @@ return [
         'max_idle_seconds' => (int) env('MOBILE_PUSH_MAX_IDLE_SECONDS', 3600),
         'proxy' => env('MOBILE_PUSH_PROXY'),                                 // e.g. http://proxy.internal:3128
         'ca_bundle' => env('MOBILE_PUSH_CA_BUNDLE'),                         // path of a CA bundle; null = system
+        'max_pools' => (int) env('MOBILE_PUSH_TRANSPORT_MAX_POOLS', 32),     // per-process cap of connection pools (>= 1)
     ],
 
     /*
@@ -589,6 +593,22 @@ return [
         'audiences' => [
             // 'newsletter' => App\Push\NewsletterAudience::class,
         ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Scheduled maintenance
+    |--------------------------------------------------------------------------
+    | Once a day the package schedules the prune commands of the modules that are enabled
+    | (deliveries:prune on the durable profile, devices:prune, logs:prune with the database sink,
+    | live-activity:prune, campaign:prune) and credentials:check, which always runs: with alerts.enabled off
+    | it sends nothing, it only computes the findings (see its exit code and mobile-push:health).
+    | withoutOverlapping() always; onOneServer() only when the default cache store is shared (redis, ...).
+    | Needs the scheduler running (schedule:run every minute). The sweepers and alerts are scheduled apart.
+    */
+    'maintenance' => [
+        'schedule' => (bool) env('MOBILE_PUSH_MAINTENANCE_SCHEDULE', true),
+        'daily_at' => env('MOBILE_PUSH_MAINTENANCE_DAILY_AT', '03:17'),                // HH:MM, scheduler time zone
     ],
 
     /*

@@ -115,6 +115,7 @@ final class ConfigSchema
                 self::k('connections.*.team_id', 'string', null, null, 'APNs: Apple team id (10 characters).', 'sending'),
                 self::k('connections.*.key_id', 'string', null, null, 'APNs token auth: id of the .p8 key.', 'sending'),
                 self::k('connections.*.key', 'secret source', null, null, 'APNs token auth: the .p8 key.', 'sending'),
+                self::k('connections.*.signer', 'string|null', null, null, 'APNs token auth: container binding or class name of a Padosoft\\MobilePush\\Core\\Auth\\Signer (algorithm ES256, signature as raw 64-byte R||S, keyId()) that keeps the key in a KMS/HSM. When set, key is not required and never read, the key id comes from the signer (a key_id that differs is a ConfigurationException) and team_id is still required. Not available for FCM. The credential cannot be inspected: expiry not verifiable.', 'sending'),
                 self::k('connections.*.certificate', 'secret source', null, null, 'APNs certificate auth: the PEM certificate (may also contain the key).', 'sending'),
                 self::k('connections.*.certificate_key', 'secret source', null, null, 'APNs certificate auth: the private key when it is a separate file.', 'sending'),
                 self::k('connections.*.passphrase', 'string|secret source', null, null, 'APNs certificate auth: the key passphrase.', 'sending'),
@@ -146,6 +147,7 @@ final class ConfigSchema
                 self::k('transport.timeout_ms', 'int', 30000, 'MOBILE_PUSH_TIMEOUT_MS', 'Request timeout, milliseconds (first link of the queue timeout chain).', 'sending', constraint: '>= connect_timeout_ms'),
                 self::k('transport.max_idle_seconds', 'int', 3600, 'MOBILE_PUSH_MAX_IDLE_SECONDS', 'An idle pooled connection is closed after this many seconds.', 'sending', constraint: '>= 1'),
                 self::k('transport.proxy', 'string|null', null, 'MOBILE_PUSH_PROXY', 'HTTP proxy URL, e.g. http://proxy.internal:3128.', 'sending'),
+                self::k('transport.max_pools', 'int', 32, 'MOBILE_PUSH_TRANSPORT_MAX_POOLS', 'Cap of the per-process registry of HTTP/2 connection pools (one pool per provider endpoint, credential and settings). When a new pool would exceed it, the least recently used idle pool is closed. Raise it when one process serves many distinct connections (multi-tenant).', 'sending', constraint: '>= 1'),
                 self::k('transport.ca_bundle', 'string|null', null, 'MOBILE_PUSH_CA_BUNDLE', 'Path of a CA bundle; null = the system store.', 'sending'),
             ]),
             self::section('retry', 'Retry budget', 'One budget per destination, shared by every component that may retry.', [
@@ -315,6 +317,10 @@ final class ConfigSchema
                 self::k('campaigns.retention_days', 'int', 30, null, 'Finished campaigns are pruned after this many days (also the ledger dedupe window of a campaign).', 'campaigns', constraint: '>= 1'),
                 self::k('campaigns.sweeper.schedule', 'bool', true, null, 'Schedule the campaign sweeper every minute.', 'campaigns'),
                 self::k('campaigns.audiences', 'map<string, class-string>', [], null, 'Alias => Audience class.', 'campaigns'),
+            ]),
+            self::section('maintenance', 'Scheduled maintenance', 'Once a day the package schedules the prune commands of the modules that are ENABLED (`mobile-push:deliveries:prune` on the durable profile, `mobile-push:devices:prune`, `mobile-push:logs:prune` with the database log sink, `mobile-push:live-activity:prune`, `mobile-push:campaign:prune` with campaigns on the durable profile) and `mobile-push:credentials:check`, which runs whenever scheduling is on. With `alerts.enabled` off, `credentials:check` sends nothing: it only computes the findings, visible through its exit code (a failed scheduled task on warnings or errors) and `mobile-push:health`. Each event uses withoutOverlapping() (one-hour lock) and onOneServer() only when the default cache store is shared between servers (redis, memcached, database, dynamodb). The application needs the scheduler running (`schedule:run` every minute). The minutely sweepers and the alert evaluation are scheduled separately and are not affected.', [
+                self::k('maintenance.schedule', 'bool', true, 'MOBILE_PUSH_MAINTENANCE_SCHEDULE', 'Schedule the daily maintenance commands; false = schedule none of them (run the commands yourself).', 'integration'),
+                self::k('maintenance.daily_at', 'string', '03:17', 'MOBILE_PUSH_MAINTENANCE_DAILY_AT', 'Time of day of the maintenance run, in the scheduler time zone.', 'integration', constraint: 'HH:MM, 24 hours'),
             ]),
             self::section('observability', 'Laravel Pulse, Telescope and test fakes', 'Optional integrations, active only when the package is installed, and the guard of the test fakes.', [
                 self::k('pulse.enabled', 'bool', false, 'MOBILE_PUSH_PULSE_ENABLED', 'Feed the Pulse card.', 'pulse'),

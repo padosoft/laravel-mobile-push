@@ -624,7 +624,12 @@ final class PendingSend
         $split = $distinctKeys && count($byOwner) + ($ownerless === [] ? 0 : 1) > 1;
         foreach ($byOwner as $subject => $owned) {
             $subject = (string) $subject;
-            $resolved = $resolver->resolve($message, $binding->scope, $subject, $this->effectKey, $binding);
+            // An owner nobody will receive the push for (every device refused by the registry or the application's
+            // eligibility checks) does not consume an increment: it keeps the unresolved message and the send reports
+            // its devices as skipped.
+            $resolved = $this->manager->anyDestinationEligible($binding, $message, $owned, $this->trafficClass, $this->effectKey)
+                ? $resolver->resolve($message, $binding->scope, $subject, $this->effectKey, $binding)
+                : $message;
             $key = $split && $this->effectKey !== null ? $this->effectKey.'/'.substr(hash('sha256', $subject), 0, 16) : $this->effectKey;
             $out[] = [$resolved, $owned, $key];
         }

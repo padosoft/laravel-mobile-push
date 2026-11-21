@@ -13,6 +13,7 @@ use Padosoft\MobilePush\Core\Auth\OpenSslEs256Signer;
 use Padosoft\MobilePush\Core\Auth\PrivateKey;
 use Padosoft\MobilePush\Core\Auth\Secret;
 use Padosoft\MobilePush\Core\Auth\SecretResolver;
+use Padosoft\MobilePush\Core\Auth\Signer;
 use Padosoft\MobilePush\Core\Auth\TokenStore;
 use Padosoft\MobilePush\Core\Credentials\ApnsCertificateInspector;
 use Padosoft\MobilePush\Core\Credentials\ApnsKeyInspector;
@@ -53,12 +54,16 @@ use Psr\Clock\ClockInterface;
  * certificate fingerprint, Google principal + key id), so rotating a key changes the generation while the binding
  * identity (scope, provider, app, environment) stays the same.
  *
+ * An APNs token credential can instead name an external Signer (`signer` = container abstract or class name, for a
+ * KMS / HSM that keeps the key): no key material is read, the key id comes from the signer.
+ *
  * Exception messages never contain secret material: they name keys, never values.
  */
 final readonly class ConnectionFactory
 {
     /**
      * @param  (\Closure(class-string<SecretResolver>): SecretResolver)|null  $resolverFactory  builds SecretResolver classes (container)
+     * @param  (\Closure(string): mixed)|null  $signerFactory  resolves the `signer` value of a connection (container abstract / class name)
      */
     public function __construct(
         private TokenStore $tokens,
@@ -69,6 +74,7 @@ final readonly class ConnectionFactory
         private SendingSettings $settings,
         private string $applicationEnvironment,
         private ?\Closure $resolverFactory = null,
+        private ?\Closure $signerFactory = null,
     ) {}
 
     /**
@@ -182,6 +188,26 @@ final readonly class ConnectionFactory
         $team = $c->string($prefix.'team_id') ?? $primaryTeam;
         $auth = $c->choice($prefix.'auth', ['token', 'certificate'], 'token');
 
+        if ($auth === 'token' && $this->hasSigner($c, $prefix)) {
+            $signer = $this->signer($c, $prefix, 'ES256');
+            $keyId = $signer->keyId();
+            if ($keyId === null || $keyId === '') {
+                throw $c->error($prefix.'signer', 'must report a key id (Signer::keyId()): APNs needs it in the token header');
+            }
+            $configured = $c->string($prefix.'key_id');
+            if ($configured !== null && $configured !== $keyId) {
+                throw $c->error($prefix.'key_id', 'differs from the key id of the signer. Remove key_id (the signer provides it) or point the signer to the key this id belongs to');
+            }
+            $inspected[] = new InspectedCredential($role, externalSigner: true);
+
+            $tracker = new TrackingTokenProvider(new ApnsTokenProvider(
+                $signer, $team, $this->tokens, $this->clock, $scope, $environment->value,
+            ));
+            $trackers[] = $tracker;
+
+            return [ApnsCredential::token($tracker, $team, $keyId), CredentialIdentity::apnsKey($team)];
+        }
+
         if ($auth === 'token') {
             $keyId = $c->requiredString($prefix.'key_id', 'Set it to the 10-character id of the .p8 key (shown next to the key in the Apple developer account)');
             $pem = $this->secret($c, $prefix.'key', true, 'the .p8 key file downloaded from the Apple developer account');
@@ -216,6 +242,45 @@ final readonly class ConnectionFactory
             ApnsCredential::certificate($team, $certificate, $key, $passphrase, $info->environment()),
             new CredentialIdentity(Provider::Apns, $info->teamId ?? $team, $info->environment()),
         ];
+    }
+
+    /** Whether a credential block names an external signer (`signer`), which replaces `key` / `key_id` material. */
+    private function hasSigner(ConfigReader $c, string $prefix): bool
+    {
+        $raw = $c->raw($prefix.'signer');
+
+        return $raw !== null && $raw !== '';
+    }
+
+    /**
+     * The external Signer (KMS / HSM) named by `signer`: a container abstract or class name. Errors name the key,
+     * never the value of anything secret (the signer holds no secret the package can see).
+     */
+    private function signer(ConfigReader $c, string $prefix, string $algorithm): Signer
+    {
+        $key = $prefix.'signer';
+        $name = $c->raw($key);
+        if (! is_string($name) || trim($name) === '') {
+            throw $c->error($key, 'must be the class or container binding name of a Padosoft\\MobilePush\\Core\\Auth\\Signer');
+        }
+        $name = trim($name);
+        if ($this->signerFactory === null) {
+            throw $c->error($key, 'cannot be resolved here: no container is available to build the signer');
+        }
+
+        try {
+            $signer = ($this->signerFactory)($name);
+        } catch (\Throwable $e) {
+            throw $c->error($key, sprintf('could not be resolved from the container (%s)', $e::class));
+        }
+        if (! $signer instanceof Signer) {
+            throw $c->error($key, sprintf('resolved to %s, which does not implement Padosoft\\MobilePush\\Core\\Auth\\Signer', get_debug_type($signer)));
+        }
+        if ($signer->algorithm() !== $algorithm) {
+            throw $c->error($key, sprintf('signs with %s but this credential needs %s', $signer->algorithm(), $algorithm));
+        }
+
+        return $signer;
     }
 
     private function fcm(string $scope, string $name, ConfigReader $c): ResolvedConnection

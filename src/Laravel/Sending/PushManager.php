@@ -8,6 +8,7 @@ use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Database\Eloquent\Model;
 use Padosoft\MobilePush\Core\Driver\DestinationGate;
+use Padosoft\MobilePush\Core\Driver\GateContext;
 use Padosoft\MobilePush\Core\Driver\Driver;
 use Padosoft\MobilePush\Core\Driver\SendItem;
 use Padosoft\MobilePush\Core\Driver\SendOptions;
@@ -30,10 +31,16 @@ use Padosoft\MobilePush\Core\Outcome\ReasonCode;
 use Padosoft\MobilePush\Core\Outcome\SendReport;
 use Padosoft\MobilePush\Core\Outcome\SendResult;
 use Padosoft\MobilePush\Core\Outcome\SendStatus;
+use Padosoft\MobilePush\Core\Fcm\Topics\TopicSubscriptionClient;
 use Padosoft\MobilePush\Core\Policy\Badge\BadgeResolver;
+use Padosoft\MobilePush\Core\Policy\EndpointCatalog;
+use Padosoft\MobilePush\Core\Policy\EndpointRole;
 use Padosoft\MobilePush\Core\Policy\ExecutionMode;
 use Padosoft\MobilePush\Core\Policy\Frequency\Subject;
 use Padosoft\MobilePush\Core\Policy\LiveSettings;
+use Padosoft\MobilePush\Core\Policy\OperationKind;
+use Padosoft\MobilePush\Core\Policy\SafeModeDecision;
+use Padosoft\MobilePush\Core\Policy\SafeModeGuard;
 use Padosoft\MobilePush\Core\Policy\ModeResolver;
 use Padosoft\MobilePush\Core\Privacy\TokenIndex;
 use Padosoft\MobilePush\Laravel\Campaigns\CampaignBuilder;
@@ -247,11 +254,28 @@ final class PushManager implements PushDispatcher
     /**
      * Supply the current tenant scope (e.g. from the authenticated tenant). Never derive it from client payload.
      *
-     * @param  callable(): string  $resolver
+     * `null` restores the default (`mobile-push.scope`), for hosts that set the resolver per request (Octane).
+     *
+     * @param  (callable(): string)|null  $resolver
      */
-    public function scopeUsing(callable $resolver): void
+    public function scopeUsing(?callable $resolver): void
     {
-        $this->scopeResolver = \Closure::fromCallable($resolver);
+        $this->scopeResolver = $resolver === null ? null : \Closure::fromCallable($resolver);
+    }
+
+    /** Undo scopeUsing(): the current scope is `mobile-push.scope` again. Same as scopeUsing(null). */
+    public function forgetScopeResolver(): void
+    {
+        $this->scopeResolver = null;
+    }
+
+    /**
+     * Undo resolveConnectionUsing(): connections come from register() and `mobile-push.connections` only. Cached
+     * drivers resolved through the old resolver are kept until forgetConnection() / flush().
+     */
+    public function forgetConnectionResolver(): void
+    {
+        $this->resolver = null;
     }
 
     /**
@@ -401,6 +425,56 @@ final class PushManager implements PushDispatcher
         return $this->app->make(BadgeResolver::class);
     }
 
+    /**
+     * @internal Whether at least one of these destinations of one owner can pass the SIDE-EFFECT-FREE gates, so the
+     * badge counter is incremented only for an owner somebody will actually receive the push for. Evaluated: the device
+     * registry eligibility and the application's eligibility checks (eligibleUsing()), in the order a send runs them.
+     * NOT evaluated, because they consume budget or depend on the moment of the send: the frequency cap, safe mode and
+     * the guards, and per-send gates added with withGate(). A broken gate counts as "may pass" (the send itself then
+     * decides and reports it). A deferral is not a denial: the push is still going to be sent.
+     *
+     * @param  iterable<Destination|SendItem>  $destinations
+     */
+    public function anyDestinationEligible(BindingRef $binding, Message $message, iterable $destinations, TrafficClass $trafficClass, ?string $effectKey): bool
+    {
+        $gates = [];
+        if ($this->devicesEnabled()) {
+            $gates[] = new DeviceEligibilityGate($this->app->make(DeviceEligibility::class));
+        }
+        foreach ($this->consentGates as [, $gate]) {
+            $gates[] = $gate;
+        }
+
+        $remaining = [];
+        foreach ($destinations as $destination) {
+            $remaining[] = SendItem::of($destination);
+        }
+        if ($gates === [] || $remaining === []) {
+            return $remaining !== [];
+        }
+
+        $context = new GateContext($binding, $message, $trafficClass, $this->now(), $effectKey);
+        try {
+            foreach ($gates as $gate) {
+                $denied = $gate->check($context, $remaining);
+                $kept = [];
+                foreach ($remaining as $position => $item) {
+                    if (! isset($denied[$position]) || $denied[$position]->status !== SendStatus::Skipped) {
+                        $kept[] = $item;
+                    }
+                }
+                $remaining = $kept;
+                if ($remaining === []) {
+                    return false;
+                }
+            }
+        } catch (\Throwable) {
+            return true;
+        }
+
+        return true;
+    }
+
     /** The policy subject of an owner model (morph class + key, as the device registry stores them). */
     private static function ownerSubject(object $owner): string
     {
@@ -456,6 +530,44 @@ final class PushManager implements PushDispatcher
         }
 
         return $current->driver;
+    }
+
+    /**
+     * The FCM topic subscription client of a connection (subscribe / unsubscribe installations, list their
+     * subscriptions), built with the connection's OAuth credential, the transport, the endpoint catalog and the
+     * SAME safe-mode gate a send goes through: in simulate mode, or when live sending is not allowed for that
+     * connection outside production (`live.allow_topics`, `live.only_to`), no request is made and the result says it
+     * was simulated or blocked. `$connection` null = the only FCM connection of the scope.
+     *
+     * @throws ConfigurationException when the connection is not an FCM connection, or none / several FCM connections exist
+     * @throws UnknownConnectionException when the connection does not exist
+     */
+    public function topicSubscriptions(?string $connection = null, ?string $scope = null): TopicSubscriptionClient
+    {
+        $scope = $this->scopeOrCurrent($scope);
+        $name = $connection === null ? $this->routeFor($scope, Provider::Fcm) : self::name($connection);
+        if ($this->providerOf($scope, $name) !== Provider::Fcm) {
+            throw new ConfigurationException(sprintf('The connection "%s" is not an FCM connection: topic subscriptions exist only on FCM.', $name));
+        }
+        $resolved = $this->resolve($scope, $name);
+        $binding = $resolved->binding;
+        $driver = $resolved->driver;
+        $provider = $driver->tokenProvider(0)
+            ?? throw new ConfigurationException(sprintf('The connection "%s" has no OAuth credential for the topic API.', $name));
+        $options = $this->optionsFor($resolved);
+        $guard = $this->app->make(SafeModeGuard::class);
+        $endpoints = $this->app->bound(EndpointCatalog::class) ? $this->app->make(EndpointCatalog::class) : new EndpointCatalog($options->applicationEnvironment ?? '');
+
+        return new TopicSubscriptionClient(
+            $this->senders->transport(),
+            $driver->connectionProfile(EndpointRole::FcmApi, 0),
+            $endpoints,
+            $binding->appId,
+            $provider,
+            static fn (OperationKind $operation, Destination $destination): SafeModeDecision => $guard->decide(
+                $options->effectiveMode, $options->applicationEnvironment ?? '', $binding, $destination, $operation, $options->live,
+            ),
+        );
     }
 
     public function defaultOptions(BindingRef $binding): SendOptions
