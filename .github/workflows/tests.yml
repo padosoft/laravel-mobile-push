@@ -42,8 +42,9 @@ jobs:
         run: vendor/bin/pest --group=slow
 
   # EXPERIMENTAL. The suite is developed on SQLite; these jobs run the database-backed scenarios on MySQL and
-  # PostgreSQL (row locks, SKIP LOCKED claims, unique constraints, keyset pagination). They do not gate a merge until
-  # they have been green for a while: a failure here is a finding to triage, not a broken build.
+  # PostgreSQL (row locks, SKIP LOCKED claims, unique constraints, keyset pagination). tests/TestCase.php empties the
+  # schema before each test on a server database. They do not gate a merge until they have been green for a while: a
+  # failure here is a finding to triage, not a broken build.
   databases:
     runs-on: ubuntu-latest
     continue-on-error: true
@@ -53,8 +54,12 @@ jobs:
         include:
           - db: mysql
             port: 3306
+            username: root
+            password: ''
           - db: pgsql
             port: 5432
+            username: postgres
+            password: postgres
     name: Database scenarios · ${{ matrix.db }} (experimental)
     services:
       mysql:
@@ -81,8 +86,8 @@ jobs:
       DB_HOST: 127.0.0.1
       DB_PORT: ${{ matrix.port }}
       DB_DATABASE: mobile_push_test
-      DB_USERNAME: ${{ matrix.db == 'mysql' && 'root' || 'postgres' }}
-      DB_PASSWORD: ${{ matrix.db == 'mysql' && '' || 'postgres' }}
+      DB_USERNAME: ${{ matrix.username }}
+      DB_PASSWORD: ${{ matrix.password }}
     steps:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2

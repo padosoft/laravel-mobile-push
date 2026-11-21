@@ -125,7 +125,8 @@ it('a read-callback body without a seek callback turns every such re-send into e
     $results = libcurlRawMultiBatch($server, 4, 'readfunction');
 
     expect($results['r2']['errno'])->toBe(CurlErrorClassifier::SEND_FAIL_REWIND)
-        ->and($results['r2']['error'])->toBe("necessary data rewind wasn't possible")
+        // "necessary data rewind wasn't possible" up to libcurl 8.5, "was not possible" in later releases.
+        ->and($results['r2']['error'])->toMatch('/^necessary data rewind (wasn\'t|was not) possible$/')
         ->and(libcurlReceivedPerPath($server)['/r/2'])->toBe(1);
 });
 

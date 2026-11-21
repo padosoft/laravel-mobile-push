@@ -84,8 +84,8 @@ final class CurlPool
     public function recycle(\CurlHandle $handle): void
     {
         if ($this->closed || count($this->spare) >= self::MAX_SPARE_HANDLES) {
-            curl_close($handle);
-
+            // Not kept: the handle is freed when the caller drops its last reference (curl_close() has been a
+            // no-op since PHP 8.0 and is deprecated in 8.5).
             return;
         }
         curl_reset($handle);
@@ -194,10 +194,7 @@ final class CurlPool
         }
         $this->owner = [];
         $this->completed = [];
-        foreach ($this->spare as $handle) {
-            curl_close($handle);
-        }
-        $this->spare = [];
+        $this->spare = [];   // freed here: these were the last references
         curl_multi_close($this->multi);
         $this->negotiated = null;
     }

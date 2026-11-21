@@ -27,7 +27,8 @@ it('binds the ledger contracts to one database ledger', function (): void {
         ->and(app(EffectStore::class))->toBe($ledger)
         ->and(app(DeliveryStore::class))->toBe($ledger)
         ->and(app(MessageVault::class))->toBeInstanceOf(MessageVault::class)
-        ->and($ledger->claimStrategy())->toBe(ClaimStrategy::Optimistic); // SQLite
+        // "auto": SKIP LOCKED where the engine has it (MySQL 8, PostgreSQL), optimistic claims on SQLite.
+        ->and($ledger->claimStrategy())->toBe(DB::connection()->getDriverName() === 'sqlite' ? ClaimStrategy::Optimistic : ClaimStrategy::SkipLocked);
 });
 
 it('loads the ledger migrations only in the durable profile, and only when migrations.autoload is on', function (): void {

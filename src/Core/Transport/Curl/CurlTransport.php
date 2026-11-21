@@ -148,8 +148,7 @@ final class CurlTransport implements Transport
         } finally {
             // Consumer stopped early (or the input threw): abort what is still running, keep the pool healthy.
             foreach ($inflight as $transfer) {
-                $pool->remove($transfer->handle);
-                curl_close($transfer->handle);
+                $pool->remove($transfer->handle);   // freed when $inflight goes out of scope
             }
             if ($inflight !== [] && ! $pool->isClosed()) {
                 // Give libcurl a chance to write the RST_STREAM frames it queued for the cancelled streams.

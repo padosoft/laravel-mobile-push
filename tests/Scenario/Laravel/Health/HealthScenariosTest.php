@@ -123,7 +123,7 @@ it('warns a week before the certificate expires, fails after it, and alerts once
 });
 
 it('reports a dead cache as failed, never throws, and turns metrics into a silent no-op', function (): void {
-    Cache::extend('down', static fn (): Repository => new Repository(new DownStore));
+    Cache::extend('down', fn (): Repository => new Repository(new DownStore));
     World::build($this->app, ['cache.stores.down' => ['driver' => 'down'], 'mobile-push.cache.store' => 'down']);
 
     $report = $this->app->make(HealthInspector::class)->inspect();

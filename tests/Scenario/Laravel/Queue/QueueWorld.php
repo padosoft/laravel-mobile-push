@@ -227,7 +227,10 @@ final class QueueWorld
             $query->where('effect_id', $effectId);
         }
 
-        return $query->groupBy('state')->selectRaw('state, count(*) as n')->pluck('n', 'state')->map(static fn ($n): int => (int) $n)->all();
+        $states = $query->groupBy('state')->selectRaw('state, count(*) as n')->pluck('n', 'state')->map(static fn ($n): int => (int) $n)->all();
+        ksort($states);   // GROUP BY has no order of its own: SQLite happens to return it sorted, PostgreSQL does not
+
+        return $states;
     }
 }
 

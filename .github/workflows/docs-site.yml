@@ -39,7 +39,7 @@ jobs:
           cache-dependency-path: docs-site/package-lock.json
       - name: Install
         run: npm ci
-      - name: Sync check (strict: no pending page, no broken link or anchor)
+      - name: 'Sync check (strict: no pending page, no broken link or anchor)'
         run: node scripts/sync-docs.mjs --check --strict
       - name: Checks (no raw HTML, config consistency, docmd validate)
         run: npm run check

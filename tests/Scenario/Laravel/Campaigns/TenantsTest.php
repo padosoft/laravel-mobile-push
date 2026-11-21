@@ -36,6 +36,7 @@ it('two tenants: same name, same tokens, separate campaigns; ids from the other 
 
     $progressA = $w->campaigns()->progress('default', $a->id);
     $progressB = $w->campaigns()->progress('tenant-b', $b->id);
+    $deviceScopes = DB::table('mobile_push_devices')->pluck('scope', 'id')->mapWithKeys(static fn ($scope, $id): array => [(string) $id => $scope])->all();
     expect($progressA->campaign->status)->toBe(CampaignStatus::Paused)
         ->and($progressA->total())->toBe(50)
         ->and($progressB->campaign->status)->toBe(CampaignStatus::Completed)
@@ -43,7 +44,8 @@ it('two tenants: same name, same tokens, separate campaigns; ids from the other 
         // Every delivery row is in the scope of its campaign, and points at a device of that scope.
         ->and(DB::table('mobile_push_deliveries')->where('campaign_id', $a->id)->where('scope', '!=', 'default')->count())->toBe(0)
         ->and(DB::table('mobile_push_deliveries')->where('campaign_id', $b->id)->where('scope', '!=', 'tenant-b')->count())->toBe(0)
-        ->and(DB::table('mobile_push_deliveries as d')->join('mobile_push_devices as v', 'v.id', '=', 'd.device_id')
-            ->whereColumn('v.scope', '!=', 'd.scope')->count())->toBe(0)
+        // Compared in PHP: device_id is a string column (it also holds ids of other registries), devices.id an integer.
+        ->and(DB::table('mobile_push_deliveries')->get(['device_id', 'scope'])
+            ->filter(static fn (object $d): bool => ($deviceScopes[(string) $d->device_id] ?? null) !== $d->scope)->count())->toBe(0)
         ->and($w->queue->transport->sentCount())->toBe(150);
 });

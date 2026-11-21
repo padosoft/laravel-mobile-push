@@ -63,6 +63,10 @@ function plansOf(array $statements): array
 }
 
 beforeEach(function (): void {
+    if (DB::connection()->getDriverName() !== 'sqlite') {
+        // The assertions read SQLite's EXPLAIN QUERY PLAN wording; other engines plan (and explain) differently.
+        $this->markTestSkipped('Query plans are checked on SQLite only.');
+    }
     CampaignWorld::boot();
     CampaignWorld::seedDevices(1200);
     $this->ledger = app(Ledger::class);

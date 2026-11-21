@@ -56,7 +56,8 @@ it('reports a server certificate from an untrusted CA as NotSent and sends nothi
     $profile = Batch::profile($server, 'untrusted', ['caBundlePath' => $server->foreignCaBundlePath()]);
 
     $byId = Batch::collect($transport->send(Batch::requests($server->baseUrl(), 2), $profile));
-    $stats = $server->stats();
+    // The server learns about the aborted handshake a moment after the client has given up: wait for its count.
+    $stats = $server->waitFor(static fn (array $stats): bool => $stats['tlsErrors'] >= 1);
 
     foreach ($byId as [$exchange]) {
         expect($exchange->failure?->evidence)->toBe(TransportEvidence::NotSent)

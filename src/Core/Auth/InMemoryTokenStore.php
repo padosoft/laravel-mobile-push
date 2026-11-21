@@ -26,7 +26,7 @@ final class InMemoryTokenStore implements TokenStore
     public function get(string $cacheKey): ?AuthToken
     {
         $anchor = $this->anchors[$cacheKey] ?? null;
-        if ($anchor === null || ! $this->entries->contains($anchor)) {
+        if ($anchor === null || ! $this->entries->offsetExists($anchor)) {
             return null;
         }
         $entry = $this->entries[$anchor];

@@ -70,7 +70,11 @@ it('explains a blocked automatic re-send in the message', function (): void {
 });
 
 it('falls back to libcurl\'s description when the error buffer is empty', function (): void {
-    expect(C::classify(C::COULDNT_CONNECT, '  ', 0, 0, 0, 0)->message)->toBe("cURL error 7: Couldn't connect to server");
+    // The wording belongs to the installed libcurl ("Couldn't connect to server" up to 8.5, "Could not connect to
+    // server" in later releases): the contract is that its description is used, whatever it says.
+    expect(C::classify(C::COULDNT_CONNECT, '  ', 0, 0, 0, 0)->message)
+        ->toBe('cURL error 7: '.curl_strerror(C::COULDNT_CONNECT))
+        ->toContain('connect to server');
 });
 
 it('marks locally refused requests as NotSent and not written', function (): void {

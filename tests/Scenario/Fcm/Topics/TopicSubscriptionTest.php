@@ -222,7 +222,13 @@ it('never leaks the registration id or the bearer through exceptions', function 
     try {
         topicClient($transport, $tokens)->subscribe(FcmToken::of(TOPIC_SECRET_TOKEN), FcmTopic::of('news'));
     } catch (TopicApiException $e) {
-        $dump = var_export($e, true).$e->getMessage().$e->getTraceAsString().serialize($e->reason);
+        // What the library put in the exception: its message, its own properties and the arguments of ITS frames.
+        // The frames of the test runner are left out on purpose: with exception_ignore_args off they hold the whole
+        // suite (datasets of other tests included), which is not something this client can leak or protect.
+        $ownFrames = array_values(array_filter($e->getTrace(), static fn (array $frame): bool => str_starts_with($frame['class'] ?? '', 'Padosoft\\MobilePush\\')
+            && ! str_starts_with($frame['class'] ?? '', 'Padosoft\\MobilePush\\Tests\\')));
+        expect($ownFrames)->not->toBeEmpty();
+        $dump = var_export($ownFrames, true).$e->getMessage().var_export($e->getPrevious(), true).var_export($e->status, true).serialize($e->reason);
 
         foreach ([TOPIC_SECRET_TOKEN, 'APA91b', rawurlencode(TOPIC_SECRET_TOKEN), 'ya29.fake-access'] as $secret) {
             expect($dump)->not->toContain($secret);

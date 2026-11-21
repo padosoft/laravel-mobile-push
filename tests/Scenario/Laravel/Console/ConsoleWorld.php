@@ -29,7 +29,8 @@ final class ConsoleWorld
     /** Makes the package cache a lock-capable store that is not "array" or "file", as a production redis would be. */
     public static function sharedCache(): void
     {
-        Cache::extend('shared-test', static fn () => Cache::repository(new ArrayStore));
+        // Not static: Laravel 12's CacheManager::extend() binds the closure to the manager.
+        Cache::extend('shared-test', fn () => Cache::repository(new ArrayStore));
         config()->set('cache.stores.shared', ['driver' => 'shared-test']);
         config()->set('mobile-push.cache.store', 'shared');
     }
