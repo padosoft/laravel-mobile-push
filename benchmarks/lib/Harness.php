@@ -123,6 +123,8 @@ final class Harness
         $ru1 = getrusage();
         $fd1 = self::fdCount();
         $s1 = $server->stats();
+        gc_collect_cycles();
+        $m2 = memory_get_usage();
 
         $lat = $rec->latencies;
         sort($lat);
@@ -145,6 +147,8 @@ final class Harness
             'mem_start_bytes' => $m0,
             'mem_end_bytes' => $m1,
             'mem_growth_bytes' => $m1 - $m0,
+            'mem_growth_after_gc_bytes' => $m2 - $m0,
+            'recorder_bytes_estimate' => count($rec->latencies) * 16,
             'cpu_s' => round($cpu, 3),
             'transport_errors' => $rec->errors,
             'http_status' => $rec->http,
@@ -152,6 +156,7 @@ final class Harness
             'fds' => ['before' => $fd0, 'after' => $fd1],
             'server' => [
                 'connections_opened' => $s1['connections'] - $s0['connections'],
+                'connections_total_since_reset' => $s1['connections'],
                 'tcp_connections' => $s1['tcpConnections'] - $s0['tcpConnections'],
                 'requests_received' => $s1['received'] - $s0['received'],
                 'requests_processed' => $s1['processed'] - $s0['processed'],
@@ -197,6 +202,7 @@ final class Harness
             'max_ms' => $stat($pick(fn ($r) => $r['latency_ms']['max'] ?? null)),
             'peak_over_start_mib' => $stat($pick(fn ($r) => $r['peak_over_start_mib'])),
             'mem_growth_bytes' => $stat($pick(fn ($r) => $r['mem_growth_bytes'])),
+            'mem_growth_after_gc_bytes' => $stat($pick(fn ($r) => $r['mem_growth_after_gc_bytes'])),
             'cpu_s' => $stat($pick(fn ($r) => $r['cpu_s'])),
             'transport_errors' => $stat($pick(fn ($r) => $r['transport_errors'])),
             'connections_opened' => $stat($pick(fn ($r) => $r['server']['connections_opened'])),

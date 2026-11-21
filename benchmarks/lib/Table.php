@@ -38,18 +38,31 @@ final class Table
                 self::med($sum['p99_ms'] ?? [], 1),
                 self::med($sum['max_ms'] ?? [], 1),
                 self::med($sum['peak_over_start_mib'], 2),
-                self::med($sum['mem_growth_bytes'], 0),
+                self::med($sum['mem_growth_bytes'], 0).'/'.self::med($sum['mem_growth_after_gc_bytes'], 0),
+                self::cpuPerReq($c),
                 self::med($sum['transport_errors'], 0),
-                self::med($sum['connections_opened'], 0),
+                self::med($sum['connections_opened'], 0).'/'.(string) ($c['runs'][count($c['runs']) - 1]['server']['connections_total_since_reset'] ?? '?'),
                 (string) ($sum['max_concurrent_streams']['median'] ?? ''),
                 ($sum['rps']['spread_pct'] ?? 0) > 15 ? 'SPREAD '.$sum['rps']['spread_pct'].'%' : '',
             ];
         }
         if ($rows !== []) {
-            $out .= self::render(['case', 'req/run', 'req/s med [min-max]', 'p50 ms', 'p95 ms', 'p99 ms', 'max ms', 'peak MiB', 'growth B', 'errors', 'conns', 'max strm', 'note'], $rows);
+            $out .= self::render(['case', 'req/run', 'req/s med [min-max]', 'p50 ms', 'p95 ms', 'p99 ms', 'max ms', 'peak MiB', 'growth B raw/gc', 'cpu ms/req', 'errors', 'conns new/total', 'max strm', 'note'], $rows);
         }
 
         return $out;
+    }
+
+    private static function cpuPerReq(array $c): string
+    {
+        $v = [];
+        foreach ($c['runs'] as $r) {
+            if (($r['requests'] ?? 0) > 0) {
+                $v[] = $r['cpu_s'] / $r['requests'] * 1000;
+            }
+        }
+
+        return $v === [] ? '-' : number_format(Harness::median($v), 3, '.', '');
     }
 
     private static function med(array $stat, int $dec): string

@@ -63,11 +63,13 @@ it('never holds more connections than the registry limit while 200 tenants are s
     $registry = new CurlPoolRegistry; // default limit (32)
     $transport = new CurlTransport($registry);
     $limit = $registry->maxPools();
+    $socketsBefore = RuntimeProbe::openSockets();
 
     $first = serveTenants($transport, $server, 200, $limit, checkEverySend: true);
     $memAfterFirst = RuntimeProbe::memory();
     $fdAfterFirst = RuntimeProbe::openDescriptors();
     $second = serveTenants($transport, $server, 200, $limit, checkEverySend: true);
+    $memGrowth = RuntimeProbe::memory() - $memAfterFirst; // before reading the (large) server stats into memory
 
     $stats = RuntimeProbe::settle($server, 'openConnections', $limit);
     expect($first['failures'] + $second['failures'])->toBe(0)
@@ -78,10 +80,10 @@ it('never holds more connections than the registry limit while 200 tenants are s
         ->and($stats['received'])->toBe(800)
         ->and($stats['connections'])->toBe(400)          // LRU over a cycle longer than the limit: every revisit reconnects
         ->and($stats['openConnections'])->toBe($limit)
-        ->and(RuntimeProbe::memory() - $memAfterFirst)->toBeLessThan(256 * 1024);
+        ->and($memGrowth)->toBeLessThan(256 * 1024);
     if ($fdAfterFirst !== null) {
         expect(RuntimeProbe::openDescriptors())->toBe($fdAfterFirst)
-            ->and(RuntimeProbe::openSockets())->toBeLessThanOrEqual($limit);
+            ->and(RuntimeProbe::openSockets() - $socketsBefore)->toBe($limit); // one socket per pool kept, nothing else
     }
 
     $transport->close();
@@ -117,15 +119,17 @@ it('soak: 200 tenants served ten times stay within the limit with flat memory an
         $failures += $run['failures'];
         $maxOpen = max($maxOpen, $run['maxOpen']);
     }
+    $memGrowth = RuntimeProbe::memory() - $mem;
+    $fdEnd = RuntimeProbe::openDescriptors();
 
     $stats = RuntimeProbe::settle($server, 'openConnections', $limit);
     expect($failures)->toBe(0)
         ->and($maxOpen)->toBeLessThanOrEqual($limit)
         ->and($stats['received'])->toBe(4000)
         ->and($stats['openConnections'])->toBe($limit)
-        ->and(RuntimeProbe::memory() - $mem)->toBeLessThan(256 * 1024);
+        ->and($memGrowth)->toBeLessThan(256 * 1024);
     if ($fd !== null) {
-        expect(RuntimeProbe::openDescriptors())->toBe($fd);
+        expect($fdEnd)->toBe($fd);
     }
     $transport->close();
 })->group('slow');

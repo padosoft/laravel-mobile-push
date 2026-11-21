@@ -219,7 +219,7 @@ it('lets tests name their own connection', function (): void {
 it('puts everything back when the fake is reset', function (): void {
     $before = app()->environment();
     MobilePush::fake();
-    expect(app()->environment())->toBe('production');
+    expect(app()->environment())->toBe($before); // the fake forces the manager's execution, never the environment
 
     $this->resetMobilePushFakes();
 
