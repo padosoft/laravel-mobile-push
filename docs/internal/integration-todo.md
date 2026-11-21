@@ -215,15 +215,15 @@ Done (scenarios in `tests/Scenario/Laravel/{Ledger,Queue,Campaigns}`, slow ones 
 Remaining (outside W5-P's lane):
 - [x] (done: it uses migrationPaths()) `src/Laravel/Console/Support/InstallPlan.php` lists `DevicesModule::migrationPath()` (the table only): use `DevicesModule::migrationPaths()` so install/doctor show the devices index migration too.
 - [x] (removed) `IntegrationModule`'s `JobProcessed` listener is now redundant with the `RelayRunFinished` listener of `QueueModule` (both go through `EffectSettlement`, deduplicated by its cache marker); it can be removed.
-- [ ] MySQL/PostgreSQL: run `ScalingQueryPlansTest`-like checks with `EXPLAIN` on those engines in the experimental CI jobs (the plans are asserted on SQLite only).
+- [x] (done: `ServerQueryPlansTest`, five scenarios) MySQL/PostgreSQL: run `ScalingQueryPlansTest`-like checks with `EXPLAIN` on those engines in the experimental CI jobs.
 - [x] W9-D: `docs/campaigns.md` / `docs/delivery-profiles.md`: completion is immediate (RelayRunFinished), failed campaigns are not pruned, `IntentResult::$previousEffectId`, follow-up folding (`queue.follow_up_bucket` now also bounds relay follow-ups).
 
 ## State on 2026-11-21 (after the closing pass)
 
 Open:
-- [ ] Query plans on MySQL and PostgreSQL: the scenarios pass on both engines in CI and the whole suite passed on a local PostgreSQL 16; the plans of the claim, audience and lookup queries are asserted on SQLite only (`ScalingQueryPlansTest`). Timing: the campaign scaling guard was run on PostgreSQL 16 (25,000 in 29.7 s, 200,000 in 273.6 s, ratio 9.2 for 8x); MySQL was never timed.
+- [x] Query plans on MySQL and PostgreSQL: `ServerQueryPlansTest` asserts the claim plan and that an index can serve every other hot query (sweeps, health/settlement reads, start/record, audience slice, device lookup); the plan the planner picks at production size was not observed. Timing: the campaign scaling guard was run on PostgreSQL 16 (25,000 in 29.7 s, 200,000 in 273.6 s, ratio 9.2 for 8x); MySQL was never timed.
 - [ ] Everything past authentication against the real providers (an accepted push, `BadDeviceToken`, `Unregistered`, quota answers, Live Activities, broadcast channels, topic subscriptions): needs the owner's credentials and a device.
-- [ ] Octane, Swoole, RoadRunner, FrankenPHP, Horizon, Vapor, Redis/SQS queues, memcached/dynamodb cache stores, MariaDB, a real KMS, `xcrun` on a Mac, Pulse/Telescope in a browser: never run.
+- [ ] Swoole, FrankenPHP, Vapor, SQS queues, memcached/dynamodb cache stores, MariaDB, a real KMS, `xcrun` on a Mac, Pulse/Telescope in a browser: never run. (Redis queue and cache, Horizon, and Octane on RoadRunner run in the `runtimes` CI job.)
 - [ ] `ExpiredProviderToken` refresh path against the real APNs (not observable without a real key).
 
 Verified by hand or by CI in the closing pass (see `progress.md`): install into a fresh Laravel 12 and 13 application (`fresh-app` job), MySQL 8.4 and PostgreSQL 17 scenarios, credential-less probes of APNs sandbox / FCM / Google OAuth from a hosted runner (`providers` workflow), FCM Discovery drift check, mutation testing workflow.

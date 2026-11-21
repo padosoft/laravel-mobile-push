@@ -82,3 +82,45 @@ jobs:
       # Not --parallel: the parallel runner takes a single test path, and each group names several.
       - name: Mutate
         run: vendor/bin/pest --mutate --class='${{ matrix.classes }}' ${{ matrix.tests }}
+
+  # The database ledger again, on PostgreSQL: the mutants that only a server engine can kill (row locks, SKIP LOCKED,
+  # the claim's lock clause, statements SQLite accepts and a server refuses) survive the SQLite group above by
+  # construction. Every test drops and migrates the schema, so this is by far the slowest job of the workflow.
+  mutate-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    name: Mutation · ledger-database on PostgreSQL
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: mobile_push_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s --health-timeout=5s --health-retries=10
+    env:
+      DB_CONNECTION: pgsql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_DATABASE: mobile_push_test
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: curl, openssl, json, intl, pdo_pgsql, pdo_sqlite
+          coverage: pcov
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: composer update --prefer-dist --no-interaction
+      - name: Mutate
+        run: >-
+          vendor/bin/pest --mutate
+          --class='Padosoft\MobilePush\Laravel\Ledger\DatabaseLedger'
+          tests/Unit/Laravel/Ledger tests/Scenario/Laravel/Ledger

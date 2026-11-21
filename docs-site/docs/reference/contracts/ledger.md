@@ -50,7 +50,7 @@ description: "Defines what the two delivery profiles guarantee, what the durable
 
 ## Indexes and query shape (W5-P)
 
-Every hot query reads only the rows it returns, however many final rows the table holds (asserted on SQLite query plans by `tests/Scenario/Laravel/Ledger/ScalingQueryPlansTest.php`; the claim's plan is also asserted on PostgreSQL and MySQL by `ServerQueryPlansTest.php`, in CI):
+Every hot query reads only the rows it returns, however many final rows the table holds (asserted on SQLite query plans by `tests/Scenario/Laravel/Ledger/ScalingQueryPlansTest.php`; on PostgreSQL and MySQL `ServerQueryPlansTest.php` asserts the claim's plan and, for the sweeps, the health and settlement reads, the window writes, the audience slice and the device lookup, that an index can serve the statement, in CI):
 
 | Query | Index |
 |---|---|

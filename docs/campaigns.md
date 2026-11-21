@@ -17,8 +17,9 @@ Related pages: [delivery profiles](delivery-profiles.md), [queues and Horizon](q
 **State of the module.** The campaigns module is present and its tests pass (110 scenario and unit tests: lifecycle,
 audiences, controls, sending rules, tenants, workers killed at exact points, query plans and scaling runs). The larger
 runs are in the `slow` test group. Everything was developed on SQLite with a fake transport; the same scenarios also run
-on **MySQL 8.4 and PostgreSQL 17 in CI** (the query plans of every hot query are asserted on SQLite; on the server engines only the claim's
-plan is; the scaling runs were made on SQLite, plus one on PostgreSQL 16). Nothing was sent to a real provider, and no campaign was
+on **MySQL 8.4 and PostgreSQL 17 in CI** (the query plans of every hot query are asserted on SQLite; on the server engines the claim's plan is
+asserted and every other hot query is checked to have an index that can serve it; the scaling runs were made on SQLite, plus one on
+PostgreSQL 16). Nothing was sent to a real provider, and no campaign was
 run on a Redis or SQS queue, or under Horizon.
 
 The entry point is `MobilePush::campaign($message)`: the manager forwards to the campaigns module and returns the
