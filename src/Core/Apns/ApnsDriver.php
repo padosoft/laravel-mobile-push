@@ -60,6 +60,9 @@ final class ApnsDriver implements Driver
         $environment = $config->binding->environment;
         $this->origins[EndpointRole::ApnsSend->value] = self::origin($this->endpoints->apnsSendUrl($environment, 'origin'));
         $this->origins[EndpointRole::ApnsBroadcastPublish->value] = self::origin($this->endpoints->apnsBroadcastPublishUrl($environment, $config->binding->appId));
+        // Channel management (create/read/delete/list broadcast channels): its own host and port, so its own pool,
+        // with the same credential and transport settings as sending.
+        $this->origins[EndpointRole::ApnsChannelManagement->value] = self::origin($this->endpoints->apnsChannelsUrl($environment, $config->binding->appId));
     }
 
     public function binding(): BindingRef

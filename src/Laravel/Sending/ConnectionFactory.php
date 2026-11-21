@@ -160,7 +160,7 @@ final readonly class ConnectionFactory
             $this->settings->apnsDeviceRateLimitDelay,
         ));
 
-        $roles = [EndpointRole::ApnsSend, EndpointRole::ApnsBroadcastPublish];
+        $roles = [EndpointRole::ApnsSend, EndpointRole::ApnsBroadcastPublish, EndpointRole::ApnsChannelManagement];
 
         return new ResolvedConnection(
             $binding, $driver, $this->live($c, $binding),

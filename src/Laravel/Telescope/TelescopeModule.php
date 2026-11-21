@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Padosoft\MobilePush\Laravel\Telescope;
 
 use Illuminate\Contracts\Config\Repository;
-use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Contracts\Foundation\Application;
 use Padosoft\MobilePush\Laravel\Module;
 

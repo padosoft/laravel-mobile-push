@@ -89,7 +89,7 @@ final class PushWatcher
                 return;
             }
             $binding = $event->binding;
-            $counts = array_filter($event->counts, static fn (mixed $n): bool => is_int($n) && $n > 0);
+            $counts = array_filter($event->counts, static fn (int $n): bool => $n > 0);
 
             $tags = ['mobile-push', 'push:'.self::label($binding->name), 'push-provider:'.$binding->provider->value];
             foreach (array_keys($counts) as $status) {
