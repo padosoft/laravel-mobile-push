@@ -6,11 +6,15 @@ use Padosoft\MobilePush\Core\Policy\LiveSettings;
 use Padosoft\MobilePush\Core\Transport\Response;
 use Padosoft\MobilePush\Core\Transport\TransportEvidence;
 use Padosoft\MobilePush\Core\Transport\TransportFailure;
+use Padosoft\MobilePush\Laravel\LiveActivities\ActivityManager;
 use Padosoft\MobilePush\Laravel\LiveActivities\BroadcastChannel;
+use Padosoft\MobilePush\Laravel\LiveActivities\ChannelRegistry;
 use Padosoft\MobilePush\Laravel\LiveActivities\ChannelState;
+use Padosoft\MobilePush\Laravel\LiveActivities\LiveActivitiesConfig;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\LiveActivities\Console\ConsoleWorld;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\LiveActivities\LiveWorld;
 use Padosoft\MobilePush\Tests\Scenario\Send\SendKit;
+use Symfony\Component\Console\Exception\InvalidOptionException;
 
 require_once __DIR__.'/ConsoleWorld.php';
 
@@ -64,7 +68,7 @@ it('there is no way to publish a start: the option does not exist, and nothing i
     $w->live->channelAnswers = [$w->channelCreated(CH_A)];
     $w->cli('mobile-push:channels:create');
 
-    expect(fn () => $w->cli('mobile-push:channels:publish', ['channel' => CH_A, '--event' => 'start', '--state' => '{}']))->toThrow(RuntimeException::class);
+    expect(fn () => $w->cli('mobile-push:channels:publish', ['channel' => CH_A, '--event' => 'start', '--state' => '{}']))->toThrow(InvalidOptionException::class);
     expect($w->live->pushes())->toBe([]);
 
     [$exit, $output] = $w->cli('mobile-push:channels:publish', ['channel' => CH_A]);
@@ -200,9 +204,9 @@ it('channel management outside production is blocked with the remedy until it is
 it('the local cap is shown and enforced before the network', function (): void {
     $w = $this->world;
     config()->set('mobile-push.live_activities.channels.max_per_environment', 1);
-    app()->forgetInstance(Padosoft\MobilePush\Laravel\LiveActivities\LiveActivitiesConfig::class);
-    app()->forgetInstance(Padosoft\MobilePush\Laravel\LiveActivities\ChannelRegistry::class);
-    app()->forgetInstance(Padosoft\MobilePush\Laravel\LiveActivities\ActivityManager::class);
+    app()->forgetInstance(LiveActivitiesConfig::class);
+    app()->forgetInstance(ChannelRegistry::class);
+    app()->forgetInstance(ActivityManager::class);
     $w->live->channelAnswers = [$w->channelCreated(CH_A)];
     $w->cli('mobile-push:channels:create');
 

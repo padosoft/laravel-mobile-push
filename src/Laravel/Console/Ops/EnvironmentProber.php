@@ -131,7 +131,7 @@ final class EnvironmentProber
     {
         $from = $device->environment;
         $to = $from === Environment::Production ? Environment::Sandbox : Environment::Production;
-        $row = new ProbeRow((string) $device->getKey(), '[unreadable]', $device->app_id, $from->value, $to->value, ProbeOutcome::Unreadable);
+        $row = new ProbeRow(PushDevice::keyOf($device), '[unreadable]', $device->app_id, $from->value, $to->value, ProbeOutcome::Unreadable);
 
         try {
             $destination = PushDevice::build($device->kind, $this->cipher->decrypt($device->token, $device->scope, $device->kind->value));

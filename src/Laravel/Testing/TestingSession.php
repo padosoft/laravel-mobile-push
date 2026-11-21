@@ -206,36 +206,41 @@ final class TestingSession
                 $definitions[] = [$scope, $name, $config];
             }
         }
-        foreach ($fake->extraConnections() as $extra) {
-            $driver = $extra['driver'];
-            $config = $driver === 'fcm'
-                ? ['driver' => 'fcm', 'project_id' => $extra['appId'] ?? TestConnections::PROJECT, 'fake' => true]
-                : ['driver' => 'apns', 'bundle_id' => $extra['appId'] ?? TestConnections::BUNDLE, 'environment' => 'sandbox', 'fake' => true];
-            $manager->register($extra['name'], $config, $extra['scope'] ?? $scope);
-            $definitions[] = [$extra['scope'] ?? $scope, $extra['name'], $config];
+        foreach ($definitions as [$definitionScope, $name, $config]) {
+            $this->seedOne($manager, $fake, $definitionScope, $name, $config);
         }
 
-        $cache = $this->cache($manager);
-        foreach ($definitions as [$definitionScope, $name, $config]) {
-            try {
-                $provider = ConnectionFactory::providerOf($config, $name);
-            } catch (\Throwable) {
-                continue; // an invalid definition fails exactly as it does in production, when it is used
-            }
-            $binding = new BindingRef(
-                $definitionScope,
-                $name,
-                $provider,
-                self::appId($provider, $config),
-                $provider === Provider::Apns && ($config['environment'] ?? null) === 'sandbox' ? Environment::Sandbox : Environment::Production,
-                '1',
-            );
-            $cache->put(
-                hash('sha256', serialize($config)),
-                new ResolvedConnection($binding, new FakeDriver($binding, $fake), new LiveSettings(true, [], true, true, true), [], []),
-            );
-            $this->state->seeded[$definitionScope."\0".$name] = [$definitionScope, $name];
+        $fake->connectWith(function (string $name, string $driver, ?string $appId, ?string $scope) use ($manager, $fake): void {
+            $config = $driver === 'fcm'
+                ? ['driver' => 'fcm', 'project_id' => $appId ?? TestConnections::PROJECT, 'fake' => true]
+                : ['driver' => 'apns', 'bundle_id' => $appId ?? TestConnections::BUNDLE, 'environment' => 'sandbox', 'fake' => true];
+            $scope ??= $manager->currentScope();
+            $manager->register($name, $config, $scope);
+            $this->seedOne($manager, $fake, $scope, $name, $config);
+        });
+    }
+
+    /** @param  array<mixed>  $config */
+    private function seedOne(PushManager $manager, PushFake $fake, string $scope, string $name, array $config): void
+    {
+        try {
+            $provider = ConnectionFactory::providerOf($config, $name);
+        } catch (\Throwable) {
+            return; // an invalid definition fails exactly as it does in production, when it is used
         }
+        $binding = new BindingRef(
+            $scope,
+            $name,
+            $provider,
+            self::appId($provider, $config),
+            $provider === Provider::Apns && ($config['environment'] ?? null) === 'sandbox' ? Environment::Sandbox : Environment::Production,
+            '1',
+        );
+        $this->cache($manager)->put(
+            hash('sha256', serialize($config)),
+            new ResolvedConnection($binding, new FakeDriver($binding, $fake), new LiveSettings(true, [], true, true, true), [], []),
+        );
+        $this->state->seeded[$scope."\0".$name] = [$scope, $name];
     }
 
     private function unseed(): void

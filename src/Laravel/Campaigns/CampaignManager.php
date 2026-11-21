@@ -325,6 +325,7 @@ final readonly class CampaignManager
             }));
     }
 
+    /** @param  \Closure(): void  $callback */
     private function afterCommit(\Closure $callback): void
     {
         $connection = $this->store->connection();

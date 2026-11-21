@@ -36,7 +36,8 @@ use Psr\Log\LoggerInterface;
  *
  * For every result, in this order and each step isolated from the others: the device registry outcome
  * (quarantine / invalidate / last sent, only for destinations with a DestinationRef and only when the devices
- * module is enabled), the send log (SinkManager, with the runtime bearers as `secrets`), the Laravel events.
+ * module is enabled), the send log (SinkManager, with the runtime bearers and this result's receipt marker as
+ * `secrets`), the Laravel events. Metrics and operational alerts are a separate observer (OperationsObserver).
  * Nothing here can change a result or cause a resend: every failure is swallowed, counted and logged by class name
  * only.
  */
@@ -62,6 +63,8 @@ final class SendingObserver implements SendObserver
         private readonly ?SinkManager $sinks,
         private readonly \Closure $secrets,
         private readonly ?LoggerInterface $logger = null,
+        /** Receipt markers issued in this call: handed to the sinks as secrets of their result, never logged. */
+        private readonly ?ReceiptMarkers $markers = null,
     ) {}
 
     public function attemptFinished(AttemptReport $attempt): void
@@ -94,8 +97,11 @@ final class SendingObserver implements SendObserver
             unset($this->attempts[$id]);
         }
 
+        $messageId = $result->meta['message_id'] ?? null;
+        $markers = $this->markers?->take(is_string($messageId) ? $messageId : null) ?? [];
+
         $registryChange = $this->applyToRegistry($result);
-        $this->log($result, $attempt);
+        $this->log($result, $attempt, $markers);
 
         $view = null;
         if ($result->destinationAction !== DestinationAction::None) {
@@ -175,15 +181,18 @@ final class SendingObserver implements SendObserver
         return is_string($change) ? $change : null;
     }
 
-    /** @param  array{duration: float, bytes: int|null, push_type: string|null}|null  $attempt */
-    private function log(SendResult $result, ?array $attempt): void
+    /**
+     * @param  array{duration: float, bytes: int|null, push_type: string|null}|null  $attempt
+     * @param  list<string>  $markers
+     */
+    private function log(SendResult $result, ?array $attempt, array $markers = []): void
     {
         if ($this->sinks === null || ! $this->sinks->isEnabled()) {
             return;
         }
         $sinks = $this->sinks;
         $context = [
-            'secrets' => ($this->secrets)(),
+            'secrets' => [...($this->secrets)(), ...$markers],
             'operation' => $this->validateOnly ? 'validate' : 'send',
             'traffic_class' => $this->trafficClass->value,
         ];

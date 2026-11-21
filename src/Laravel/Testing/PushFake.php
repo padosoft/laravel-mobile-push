@@ -42,8 +42,8 @@ final class PushFake
     /** @var ScriptedOutcome|\Closure(SentPush): (SendStatus|ScriptedOutcome|null) */
     private ScriptedOutcome|\Closure $default;
 
-    /** @var list<array{name: string, driver: string, appId: string|null, scope: string|null}> */
-    private array $extraConnections = [];
+    /** @var (\Closure(string, string, string|null, string|null): void)|null */
+    private ?\Closure $connector = null;
 
     private bool $active = true;
 
@@ -124,7 +124,10 @@ final class PushFake
      */
     public function connection(string $name, string $driver, ?string $appId = null, ?string $scope = null): static
     {
-        $this->extraConnections[] = ['name' => $name, 'driver' => $driver, 'appId' => $appId, 'scope' => $scope];
+        if ($this->connector === null) {
+            throw new \LogicException('This fake is no longer active: declare connections on the fake returned by the last MobilePush::fake().');
+        }
+        ($this->connector)($name, $driver, $appId, $scope);
 
         return $this;
     }
@@ -287,6 +290,9 @@ final class PushFake
     {
         $push = $this->open[$destination] ?? null;
         $outcome = $push === null ? ScriptedOutcome::accepted() : $this->outcomeFor($push);
+        if ($push?->options->validateOnly === true && $outcome->status === SendStatus::Accepted) {
+            $outcome = ScriptedOutcome::validated(); // a validate-only call is never "accepted", as with the real provider
+        }
         $messageId = self::uuid($requestId.spl_object_id($destination));
         $decision = $outcome->toDecision($outcome->status === SendStatus::Accepted ? $messageId : null);
 
@@ -310,12 +316,17 @@ final class PushFake
     public function deactivate(): void
     {
         $this->active = false;
+        $this->connector = null;
     }
 
-    /** @return list<array{name: string, driver: string, appId: string|null, scope: string|null}> @internal */
-    public function extraConnections(): array
+    /**
+     * @param  \Closure(string, string, string|null, string|null): void  $connector
+     *
+     * @internal
+     */
+    public function connectWith(\Closure $connector): void
     {
-        return $this->extraConnections;
+        $this->connector = $connector;
     }
 
     /** @internal */

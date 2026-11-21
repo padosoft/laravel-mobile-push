@@ -16,8 +16,8 @@ use Padosoft\MobilePush\Core\Message\CompileContext;
 use Padosoft\MobilePush\Core\Message\PushMessage;
 use Padosoft\MobilePush\Core\Policy\CapabilityMatrix;
 use Padosoft\MobilePush\Core\Policy\Support;
-use Psr\Clock\ClockInterface;
 use Padosoft\MobilePush\Laravel\Sending\PushManager;
+use Psr\Clock\ClockInterface;
 
 /**
  * Compiles a message locally for a PLACEHOLDER destination: no network, no credential check beyond what resolving a

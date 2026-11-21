@@ -6,12 +6,9 @@ namespace Padosoft\MobilePush\Laravel\Console\Commands;
 
 use Illuminate\Database\Eloquent\Model;
 use Padosoft\MobilePush\Core\Exceptions\PushException;
-use Padosoft\MobilePush\Core\Identity\Destination;
-use Padosoft\MobilePush\Core\Identity\Destination\ApnsDeviceToken;
-use Padosoft\MobilePush\Core\Identity\Destination\FcmToken;
 use Padosoft\MobilePush\Core\Identity\Platform;
 use Padosoft\MobilePush\Core\Identity\Provider;
-use Padosoft\MobilePush\Core\Message\PushMessage;
+use Padosoft\MobilePush\Core\Outcome\SendReport;
 use Padosoft\MobilePush\Core\Outcome\SendResult;
 use Padosoft\MobilePush\Core\Outcome\SendStatus;
 use Padosoft\MobilePush\Core\Privacy\Redactor;
@@ -55,14 +52,14 @@ final class SendCommand extends PushCommand
         $secrets = [];
 
         try {
-            return $this->run($manager, $stdin, $secrets);
+            return $this->dispatchSend($manager, $stdin, $secrets);
         } catch (ConsoleInputException|PushException $e) {
             return $this->failWith((new Redactor($secrets))->providerMessage($e->getMessage()), SendExit::INVALID, 'Nothing was sent.');
         }
     }
 
     /** @param  list<string>  $secrets  filled with the raw tokens so error texts can be scrubbed */
-    private function run(PushManager $manager, StdinReader $stdin, array &$secrets): int
+    private function dispatchSend(PushManager $manager, StdinReader $stdin, array &$secrets): int
     {
         $message = MessageInput::build($this);
 
@@ -238,7 +235,7 @@ final class SendCommand extends PushCommand
     }
 
     /** @param  list<string>  $warnings */
-    private function report(\Padosoft\MobilePush\Core\Outcome\SendReport $report, string $connection, array $warnings): int
+    private function report(SendReport $report, string $connection, array $warnings): int
     {
         $redactor = new Redactor;
         $counts = array_fill_keys(array_map(static fn (SendStatus $s): string => $s->value, SendStatus::cases()), 0);

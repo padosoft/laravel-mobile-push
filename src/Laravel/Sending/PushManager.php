@@ -6,6 +6,7 @@ namespace Padosoft\MobilePush\Laravel\Sending;
 
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Database\Eloquent\Model;
 use Padosoft\MobilePush\Core\Driver\DestinationGate;
 use Padosoft\MobilePush\Core\Driver\Driver;
 use Padosoft\MobilePush\Core\Driver\SendItem;
@@ -24,16 +25,23 @@ use Padosoft\MobilePush\Core\Outcome\ReasonCode;
 use Padosoft\MobilePush\Core\Outcome\SendReport;
 use Padosoft\MobilePush\Core\Outcome\SendResult;
 use Padosoft\MobilePush\Core\Outcome\SendStatus;
+use Padosoft\MobilePush\Core\Policy\Badge\BadgeResolver;
+use Padosoft\MobilePush\Core\Policy\Frequency\Subject;
 use Padosoft\MobilePush\Core\Privacy\TokenIndex;
 use Padosoft\MobilePush\Laravel\Contracts\PushDispatcher;
 use Padosoft\MobilePush\Laravel\Contracts\QueuedSender;
 use Padosoft\MobilePush\Laravel\Devices\DeviceEligibility;
 use Padosoft\MobilePush\Laravel\Devices\DeviceOutcomeApplier;
+use Padosoft\MobilePush\Laravel\Health\MetricsRecorder;
+use Padosoft\MobilePush\Laravel\Health\OpsAlerter;
 use Padosoft\MobilePush\Laravel\Logging\SinkManager;
+use Padosoft\MobilePush\Laravel\Policies\PolicyGates;
+use Padosoft\MobilePush\Laravel\Receipts\ReceiptMarkerIssuer;
 use Padosoft\MobilePush\Laravel\Sending\Events\BindingMismatchDetected;
 use Padosoft\MobilePush\Laravel\Sending\Events\PushBatchCompleted;
 use Padosoft\MobilePush\Laravel\Sending\Gates\ConsentGate;
 use Padosoft\MobilePush\Laravel\Sending\Gates\DeviceEligibilityGate;
+use Padosoft\MobilePush\Laravel\Sending\Gates\DeviceKindsOnly;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -214,6 +222,54 @@ final class PushManager implements PushDispatcher
         return $this->settings;
     }
 
+    // ---------------------------------------------------------------- server-side badge (policies module)
+
+    /**
+     * Reset the server-side badge counter of an owner to 0, typically when the app opens. With
+     * `mobile-push.badge.per_binding` the counter is per connection: name it (null resets the cross-connection
+     * counter only). A no-op without the policies module.
+     */
+    public function resetBadge(object $owner, ?string $connection = null, ?string $scope = null): void
+    {
+        $resolver = $this->badgeResolver();
+        if ($resolver === null) {
+            return;
+        }
+        $scope = $this->scopeOrCurrent($scope);
+        $resolver->counter()->reset($scope, $resolver->subjectKey(self::ownerSubject($owner), $connection === null ? null : $this->binding($connection, $scope)));
+    }
+
+    /** The current server-side badge number of an owner (0 when never incremented or without the policies module). */
+    public function currentBadge(object $owner, ?string $connection = null, ?string $scope = null): int
+    {
+        $resolver = $this->badgeResolver();
+        if ($resolver === null) {
+            return 0;
+        }
+        $scope = $this->scopeOrCurrent($scope);
+
+        return $resolver->counter()->current($scope, $resolver->subjectKey(self::ownerSubject($owner), $connection === null ? null : $this->binding($connection, $scope)));
+    }
+
+    /** @internal The badge resolver of the policies module, or null when it is not installed. */
+    public function badgeResolver(): ?BadgeResolver
+    {
+        if (! class_exists(BadgeResolver::class) || ! $this->app->bound(BadgeResolver::class)) {
+            return null;
+        }
+
+        return $this->app->make(BadgeResolver::class);
+    }
+
+    /** The policy subject of an owner model (morph class + key, as the device registry stores them). */
+    private static function ownerSubject(object $owner): string
+    {
+        if ($owner instanceof Model) {
+            return Subject::owner($owner->getMorphClass(), (string) $owner->getKey());
+        }
+        throw new ConfigurationException(sprintf('A badge belongs to an owner model (Eloquent), %s given.', get_debug_type($owner)));
+    }
+
     // ---------------------------------------------------------------- PushDispatcher
 
     public function binding(string $connection, ?string $scope = null): BindingRef
@@ -229,12 +285,22 @@ final class PushManager implements PushDispatcher
         }
 
         $options ??= $this->optionsFor($current);
-        $observer = $this->observer($current, $options);
+        $markers = null;
+        if ($options->receiptMarker !== null) {
+            // A marker only for destinations with a ledger delivery id, remembered so the log sinks can redact it.
+            $markers = new ReceiptMarkers;
+            $destinations = $markers->watch($destinations);
+            $options = $options->withReceiptMarker($markers->wrap($options->receiptMarker));
+        }
+        $observer = $this->observer($current, $options, $markers);
         $started = hrtime(true);
 
-        $report = $this->senders->for($current->binding->provider)
-            ->withObserver($observer)
-            ->send($current->driver, $message, $destinations, $options);
+        $sender = $this->senders->for($current->binding->provider)->withObserver($observer);
+        $operations = $this->operations($current->binding, $options->trafficClass);
+        if ($operations !== null) {
+            $sender = $sender->withObserver($operations);
+        }
+        $report = $sender->send($current->driver, $message, $destinations, $options);
 
         return new SendReport($this->completing($report, $current->binding, $options->trafficClass, $started));
     }
@@ -360,13 +426,15 @@ final class PushManager implements PushDispatcher
             $recordAs, $trafficClass, false, $this->settings->perResultEvents, $this->events(), $this->index,
             null, $this->sinks(), static fn (): array => [], $this->logger(),
         );
+        $operations = $recordAs === null ? null : $this->operations($recordAs, $trafficClass);
         $reason = Reason::of(ReasonCode::BindingMismatch, null, $hint);
 
-        $results = (static function () use ($destinations, $reason, $observer): \Generator {
+        $results = (static function () use ($destinations, $reason, $observer, $operations): \Generator {
             foreach ($destinations as $value) {
                 $item = SendItem::of($value);
                 $result = new SendResult($item->destination, SendStatus::Skipped, $reason, deliveryId: $item->deliveryId);
                 $observer?->record($result, $item);
+                $operations?->record($result);
                 yield $result;
             }
         })();
@@ -393,6 +461,12 @@ final class PushManager implements PushDispatcher
         return $current->binding->sameIdentityAs($binding) ? $current : $current->binding;
     }
 
+    /**
+     * The default options of a connection: execution mode, live settings, retry policy, the gates (registry
+     * eligibility, then the application's consent, then the enabled sending policies) and, when the receipts module
+     * is active (receipts enabled + durable profile), the receipt-marker callback. The callback is used only for
+     * destinations that carry a ledger delivery id (see send()), so the synchronous path never issues a marker.
+     */
     private function optionsFor(ResolvedConnection $connection): SendOptions
     {
         return new SendOptions(
@@ -401,22 +475,69 @@ final class PushManager implements PushDispatcher
             configuredMode: $this->settings->mode,
             live: $connection->live,
             retryPolicy: $this->settings->retry,
+            receiptMarker: $this->receiptMarker($connection->binding),
             gates: $this->gates(),
         );
     }
 
-    /** @return list<DestinationGate> */
+    /**
+     * Order matters: a destination that is not eligible (or did not consent) must never consume a unit of a cap.
+     * Registry eligibility and the policy gates only see device-registry kinds (DeviceKindsOnly): Live Activity
+     * transitions, topics and broadcasts are neither looked up in the devices table nor frequency-capped. The
+     * application's consent check sees every destination (it receives the typed destination and decides).
+     *
+     * @return list<DestinationGate>
+     */
     private function gates(): array
     {
         $gates = [];
         if ($this->devicesEnabled()) {
             $gates[] = new DeviceEligibilityGate($this->app->make(DeviceEligibility::class));
         }
+        $gates = [...$gates, ...$this->consentGates];
+        foreach ($this->policyGates() as $gate) {
+            $gates[] = $gate instanceof DeviceKindsOnly ? $gate : new DeviceKindsOnly($gate);
+        }
 
-        return [...$gates, ...$this->consentGates];
+        return $gates;
     }
 
-    private function observer(ResolvedConnection $connection, SendOptions $options): SendingObserver
+    /** @return list<DestinationGate> the enabled sending-policy gates of the policies module (frequency cap) */
+    private function policyGates(): array
+    {
+        if (! class_exists(PolicyGates::class) || ! $this->app->bound(PolicyGates::class)) {
+            return [];
+        }
+
+        return $this->app->make(PolicyGates::class)->gates();
+    }
+
+    /** @return (\Closure(Destination, string): ?string)|null */
+    private function receiptMarker(BindingRef $binding): ?\Closure
+    {
+        if (! class_exists(ReceiptMarkerIssuer::class) || ! $this->app->bound(ReceiptMarkerIssuer::class)) {
+            return null;
+        }
+        if ($this->config('mobile-push.receipts.enabled', false) !== true || $this->settings->deliveryProfile !== 'durable') {
+            return null;
+        }
+
+        return $this->app->make(ReceiptMarkerIssuer::class)->callback($binding->scope);
+    }
+
+    /** Metrics + operational alerts for one call; null when the health module is not installed. */
+    private function operations(BindingRef $binding, TrafficClass $trafficClass): ?OperationsObserver
+    {
+        $metrics = class_exists(MetricsRecorder::class) && $this->app->bound(MetricsRecorder::class) ? $this->app->make(MetricsRecorder::class) : null;
+        $alerter = class_exists(OpsAlerter::class) && $this->app->bound(OpsAlerter::class) ? $this->app->make(OpsAlerter::class) : null;
+        if ($metrics === null && $alerter === null) {
+            return null;
+        }
+
+        return new OperationsObserver($binding, $trafficClass, $metrics, $alerter, $this->logger());
+    }
+
+    private function observer(ResolvedConnection $connection, SendOptions $options, ?ReceiptMarkers $markers = null): SendingObserver
     {
         $devices = null;
         if ($this->devicesEnabled() && $this->app->bound(DeviceOutcomeApplier::class)) {
@@ -434,6 +555,7 @@ final class PushManager implements PushDispatcher
             $this->sinks(),
             static fn (): array => $connection->bearers(),
             $this->logger(),
+            $markers,
         );
     }
 

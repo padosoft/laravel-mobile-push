@@ -15,7 +15,6 @@ use Padosoft\MobilePush\Core\Credentials\CredentialCheck;
 use Padosoft\MobilePush\Core\Credentials\CredentialIdentity;
 use Padosoft\MobilePush\Core\Credentials\Finding;
 use Padosoft\MobilePush\Core\Credentials\ServiceAccountInspector;
-use Padosoft\MobilePush\Core\Credentials\Severity;
 use Padosoft\MobilePush\Core\Exceptions\ConfigurationException;
 use Padosoft\MobilePush\Core\Exceptions\PushException;
 use Padosoft\MobilePush\Core\Identity\Environment;
