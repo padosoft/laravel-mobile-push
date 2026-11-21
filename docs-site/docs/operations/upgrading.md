@@ -57,7 +57,9 @@ At 1.0 the contracts above become the stable public API in the strict semver sen
 
 ## Not verified
 
-The upgrade path (running one version's migrations over another's data, with queued jobs in flight) has no automated test yet; the plan names migration upgrade tests as a release-quality item. Until it does, treat each minor upgrade of a durable-profile installation as something to rehearse on a copy of your database.
+What is tested: `UpgradeMigrationsTest` installs the durable profile with the first generation of migration files only (as an application that published its migrations before the two index migrations existed), does real work on that schema (30 devices registered, 120 deliveries queued, a worker holding ten leases, some of them recorded), then upgrades the way this page says: `mobile-push:install` again publishes only the two missing files, `migrate` runs exactly those two, no row changes, the worker that held its leases across the upgrade finishes its window, the rest is relayed once, and the two migrations can be rolled back and run again. It runs on SQLite and, in CI, on MySQL 8.4, MariaDB 11.4 and PostgreSQL 17. `ModuleCombinationsTest` builds an application for every combination of the five optional modules with both profiles (64) and takes each through install, migrate, doctor, health, a push and rollback; the one combination the package refuses (receipts with the light profile) is refused before anything is published.
+
+What is not: there is no released version yet, so "upgrade" means the only two schema generations that exist. An upgrade between two **releases**, with their queued job payloads, will need its own test when the second release is cut. Until then, rehearse each upgrade of a durable-profile installation on a copy of your database.
 
 ---
 

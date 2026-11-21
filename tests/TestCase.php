@@ -4,11 +4,21 @@ declare(strict_types=1);
 
 namespace Padosoft\MobilePush\Tests;
 
+use Illuminate\Foundation\Application;
 use Orchestra\Testbench\TestCase as Orchestra;
 use Padosoft\MobilePush\Laravel\MobilePushServiceProvider;
 
 abstract class TestCase extends Orchestra
 {
+    /**
+     * For a test that needs the application BUILT on its own configuration (which modules are on, which profile):
+     * set this, then call $this->refreshApplication(). It runs after the configuration is loaded and before the
+     * package's service provider registers, so the modules see it from their first line. Reset after every test.
+     *
+     * @var (\Closure(Application): void)|null
+     */
+    public static ?\Closure $environment = null;
+
     protected function getPackageProviders($app): array
     {
         return [MobilePushServiceProvider::class];
@@ -22,13 +32,16 @@ abstract class TestCase extends Orchestra
      */
     protected function defineEnvironment($app): void
     {
-        if (getenv('MOBILE_PUSH_TEST_STRICT_CACHE') !== '1') {
-            return;
+        if (getenv('MOBILE_PUSH_TEST_STRICT_CACHE') === '1') {
+            $dir = sys_get_temp_dir().'/mobile-push-strict-cache-'.getmypid();
+            $app['config']->set('cache.serializable_classes', false);
+            $app['config']->set('cache.stores.strict-file', ['driver' => 'file', 'path' => $dir, 'lock_path' => $dir]);
+            $app['config']->set('cache.default', 'strict-file');
         }
-        $dir = sys_get_temp_dir().'/mobile-push-strict-cache-'.getmypid();
-        $app['config']->set('cache.serializable_classes', false);
-        $app['config']->set('cache.stores.strict-file', ['driver' => 'file', 'path' => $dir, 'lock_path' => $dir]);
-        $app['config']->set('cache.default', 'strict-file');
+
+        if (self::$environment !== null) {
+            (self::$environment)($app);
+        }
     }
 
     protected function setUp(): void
@@ -58,6 +71,7 @@ abstract class TestCase extends Orchestra
         }
 
         parent::tearDown();
+        self::$environment = null;
     }
 
     private function onServerDatabase(): bool
