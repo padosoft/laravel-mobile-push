@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Aws\DynamoDb\DynamoDbClient;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Sending\SendingWorld;
 
 /*
@@ -10,7 +11,9 @@ use Padosoft\MobilePush\Tests\Scenario\Laravel\Sending\SendingWorld;
  * store they must agree on ONE provider token (the compare-and-swap winner; the losers adopt it) and the permits
  * granted in total must stay within the budget. Exercised on every store that can be run in this container: a real
  * redis-server when its binary exists, the database store on a shared SQLite file, the file store on a shared
- * directory.
+ * directory. Two more stores run where a server for them is announced by the environment (the `backends` CI
+ * workflow): memcached (MOBILE_PUSH_TEST_MEMCACHED=host:port, ext-memcached) and DynamoDB (MOBILE_PUSH_TEST_DYNAMODB=
+ * endpoint of a DynamoDB Local, aws/aws-sdk-php installed).
  */
 
 const CONTENDERS = 8;
@@ -48,6 +51,22 @@ function startRedis(string $dir): ?array
     proc_close($process);
 
     return null;
+}
+
+/** A fresh cache table on the announced DynamoDB endpoint (Laravel's layout: string hash key "key"). */
+function dynamoTable(string $endpoint, string $table): void
+{
+    $client = new DynamoDbClient([
+        'region' => 'us-east-1', 'version' => 'latest', 'endpoint' => $endpoint,
+        'credentials' => ['key' => 'local', 'secret' => 'local'],
+    ]);
+    $client->createTable([
+        'TableName' => $table,
+        'AttributeDefinitions' => [['AttributeName' => 'key', 'AttributeType' => 'S']],
+        'KeySchema' => [['AttributeName' => 'key', 'KeyType' => 'HASH']],
+        'BillingMode' => 'PAY_PER_REQUEST',
+    ]);
+    $client->waitUntil('TableExists', ['TableName' => $table]);
 }
 
 function sharedSqlite(string $path): void
@@ -129,6 +148,22 @@ it('eight processes on a cold shared store agree on one provider token and stay 
         } elseif ($store === 'database') {
             $args['sqlitePath'] = $dir.'/shared.sqlite';
             sharedSqlite($args['sqlitePath']);
+        } elseif ($store === 'memcached') {
+            $server = getenv('MOBILE_PUSH_TEST_MEMCACHED');
+            if (! is_string($server) || $server === '' || ! extension_loaded('memcached')) {
+                $this->markTestSkipped('Set MOBILE_PUSH_TEST_MEMCACHED=host:port (and load ext-memcached) to run the memcached store.');
+            }
+            [$host, $port] = explode(':', $server) + [1 => '11211'];
+            $args['memcached'] = ['host' => $host, 'port' => (int) $port];
+            // The server outlives the test: every run gets its own key prefix.
+            $args['prefix'] = 'mp-race-'.bin2hex(random_bytes(5)).':';
+        } elseif ($store === 'dynamodb') {
+            $endpoint = getenv('MOBILE_PUSH_TEST_DYNAMODB');
+            if (! is_string($endpoint) || $endpoint === '' || ! class_exists(DynamoDbClient::class)) {
+                $this->markTestSkipped('Set MOBILE_PUSH_TEST_DYNAMODB=<endpoint> (and install aws/aws-sdk-php) to run the dynamodb store.');
+            }
+            $args['dynamodb'] = ['endpoint' => $endpoint, 'table' => 'mp_race_'.bin2hex(random_bytes(5))];
+            dynamoTable($endpoint, $args['dynamodb']['table']);
         } else {
             $args['cacheDir'] = $dir.'/cache';
             mkdir($args['cacheDir'], 0700);
@@ -156,7 +191,7 @@ it('eight processes on a cold shared store agree on one provider token and stay 
         ->and($granted)->toBeGreaterThan(BUDGET / 2);                               // and the budget is really used
     // Under this hot loop (8 processes, back-to-back takes, no network in between) some takes may give up with
     // "Guard state is too contended to update" on redis: measured and reported in docs/runtimes.md.
-})->with(['redis', 'database', 'file']);
+})->with(['redis', 'database', 'file', 'memcached', 'dynamodb']);
 
 it('with the shared store unreachable, each process uses its own token and the rate limiter fails open: every take is granted, none throws', function (): void {
     $dir = sys_get_temp_dir().'/mp-cache-down-'.bin2hex(random_bytes(5));
