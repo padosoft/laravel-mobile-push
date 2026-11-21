@@ -14,19 +14,27 @@ use Padosoft\MobilePush\Tests\Support\FakeClock;
  * first. A's guarded UPDATE must then lose on every row B took.
  */
 beforeEach(function (): void {
-    $this->file = tempnam(sys_get_temp_dir(), 'mp-ledger-');
+    // On a server database (the MySQL / PostgreSQL CI jobs) the two workers are two real connections to it; on the
+    // default SQLite they are two connections to one file.
+    $default = (string) config('database.default');
+    $this->onServer = in_array(config("database.connections.{$default}.driver"), ['mysql', 'mariadb', 'pgsql'], true);
+    $this->file = $this->onServer ? null : tempnam(sys_get_temp_dir(), 'mp-ledger-');
     foreach (['ledger_a', 'ledger_b'] as $name) {
-        config()->set("database.connections.{$name}", ['driver' => 'sqlite', 'database' => $this->file, 'prefix' => '', 'foreign_key_constraints' => false]);
+        config()->set("database.connections.{$name}", $this->onServer
+            ? config("database.connections.{$default}")
+            : ['driver' => 'sqlite', 'database' => $this->file, 'prefix' => '', 'foreign_key_constraints' => false]);
     }
 });
 
 afterEach(function (): void {
     DB::purge('ledger_a');
     DB::purge('ledger_b');
-    @unlink($this->file);
+    if ($this->file !== null) {
+        @unlink($this->file);
+    }
 });
 
-it('every delivery is claimed exactly once even when the other worker wins between select and update', function (ClaimStrategy $strategy): void {
+$claimRace = function (ClaimStrategy $strategy): void {
     $clock = new FakeClock;
     $a = DatabaseLedgerWorld::harness('ledger_a', $strategy, $clock);
     $b = DatabaseLedgerWorld::harness('ledger_b', $strategy, $clock, migrate: false);
@@ -61,11 +69,21 @@ it('every delivery is claimed exactly once even when the other worker wins betwe
         ->and(array_unique($all))->toHaveCount(1000)
         ->and(DB::connection('ledger_a')->table('mobile_push_deliveries')->where('lease_owner', 'worker-a')->count())->toBe(count($byA))
         ->and(DB::connection('ledger_a')->table('mobile_push_deliveries')->where('lease_owner', 'worker-b')->count())->toBe(count($byB));
-})->with([
-    // The SKIP LOCKED path cannot be interleaved this way on SQLite: its short transaction holds the single
-    // database write lock, so the other connection waits (that waiting is itself what keeps it exclusive).
-    'optimistic (SQLite, any database)' => [ClaimStrategy::Optimistic],
-]);
+};
+
+it('every delivery is claimed exactly once even when the other worker wins between select and update (optimistic claims)', function () use ($claimRace): void {
+    $claimRace->call($this, ClaimStrategy::Optimistic);
+});
+
+// On SQLite the SKIP LOCKED path cannot be interleaved this way: its short transaction holds the single database
+// write lock, so the other connection waits (that waiting is itself what keeps it exclusive). On MySQL and PostgreSQL
+// worker B claims while worker A holds its row locks: B must skip exactly the rows A selected.
+it('every delivery is claimed exactly once while the other worker claims inside our SKIP LOCKED transaction', function () use ($claimRace): void {
+    if (! $this->onServer) {
+        $this->markTestSkipped('Needs MySQL or PostgreSQL (row locks with SKIP LOCKED).');
+    }
+    $claimRace->call($this, ClaimStrategy::SkipLocked);
+});
 
 it('a stale lease loses to a concurrent reclaim + claim on the other connection', function (): void {
     $clock = new FakeClock;
