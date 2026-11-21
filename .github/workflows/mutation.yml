@@ -55,6 +55,12 @@ jobs:
           - name: ledger-database
             classes: 'Padosoft\MobilePush\Laravel\Ledger\DatabaseLedger'
             tests: tests/Unit/Laravel/Ledger tests/Scenario/Laravel/Ledger
+          - name: safe-mode
+            classes: 'Padosoft\MobilePush\Core\Policy\SafeModeGuard,Padosoft\MobilePush\Core\Policy\ModeResolver,Padosoft\MobilePush\Core\Policy\EndpointCatalog'
+            tests: tests/Unit/Core/Policy tests/Scenario/Policy tests/Scenario/Send
+          - name: privacy
+            classes: 'Padosoft\MobilePush\Core\Privacy'
+            tests: tests/Unit/Core/Privacy tests/Scenario/Privacy
     name: Mutation · ${{ matrix.name }}
     steps:
       - uses: actions/checkout@v4
