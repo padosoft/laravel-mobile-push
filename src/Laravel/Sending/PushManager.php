@@ -31,6 +31,8 @@ use Padosoft\MobilePush\Core\Policy\Frequency\Subject;
 use Padosoft\MobilePush\Core\Policy\LiveSettings;
 use Padosoft\MobilePush\Core\Policy\ModeResolver;
 use Padosoft\MobilePush\Core\Privacy\TokenIndex;
+use Padosoft\MobilePush\Laravel\Campaigns\CampaignBuilder;
+use Padosoft\MobilePush\Laravel\Campaigns\CampaignManager;
 use Padosoft\MobilePush\Laravel\Contracts\PushDispatcher;
 use Padosoft\MobilePush\Laravel\Contracts\QueuedSender;
 use Padosoft\MobilePush\Laravel\Devices\DeviceEligibility;
@@ -134,6 +136,20 @@ final class PushManager implements PushDispatcher
     public function toCondition(string $condition): PendingSend
     {
         return (new PendingSend($this, null, null))->toCondition($condition);
+    }
+
+    /**
+     * A campaign to a large audience (the campaigns module): ->via('ios')->audience(...)->draft() / ->dispatch().
+     * The module's own checks apply when the campaign is created (durable profile and `mobile-push.campaigns.enabled`,
+     * a ConfigurationException that says what to set otherwise).
+     */
+    public function campaign(Message $message): CampaignBuilder
+    {
+        if (! class_exists(CampaignManager::class) || ! $this->app->bound(CampaignManager::class)) {
+            throw new ConfigurationException('Campaigns are not available: the campaigns module is not installed.');
+        }
+
+        return $this->app->make(CampaignManager::class)->campaign($message);
     }
 
     // ---------------------------------------------------------------- configuration at runtime

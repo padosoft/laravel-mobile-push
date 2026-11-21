@@ -267,6 +267,7 @@ MobilePush::fakeTransport();                                                    
 | **RC1 — Live Activities** | **M6** token tipizzati, `start/update/end`, canali e broadcast, documentazione client/server versionata | App iOS di prova e canale isolato: creazione → update → end → delete. Due update simultanei, token ruotato, `end` seguito da un job vecchio |
 | **RC2 — moduli avanzati** | **M7** osservabilità, health, credenziali · **M8** campagne, cap, badge, ripiego, ricevute | Ogni modulo supera il proprio caso del quadro di collaudo (§11) |
 | **1.0** | **M9** benchmark riproducibili, README e documentazione completa | Tutte le porte superate; nessun modulo in anteprima |
+| **Sito docs** | **M10** (aggiunto il 2026-11-21 su richiesta del proprietario) sito di documentazione docmd in `docs-site/`, sul modello di `padosoft/laravel-flow`, da pubblicare su Cloudflare Pages; banner iniziale del package in testa a README e sito | `npm run build` produce il sito senza errori; le pagine del sito sono generate da `README.md` e `docs/*.md` (una sola fonte) e un controllo fallisce se non sono allineate; banner PNG + sorgente SVG in repository |
 
 Dopo la 1.0: driver Web Push, contratto dati per Android Live Updates, e il backlog già concordato (localizzazione per dispositivo, segmenti, preferenze per categoria, programmazione/ore di silenzio, worker dedicato, test A/B, webhook, Huawei HMS, payload cifrato end-to-end, dashboard).
 

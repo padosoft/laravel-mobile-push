@@ -20,10 +20,14 @@ device run exists only in the `slow` test group, which was not part of the verif
 exercised on SQLite with a fake transport: **MySQL and PostgreSQL were not exercised**, nothing was sent to a real
 provider, and the queue was not run on Redis, SQS or Horizon.
 
-What is **not** there: there are no `mobile-push:campaign:*` commands, and no `MobilePush::campaign()` entry point. You
-use `Padosoft\MobilePush\Laravel\Campaigns\CampaignManager` from the container (`app(CampaignManager::class)`), for
-example in your own commands or admin screens. A campaign starts when you `dispatch()` it (or call `start()` on a draft);
-there is no built-in "start at 09:00".
+The entry point is `MobilePush::campaign($message)` (the manager forwards to the campaigns module and throws a
+`ConfigurationException` that says what to set when the module is off or the profile is not durable). Control and
+progress go through `Padosoft\MobilePush\Laravel\Campaigns\CampaignManager`, resolved from the container
+(`app(CampaignManager::class)`). A campaign starts when you `dispatch()` it (or call `start()` on a draft); there is no
+built-in "start at 09:00".
+
+What is **not** there when this page was written: no `mobile-push:campaign:*` console commands (another task was adding
+them; run `php artisan list mobile-push` to see whether your version has them) and no "start later" option.
 
 ## The shape of a campaign
 
@@ -31,10 +35,9 @@ there is no built-in "start at 09:00".
 use Padosoft\MobilePush\Core\Identity\Platform;
 use Padosoft\MobilePush\Core\Message\PushMessage;
 use Padosoft\MobilePush\Laravel\Campaigns\Audience\DeviceAudience;
-use Padosoft\MobilePush\Laravel\Campaigns\CampaignManager;
+use Padosoft\MobilePush\Laravel\Facades\MobilePush;
 
-$campaign = app(CampaignManager::class)
-    ->campaign(PushMessage::make('Black Friday', '-40% today')->policy('marketing'))
+$campaign = MobilePush::campaign(PushMessage::make('Black Friday', '-40% today')->policy('marketing'))
     ->name('black-friday-2026')            // a label for operators, not unique
     ->via('ios')                           // the push connection; default mobile-push.default
     ->audience(DeviceAudience::all()->onPlatform(Platform::Ios))
@@ -248,8 +251,11 @@ What to know:
 - `DeviceAudience` needs an integer primary key on the device model (the default one has).
 - A database index on the devices table for `(binding_identity, id)` was identified as useful for very large device
   tables and is not part of the shipped migration.
-- Measured on SQLite in memory with the fake transport: about 1.2 ms per delivery (5,000 deliveries in about 6 seconds).
-  That measures this implementation on that setup, not a provider and not your database.
+- Measured on SQLite in memory with the fake transport: about 1.2 ms per delivery (5,000 deliveries in about 6 seconds;
+  about 23 seconds for 20,000). The 500,000-device variant in the `slow` group passed but took about 1,436 seconds, **more
+  than linear** against the 20,000 run, and scalability work on the ledger, relay and planner was still in progress when this
+  page was written. These numbers describe this implementation on that setup, not a provider and not your database: size
+  and test your own campaigns before relying on them.
 
 ## Configuration
 
