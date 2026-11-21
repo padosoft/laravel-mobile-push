@@ -26,6 +26,8 @@ use Padosoft\MobilePush\Core\Outcome\SendReport;
 use Padosoft\MobilePush\Core\Outcome\SendResult;
 use Padosoft\MobilePush\Core\Outcome\SendStatus;
 use Padosoft\MobilePush\Core\Policy\Badge\BadgeResolver;
+use Padosoft\MobilePush\Core\Policy\ExecutionMode;
+use Padosoft\MobilePush\Core\Policy\LiveSettings;
 use Padosoft\MobilePush\Core\Policy\Frequency\Subject;
 use Padosoft\MobilePush\Core\Privacy\TokenIndex;
 use Padosoft\MobilePush\Laravel\Contracts\PushDispatcher;
@@ -65,6 +67,10 @@ final class PushManager implements PushDispatcher
 
     /** @var list<ConsentGate> */
     private array $consentGates = [];
+
+    private ?ExecutionMode $forcedMode = null;
+
+    private ?LiveSettings $forcedLive = null;
 
     private readonly ConnectionCache $cache;
 
@@ -220,6 +226,17 @@ final class PushManager implements PushDispatcher
     public function settings(): SendingSettings
     {
         return $this->settings;
+    }
+
+    /**
+     * @internal Testing seam (used only by the testing module): force the execution mode (and optionally the live
+     * settings) of every send's default options, whatever the configuration and the application environment say.
+     * null clears the override. Never call it from application code: forcing `live` bypasses the safe-mode default.
+     */
+    public function forceExecution(?ExecutionMode $mode, ?LiveSettings $live = null): void
+    {
+        $this->forcedMode = $mode;
+        $this->forcedLive = $mode === null ? null : $live;
     }
 
     // ---------------------------------------------------------------- server-side badge (policies module)
@@ -476,7 +493,8 @@ final class PushManager implements PushDispatcher
             trafficClass: TrafficClass::Transactional,
             applicationEnvironment: $this->app->environment(),
             configuredMode: $this->settings->mode,
-            live: $connection->live,
+            mode: $this->forcedMode,
+            live: $this->forcedLive ?? $connection->live,
             retryPolicy: $this->settings->retry,
             receiptMarker: $this->receiptMarker($connection->binding),
             gates: $this->gates(),

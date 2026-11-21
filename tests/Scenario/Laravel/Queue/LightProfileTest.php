@@ -50,7 +50,7 @@ it('queue it and forget: 1,200 tokens become 3 encrypted jobs, and running them 
     }
     expect($sizes)->toBe([500, 500, 200]);
 
-    Artisan::call('queue:work', ['connection' => 'database', '--queue' => 'push', '--stop-when-empty' => true]);
+    Artisan::call('queue:work', ['connection' => 'database', '--queue' => 'push', '--stop-when-empty' => true, '--memory' => 2048]);
 
     expect($w->transport->sentCount())->toBe(1200)
         ->and($w->apnsRequestsPerToken())->toHaveCount(1200)
@@ -73,7 +73,7 @@ it('FCM says slow down: only the deferred destinations travel on, in one new del
     [$original] = QueueWorld::storedJobs();
     $now = $w->kit->clock->now()->getTimestamp();
 
-    Artisan::call('queue:work', ['connection' => 'database', '--queue' => 'push', '--stop-when-empty' => true]);
+    Artisan::call('queue:work', ['connection' => 'database', '--queue' => 'push', '--stop-when-empty' => true, '--memory' => 2048]);
 
     $left = QueueWorld::storedJobs();
     expect($left)->toHaveCount(1)
@@ -90,7 +90,7 @@ it('FCM says slow down: only the deferred destinations travel on, in one new del
     // The provider is back once the delay has passed: the second attempt continues the same budget.
     $w->transport->respondUsing(static fn () => SendKit::fcmOk());
     $w->advance($left[0]['available_at'] - $now);
-    Artisan::call('queue:work', ['connection' => 'database', '--queue' => 'push', '--stop-when-empty' => true]);
+    Artisan::call('queue:work', ['connection' => 'database', '--queue' => 'push', '--stop-when-empty' => true, '--memory' => 2048]);
 
     $perToken = $w->fcmRequestsPerToken();
     $last = array_slice($w->results->results, -2);
