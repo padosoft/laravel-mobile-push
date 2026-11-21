@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
@@ -178,4 +179,34 @@ it('next to a million final rows, health, scopes with work, counts, the receipts
     }
     expect($ledger->health()->due)->toBe(50)
         ->and($ledger->scopesWithWork())->toBe(['default']);
+
+    // On a server engine (the `scaling` workflow), ask the planner what it CHOSE for each of those statements now
+    // that the table holds 1.2 million final rows and its statistics are fresh: none may read the whole table.
+    $driver = DB::connection()->getDriverName();
+    if (in_array($driver, ['pgsql', 'mysql', 'mariadb'], true)) {
+        $table = 'mobile_push_deliveries';
+        DB::statement($driver === 'pgsql' ? 'analyze '.$table : 'analyze table '.$table);
+        $seen = [];
+        $on = true;
+        DB::listen(static function (QueryExecuted $q) use (&$seen, &$on, $table): void {
+            if ($on && str_contains($q->sql, $table) && preg_match('/^(select|update|delete)/i', $q->sql) === 1) {
+                $seen[$q->sql] = $q->bindings;
+            }
+        });
+        foreach ($calls as $call) {
+            $call();
+        }
+        $on = false;
+
+        expect(count($seen))->toBeGreaterThanOrEqual(6);
+        foreach ($seen as $sql => $bindings) {
+            $rows = DB::select(($driver === 'pgsql' ? 'explain (format json) ' : 'explain format=json ').$sql, $bindings);
+            $plan = implode("\n", array_map(static fn (object $row): string => (string) array_values((array) $row)[0], $rows));
+            $wholeTable = $driver === 'pgsql'
+                ? preg_match('/"Node Type": "Seq Scan"[^}]*"Relation Name": "'.$table.'"/s', $plan) === 1
+                : preg_match('/"table_name": "'.$table.'"[^{}]*"access_type": "ALL"|"access_type": "ALL"[^{}]*"table_name": "'.$table.'"/s', $plan) === 1;
+            expect($wholeTable)->toBeFalse('the planner chose to read the whole deliveries table for: '.$sql);
+        }
+        fwrite(STDERR, sprintf("\n   chosen plans checked at 1.2M rows on %s: %d statements, none reads the whole table\n", $driver, count($seen)));
+    }
 })->group('slow');
