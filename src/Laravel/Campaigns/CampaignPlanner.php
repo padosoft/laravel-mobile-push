@@ -96,7 +96,7 @@ final readonly class CampaignPlanner
 
         try {
             [$slice, $intent] = $this->writeSlice($campaign);
-        } catch (CampaignException|IdempotencyConflictException|PrivacyException|ValidationException $e) {
+        } catch (CampaignException|IdempotencyConflictException|ValidationException $e) {
             // Permanent: retrying the same slice cannot succeed. Stop planning (resumable once fixed).
             $this->fail($campaign, $owner, $e);
 
@@ -169,8 +169,14 @@ final readonly class CampaignPlanner
         }
         $effect = $this->ledger->effect($campaign->scope, $campaign->effectId)
             ?? throw new CampaignException('The ledger effect of the campaign no longer exists.');
-        $message = $this->ledger->message($campaign->scope, $campaign->effectId)
-            ?? throw new CampaignException('The message snapshot of the campaign was erased.');
+        try {
+            $message = $this->ledger->message($campaign->scope, $campaign->effectId);
+        } catch (PrivacyException) {
+            $message = null;
+        }
+        if ($message === null) {
+            throw new CampaignException('The message snapshot of the campaign was erased or cannot be decrypted.');
+        }
 
         $audience = $this->store->audience($campaign);
         $slice = $audience->slice(

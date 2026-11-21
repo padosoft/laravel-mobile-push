@@ -44,11 +44,6 @@ final readonly class DeviceAudience implements Audience
         if ($scope !== null && preg_match('/^[A-Za-z_][A-Za-z0-9_]{0,63}$/', $scope) !== 1) {
             throw new \InvalidArgumentException('A device scope must be a method name.');
         }
-        foreach ($scopeParameters as $parameter) {
-            if (! is_scalar($parameter) && $parameter !== null) { // @phpstan-ignore booleanAnd.alwaysFalse
-                throw new \InvalidArgumentException('Device scope parameters must be scalars (they are stored as JSON).');
-            }
-        }
         if (($fromId !== null && $fromId < 1) || ($toId !== null && $toId < 1) || ($fromId !== null && $toId !== null && $fromId > $toId)) {
             throw new \InvalidArgumentException('The id range must be positive and ordered.');
         }

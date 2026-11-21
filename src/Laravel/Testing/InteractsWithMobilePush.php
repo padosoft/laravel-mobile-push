@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Padosoft\MobilePush\Laravel\Testing;
 
+use Illuminate\Foundation\Testing\TestCase;
 use PHPUnit\Framework\Attributes\After;
 
 /**
@@ -13,6 +14,8 @@ use PHPUnit\Framework\Attributes\After;
  *     $wire = $this->fakeMobilePushTransport();        // bytes: what reached the provider?
  *
  * The fakes are switched off after every test.
+ *
+ * @phpstan-require-extends TestCase
  */
 trait InteractsWithMobilePush
 {
@@ -29,7 +32,7 @@ trait InteractsWithMobilePush
     #[After]
     protected function resetMobilePushFakes(): void
     {
-        if (isset($this->app) && $this->app->resolved(TestingSession::class)) {
+        if ($this->app !== null && $this->app->resolved(TestingSession::class)) {
             $this->app->make(TestingSession::class)->reset();
         }
     }
