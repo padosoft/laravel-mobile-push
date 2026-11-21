@@ -11,10 +11,14 @@ final readonly class TokenMasker
     {
         $length = strlen($value);
 
-        return match (true) {
-            $length < 16 => '[masked]',
-            $length < 32 => substr($value, 0, 2).'…'.substr($value, -2),
-            default => substr($value, 0, 6).'…'.substr($value, -4),
-        };
+        // The kept ends are cut by bytes: with anything but single-byte characters that could split a character and
+        // produce a string no JSON encoder accepts. Such a value shows nothing at all.
+        if ($length < 16 || preg_match('/[^\x21-\x7E]/', $value) === 1) {
+            return '[masked]';
+        }
+
+        return $length < 32
+            ? substr($value, 0, 2).'…'.substr($value, -2)
+            : substr($value, 0, 6).'…'.substr($value, -4);
     }
 }

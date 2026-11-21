@@ -84,7 +84,7 @@ Text that came **from a provider** (an FCM `error.message`, an APNs reason, an H
 | **Logs** (log channel, database, OpenTelemetry) | The destination as its keyed index plus a masked form; provider reason sanitized to printable ASCII, 120 characters and redacted; no bearer, no marker. |
 | **Events** (`PushResultProduced`, `PushBatchCompleted`, `DestinationInvalidated`, ...) | A **view** of the destination (kind, index, masked form, registry reference), never the typed destination object, which would export the token if serialized. |
 | **Metrics** (Prometheus) | Bounded labels only: connection, provider, environment, status, reason code, traffic class. Never a user, device or campaign id. Series are capped (`metrics.max_series`, 1000). |
-| **CLI** | Tokens are shown masked everywhere: a value shorter than 16 characters becomes `[masked]`, shorter than 32 `ab…yz`, otherwise `abcdef…wxyz`. `preview` never prints a bearer, a token or a marker. `send` redacts exception text with the tokens it was given. |
+| **CLI** | Tokens are shown masked everywhere: a value shorter than 16 characters becomes `[masked]`, shorter than 32 `ab…yz`, otherwise `abcdef…wxyz`; a value containing anything but printable ASCII is always `[masked]`. `preview` never prints a bearer, a token or a marker. `send` redacts exception text with the tokens it was given. |
 | **Pulse and Telescope** | The same views as the events; the package's raw events are hidden from Telescope's generic event watcher. |
 | **Dumps** | Value objects hide their content in `__debugInfo`. (`var_export` and `serialize` ignore `__debugInfo`: that is why events carry views.) |
 

@@ -96,3 +96,15 @@ it('The allowlist is scoped: an index made for another scope does not match', fu
 
     expect($this->guard->decide(ExecutionMode::Live, 'staging', $this->apns, $this->phone, OperationKind::Send, $live)->allowed)->toBeFalse();
 });
+
+it('Staging with live mode but live.allow off: even an allowlisted device is blocked, with the steps to enable it', function () {
+    $live = new LiveSettings(allow: false, onlyTo: [$this->index->index($this->phone, 'default')], allowChannelManagement: true);
+
+    $device = $this->guard->decide(ExecutionMode::Live, 'staging', $this->apns, $this->phone, OperationKind::Send, $live);
+    $management = $this->guard->decide(ExecutionMode::Live, 'staging', $this->apns, null, OperationKind::ChannelManagement, $live);
+
+    expect($device->allowed)->toBeFalse()->and($device->isBlocked())->toBeTrue()
+        ->and($device->hint)->toBe('Blocked: live sending outside production is not enabled for this binding. To allow it set live.allow=true on the binding and add the test device to live.only_to.')
+        ->and($management->allowed)->toBeFalse()->and($management->isBlocked())->toBeTrue()
+        ->and($management->hint)->toBe('Blocked: live sending outside production is not enabled for this binding. To allow it set live.allow=true on the binding.');
+});

@@ -60,11 +60,10 @@ final readonly class Redactor
         }
 
         $text = (string) preg_replace('/-----BEGIN [A-Z ]*PRIVATE KEY-----.*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)/s', '[redacted:key]', $text);
-        $text = (string) preg_replace('/-----BEGIN [A-Z ]*PRIVATE KEY-----[^\r\n]*/', '[redacted:key]', $text);
         $text = (string) preg_replace('/\b(bearer)\s+[A-Za-z0-9._~+\/=-]{4,}/i', 'Bearer '.self::MASK, $text);
         $text = (string) preg_replace('/\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]*/', '[redacted:jwt]', $text);
         $text = (string) preg_replace('#(/3/device/|/registrations/)[^\s/?\#"\'\\\\<>]+#', '$1'.self::MASK, $text);
-        $text = (string) preg_replace('/("(?:[A-Za-z0-9_-]*(?:token|secret|password|private_key|authorization|receipt|api_key)[A-Za-z0-9_-]*)"\s*:\s*)"(?:[^"\\\\]|\\\\.)*"/i', '$1"'.self::MASK.'"', $text);
+        $text = (string) preg_replace('/("(?:[A-Za-z0-9_-]*(?:'.self::sensitiveKeyPattern().')[A-Za-z0-9_-]*)"\s*:\s*)"(?:[^"\\\\]|\\\\.)*"/i', '$1"'.self::MASK.'"', $text);
         $text = (string) preg_replace('/([?&](?:[A-Za-z0-9_]*(?:token|secret|key|signature|password)[A-Za-z0-9_]*)=)[^&\s"\']+/i', '$1'.self::MASK, $text);
         $text = (string) preg_replace('#(https?://)[^/\s:@]+:[^/\s@]*@#', '$1'.self::MASK.'@', $text);
 
@@ -128,7 +127,7 @@ final readonly class Redactor
             'status' => $response->status,
             'http_version' => $response->httpVersion,
             'headers' => $this->headers($response->headers),
-            'body' => substr($this->providerMessage($response->body), 0, 512),
+            'body' => self::cut($this->providerMessage($response->body), 512),
         ];
     }
 
@@ -182,6 +181,27 @@ final readonly class Redactor
         }
 
         return $out;
+    }
+
+    /**
+     * The same credential-looking key parts as isSensitiveKey(), as a regex alternation for keys found inside JSON
+     * text ("_" also matches "-", as the array rule normalises it). One list for both: a key redacted in an array
+     * must not survive when the same structure is logged as text.
+     */
+    private static function sensitiveKeyPattern(): string
+    {
+        return implode('|', array_map(static fn (string $part): string => str_replace('_', '[_-]', preg_quote($part, '/')), self::SENSITIVE_KEY_PARTS));
+    }
+
+    /** The first $bytes bytes of $text, never ending in the middle of a UTF-8 character (valid input stays valid). */
+    private static function cut(string $text, int $bytes): string
+    {
+        $cut = substr($text, 0, $bytes);
+        for ($i = 0; $i < 3 && $cut !== '' && preg_match('//u', $cut) !== 1 && preg_match('//u', $text) === 1; $i++) {
+            $cut = substr($cut, 0, -1);
+        }
+
+        return $cut;
     }
 
     private static function isSensitiveKey(string $key): bool

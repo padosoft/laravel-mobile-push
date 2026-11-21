@@ -66,7 +66,10 @@ final readonly class EndpointCatalog
             throw new ConfigurationException('The APNs port must be 443 or 2197.');
         }
 
-        if ($override !== null && (! $override->testCredentials || $applicationEnvironment === ModeResolver::PRODUCTION)) {
+        // An unrecognised spelling must fall on the safe side here: "Production", " production" or "prod" is still a
+        // production system, and a custom host is never acceptable there.
+        $production = in_array(strtolower(trim($applicationEnvironment)), [ModeResolver::PRODUCTION, 'prod'], true);
+        if ($override !== null && (! $override->testCredentials || $production)) {
             throw new ConfigurationException('Endpoint overrides are accepted only with test credentials and never in production.');
         }
     }
@@ -141,7 +144,7 @@ final readonly class EndpointCatalog
 
         $path = $parts['path'];
 
-        if (str_contains($path, '//') || preg_match('#/\.\.?(/|$)#', $path) === 1) {
+        if (str_contains($path, '//') || preg_match('#/\.\.?(/|$)#', $path) === 1 || stripos($path, '%2e') !== false) {
             return false;
         }
 
