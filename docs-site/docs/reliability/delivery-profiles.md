@@ -212,6 +212,21 @@ Be precise about these; they are the reason the word "exactly once" does not app
 | A cancel (`forget`, a campaign cancel) arrives while a request is in flight. | The request cannot be recalled; its real outcome is still recorded. Only further attempts are prevented. |
 | `send()` (synchronous). | Not durable at all; see the light-profile table. |
 
+### Measured on MySQL and PostgreSQL
+
+The `scaling` workflow runs the slow scaling guards of the durable profile and of campaigns on GitHub-hosted runners, with a fake transport (no network). The figures below are from the run of 2026-11-21; hosted runners are noisy, so read them as orders of magnitude. The assertions are the ratios, not the absolute times.
+
+| Guard | PostgreSQL 17 | MySQL 8.4, 2 GB buffer pool | MySQL 8.4, 128 MB (image default) |
+|---|---|---|---|
+| Campaign, 25,000 then 200,000 devices (linear = 8 times) | 33.6 s, 293.7 s (8.8 times) | 47.1 s, 430.0 s (9.1 times) | 38.8 s, 630.5 s (16.2 times, **guard failed**) |
+| One effect: seconds per 1,000 destinations at 25,000, then at 200,000 | 1.13, 1.25 (ratio 1.11) | 1.61, 1.91 (ratio 1.18) | 1.43, 2.98 (ratio 2.08, **guard failed**) |
+| One-destination effects: ms per effect for the first 2,000, then for 2,000 after 48,000 | 17.8, 16.4 | 18.0, 19.9 | 17.6, 24.4 |
+| 10,000 effects deferred at the same instant: follow-up relay jobs | 21 | 21 | 21 |
+| `health()`, `scopesWithWork()`, counts, funnel, open-deliveries probe next to 1.2 million final rows | 0.5 to 1.7 ms | 0.6 to 2.1 ms | 0.5 to 1.6 ms |
+| A claim with its reclaim and expiry sweeps next to 1.2 million final rows | 2.2 ms | 3.5 ms | 2.6 ms |
+
+With the 2 GB buffer pool MySQL made about a thousand disk reads for 300 million page requests. With 128 MB the deliveries table and its indexes no longer fit in memory at 200,000 rows, and the per-destination cost doubles: size `innodb_buffer_pool_size` for the ledger. Query plans on these engines are covered by `ServerQueryPlansTest` (see below).
+
 ### Not verified
 
 - **MySQL and PostgreSQL under load.** What was run: the database-backed scenarios (ledger contract in both claim strategies, relay, crash recovery, campaigns, devices, Live Activities, receipts, install) pass on **MySQL 8.4 and PostgreSQL 17 in CI** (and, since 2026-11-21, on **MariaDB 11.4**, concurrency and query-plan scenarios included; the scaling guards and mutation testing were not run there), and the whole suite passed once on a local PostgreSQL 16. One scenario uses two real connections: a second worker claims while the first one is inside its `FOR UPDATE SKIP LOCKED` transaction, and every delivery is claimed exactly once. On MySQL that scenario first failed with a lock wait timeout: at InnoDB's default REPEATABLE READ a locking read also locks index gaps, and the other claimer's `UPDATE` waited for them; the claim transaction now runs at **READ COMMITTED** on MySQL/MariaDB (`SET TRANSACTION ISOLATION LEVEL`, for that transaction only; it is skipped when the claim is called inside a transaction you opened). A second finding came from the scenarios where two connections write at once: when two calls record the same effect key at the same moment, the one that loses the unique index reads the winner's effect back and replays it; at REPEATABLE READ a plain read answered from the transaction's snapshot and did not see it, so that read is now a locking read. The same holds when **your** code calls the package inside its own transaction: registering a device or a Live Activity token, a client report on an activity and a campaign control (start, pause, resume, cancel) are each run in CI inside an open transaction while a second connection commits a change to the same row, on both engines; a re-read after a lost write is a locking read, and a write a unique index may refuse runs in a savepoint (on PostgreSQL it would otherwise abort your whole transaction). What was **not** run: many worker processes at production volume, and MySQL with `binlog_format=STATEMENT` (which does not allow READ COMMITTED writes on InnoDB).
