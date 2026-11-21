@@ -37,6 +37,8 @@ final class LedgerModule implements Module
         '2026_11_20_000010_create_mobile_push_ledger_effects_table.php',
         '2026_11_20_000011_create_mobile_push_ledger_deliveries_table.php',
         '2026_11_20_000012_create_mobile_push_ledger_receipt_columns.php',
+        // W5-P: claim, settlement and sweep indexes (claim order without sorting, effect probe, scopes with work).
+        '2026_11_21_000013_add_mobile_push_ledger_scaling_indexes.php',
     ];
 
     public static function register(Application $app): void

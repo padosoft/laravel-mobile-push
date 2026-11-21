@@ -51,14 +51,39 @@ final readonly class LedgerRules
         return PayloadFingerprint::matches($storedFingerprint, $message, $this->cipher, self::scope($scope));
     }
 
-    /** Registry device id + generation when the destination has a registry reference, otherwise the HMAC index. */
+    /**
+     * The logical destination of a delivery: `dev:<kind>:<device id>` for a registry device, otherwise the HMAC index.
+     *
+     * The device generation is NOT part of the key (since W5-P): one effect has at most one delivery per registry
+     * device, whatever happens to the device between two writes of the same intent (a crashed campaign slice that
+     * runs again after the phone was re-registered). The generation planned is kept in `device_generation` and
+     * checked right before the network (RegistryResolver): a delivery planned for a previous holder of the phone is
+     * skipped (generation_changed) and never reaches the new one.
+     */
     public function logicalKey(Destination $destination, string $scope): string
     {
         $ref = $destination->ref();
 
         return $ref === null
             ? $this->index->index($destination, $scope)
-            : 'dev:'.$destination->kind()->value.':'.$ref->id.':'.$ref->generation;
+            : self::deviceKey($destination->kind()->value, $ref->id);
+    }
+
+    public static function deviceKey(string $kind, string $deviceId): string
+    {
+        return 'dev:'.$kind.':'.$deviceId;
+    }
+
+    /**
+     * The key rows written before W5-P carry for the same registry destination (`dev:<kind>:<id>:<generation>`), or
+     * null for a destination without a registry reference. Writers check it so an intent replayed across the
+     * upgrade does not add a second row next to an old one.
+     */
+    public static function legacyDeviceKey(Destination $destination): ?string
+    {
+        $ref = $destination->ref();
+
+        return $ref === null ? null : 'dev:'.$destination->kind()->value.':'.$ref->id.':'.$ref->generation;
     }
 
     /** @return array<string, mixed> */

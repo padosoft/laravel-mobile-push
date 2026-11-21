@@ -58,12 +58,17 @@ final class EnvironmentProber
         private readonly ClockInterface $clock,
     ) {}
 
+    /** Cooling-down devices listed one by one in a run (the rest are only counted). */
+    public const MAX_COOLING_LINES = 100;
+
     /**
-     * The quarantined APNs device tokens of a scope, oldest first.
+     * The quarantined APNs device tokens of a scope, oldest first. A device probed less than the cooldown ago
+     * (`devices.probe.cooldown_hours`) never takes one of the `$limit` places: it is reported as cooling down, so a
+     * cron that runs every hour moves on to the next devices instead of starving on the same ones.
      *
-     * @return array{devices: list<PushDevice>, more: int}
+     * @return array{devices: list<PushDevice>, cooling: list<PushDevice>, cooling_total: int, more: int}
      */
-    public function select(string $scope, ?string $deviceId, int $limit): array
+    public function select(string $scope, ?string $deviceId, int $limit, bool $ignoreCooldown = false): array
     {
         $class = PushDevice::modelClass();
         $query = (new $class)->newQuery()
@@ -76,10 +81,73 @@ final class EnvironmentProber
         }
 
         $total = (clone $query)->count();
-        /** @var list<PushDevice> $devices */
-        $devices = array_values($query->orderBy((new $class)->getKeyName())->limit($limit)->get()->all());
+        $devices = $cooling = [];
+        $examined = $coolingTotal = 0;
+        foreach ($query->lazyById(100) as $device) {
+            $examined++;
+            if (! $ignoreCooldown && $this->coolingUntil($device) !== null) {
+                $coolingTotal++;
+                if (count($cooling) < self::MAX_COOLING_LINES) {
+                    $cooling[] = $device;
+                }
 
-        return ['devices' => $devices, 'more' => max(0, $total - count($devices))];
+                continue;
+            }
+            $devices[] = $device;
+            if (count($devices) >= $limit) {
+                break;
+            }
+        }
+
+        return ['devices' => $devices, 'cooling' => $cooling, 'cooling_total' => $coolingTotal, 'more' => max(0, $total - $examined)];
+    }
+
+    /** When the device may be probed again, or null when it may be probed now. */
+    public function coolingUntil(PushDevice $device): ?\DateTimeImmutable
+    {
+        $hours = config('mobile-push.devices.probe.cooldown_hours', 24);
+        $hours = is_numeric($hours) ? (int) $hours : 24;
+        $last = is_array($device->metadata) && is_array($device->metadata['environment_probe'] ?? null) ? ($device->metadata['environment_probe']['at'] ?? null) : null;
+        if ($hours <= 0 || ! is_string($last)) {
+            return null;
+        }
+        try {
+            $until = (new \DateTimeImmutable($last))->modify('+'.$hours.' hours');
+        } catch (\Exception) {
+            return null;
+        }
+
+        return \DateTimeImmutable::createFromInterface($this->clock->now()) < $until ? $until : null;
+    }
+
+    /**
+     * One "cooling down" line per device that was probed too recently.
+     *
+     * @param  list<PushDevice>  $devices
+     * @return list<ProbeRow>
+     */
+    public function coolingRows(array $devices): array
+    {
+        $rows = [];
+        foreach ($devices as $device) {
+            $until = $this->coolingUntil($device);
+            $probe = is_array($device->metadata) && is_array($device->metadata['environment_probe'] ?? null) ? $device->metadata['environment_probe'] : [];
+            $from = $device->environment;
+            $to = $from === Environment::Production ? Environment::Sandbox : Environment::Production;
+            try {
+                $masked = TokenMasker::mask($this->cipher->decrypt($device->token, $device->scope, $device->kind->value));
+            } catch (PrivacyException|\InvalidArgumentException|PushException) {
+                $masked = '[unreadable]';
+            }
+            $rows[] = new ProbeRow(PushDevice::keyOf($device), $masked, $device->app_id, $from->value, $to->value, ProbeOutcome::CoolingDown, sprintf(
+                'Probed at %s (%s): not contacted again before %s. Each rejected probe counts against Apple\'s error budget; --ignore-cooldown overrides this after a confirmation.',
+                is_string($probe['at'] ?? null) ? $probe['at'] : 'an earlier run',
+                is_string($probe['outcome'] ?? null) ? $probe['outcome'] : 'outcome not recorded',
+                $until === null ? 'now' : $until->format('Y-m-d H:i:s \\U\\T\\C'),
+            ));
+        }
+
+        return $rows;
     }
 
     /**
@@ -120,11 +188,38 @@ final class EnvironmentProber
             }
 
             $row = $this->probe($item);
+            $this->record($item, $row);
             $stopped = $row->outcome === ProbeOutcome::AuthenticationError;
             $rows[] = $row;
         }
 
         return ['rows' => $rows, 'stopped' => $stopped];
+    }
+
+    /**
+     * Remember in the device row (`metadata.environment_probe`, a JSON column that survives restarts: no new column,
+     * no cache to lose) when it was contacted and what came back. Only a probe that sent a request counts.
+     */
+    private function record(ProbeItem $item, ProbeRow $row): void
+    {
+        $contacted = [ProbeOutcome::Relabelled, ProbeOutcome::StillRejected, ProbeOutcome::Untouched, ProbeOutcome::Conflict, ProbeOutcome::Changed, ProbeOutcome::AuthenticationError];
+        if (! in_array($row->outcome, $contacted, true)) {
+            return;
+        }
+
+        $model = $item->device;
+        $fresh = $model->newQuery()->whereKey($model->getKey())->first();
+        if ($fresh === null) {
+            return;
+        }
+        $metadata = is_array($fresh->metadata) ? $fresh->metadata : [];
+        $metadata['environment_probe'] = [
+            'at' => \DateTimeImmutable::createFromInterface($this->clock->now())->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d\TH:i:s\Z'),
+            'outcome' => $row->outcome->value,
+            'connection' => $item->target?->name,
+        ];
+        $fresh->metadata = $metadata;
+        $fresh->save();
     }
 
     private function item(string $scope, PushDevice $device, ?string $connection): ProbeItem

@@ -29,7 +29,7 @@ final class InstallPlan
     {
         $groups = [];
         if (in_array('devices', $modules, true)) {
-            $groups[] = ['label' => 'devices', 'tag' => DevicesModule::PUBLISH_TAG, 'suffixes' => self::suffixes([DevicesModule::migrationPath()])];
+            $groups[] = ['label' => 'devices', 'tag' => DevicesModule::PUBLISH_TAG, 'suffixes' => self::suffixes(DevicesModule::migrationPaths())];
         }
         if ($profile === 'durable' || in_array('receipts', $modules, true)) {
             $groups[] = ['label' => 'durable ledger'.(in_array('receipts', $modules, true) ? ' and receipts' : ''), 'tag' => LedgerModule::PUBLISH_TAG, 'suffixes' => self::suffixes(LedgerModule::migrationPaths())];

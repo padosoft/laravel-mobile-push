@@ -49,10 +49,10 @@ beforeEach(function () use (&$server): void {
  * Fork a child that runs $child and reports its result (JSON) through a socket pair. $exit: 'kill' ends the child
  * with SIGKILL (no PHP shutdown), 'normal' with exit(0) (PHP shutdown runs and frees the inherited handles).
  *
- * @param  \Closure(): array<mixed>  $child
+ * @param  Closure(): array<mixed>  $child
  * @return array{pid: int, socket: resource}
  */
-function forkChild(\Closure $child, string $exit): array
+function forkChild(Closure $child, string $exit): array
 {
     $pair = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
     if ($pair === false) {

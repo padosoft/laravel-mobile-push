@@ -88,7 +88,9 @@ final class QueueWorld
         }
         if ($devices) {
             config()->set('mobile-push.devices.enabled', true);
-            (require DevicesModule::migrationPath())->up();
+            foreach (DevicesModule::migrationPaths() as $path) {
+                (require $path)->up();
+            }
         }
 
         return $world;

@@ -20,6 +20,7 @@ use Padosoft\MobilePush\Core\Policy\ModeResolver;
 use Padosoft\MobilePush\Core\Privacy\Redactor;
 use Padosoft\MobilePush\Core\Transport\Curl\CurlCapabilities;
 use Padosoft\MobilePush\Laravel\Devices\DevicesModule;
+use Padosoft\MobilePush\Laravel\Integration\ModuleMigrations;
 use Padosoft\MobilePush\Laravel\Ledger\LedgerModule;
 use Padosoft\MobilePush\Laravel\LiveActivities\LiveActivitiesModule;
 use Padosoft\MobilePush\Laravel\Logging\LoggingModule;
@@ -320,7 +321,7 @@ final class Doctor
             }
             $checks[] = $missing === []
                 ? DoctorCheck::ok($s, sprintf('The %s tables exist (%s).', $module, implode(', ', $tables)))
-                : DoctorCheck::failed($s, sprintf('The %s module is enabled but table(s) %s are missing.', $module, implode(', ', $missing)), 'Run php artisan vendor:publish --tag='.$tag.' then php artisan migrate.');
+                : DoctorCheck::failed($s, sprintf('The %s module is enabled but table(s) %s are missing.', $module, implode(', ', $missing)), ModuleMigrations::autoload() ? 'Run php artisan migrate (mobile-push.migrations.autoload is on).' : 'Run php artisan mobile-push:install (or php artisan vendor:publish --tag='.$tag.') then php artisan migrate.');
         }
 
         return $checks;

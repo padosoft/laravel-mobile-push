@@ -27,6 +27,8 @@ enum ProbeOutcome: string
     case AuthenticationError = 'authentication_error';
     /** The run stopped before this device. */
     case NotContacted = 'not_contacted';
+    /** The device was probed less than `devices.probe.cooldown_hours` ago: it was not contacted again. */
+    case CoolingDown = 'cooling_down';
     /** The stored token could not be read. */
     case Unreadable = 'unreadable';
 

@@ -6,6 +6,7 @@ use Padosoft\MobilePush\Core\Transport\ConnectionProfile;
 use Padosoft\MobilePush\Core\Transport\Curl\CurlPoolRegistry;
 use Padosoft\MobilePush\Core\Transport\Curl\CurlTransport;
 use Padosoft\MobilePush\Core\Transport\Exchange;
+use Padosoft\MobilePush\Core\Transport\Request;
 use Padosoft\MobilePush\Tests\Scenario\Runtime\RuntimeProbe;
 use Padosoft\MobilePush\Tests\Support\H2Mock\Batch;
 use Padosoft\MobilePush\Tests\Support\H2Mock\MockServer;
@@ -44,7 +45,7 @@ beforeEach(function () use (&$server): void {
  * A "request" of the simulated runtime: iterate one send() and hand control back after every exchange.
  * The fiber returns every (id, exchange) pair it received, in order.
  *
- * @param  iterable<Padosoft\MobilePush\Core\Transport\Request>  $requests
+ * @param  iterable<Request>  $requests
  */
 function coroutineSend(CurlTransport $transport, iterable $requests, ConnectionProfile $profile, ?int $stopAfter = null): Fiber
 {

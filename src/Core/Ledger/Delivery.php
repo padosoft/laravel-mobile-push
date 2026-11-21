@@ -21,7 +21,7 @@ final readonly class Delivery
         public string $effectId,
         public string $scope,
         public DestinationKind $kind,
-        /** Registry device id + generation (`dev:<id>:<generation>`) or the TokenIndex value. */
+        /** Registry device (`dev:<kind>:<id>`; rows written before W5-P: `dev:<kind>:<id>:<generation>`) or the TokenIndex value. */
         public string $logicalKey,
         /** Registry snapshot (device id, generation, owner) when the destination came from the registry. */
         public ?DestinationRef $deviceRef,

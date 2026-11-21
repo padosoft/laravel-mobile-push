@@ -5,7 +5,11 @@ declare(strict_types=1);
 use Padosoft\MobilePush\Core\Identity\Destination\ApnsDeviceToken;
 use Padosoft\MobilePush\Core\Identity\Destination\FcmToken;
 use Padosoft\MobilePush\Core\Message\PushMessage;
+use Padosoft\MobilePush\Core\Transport\Response;
 use Padosoft\MobilePush\Laravel\Facades\MobilePush;
+use Padosoft\MobilePush\Laravel\Logging\LogRecord;
+use Padosoft\MobilePush\Laravel\Logging\LogSink;
+use Padosoft\MobilePush\Laravel\Logging\SinkManager;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Integration\IntegrationWorld;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Sending\SendingWorld as W;
 
@@ -82,13 +86,13 @@ it('logs the redacted payload at level full, and a token or marker next to the d
 });
 
 /** A sink that only counts (the oracle stays flat). */
-final class CountingPayloadSink implements \Padosoft\MobilePush\Laravel\Logging\LogSink
+final class CountingPayloadSink implements LogSink
 {
     public int $records = 0;
 
     public int $withPayload = 0;
 
-    public function write(\Padosoft\MobilePush\Laravel\Logging\LogRecord ...$records): void
+    public function write(LogRecord ...$records): void
     {
         foreach ($records as $record) {
             $this->records++;
@@ -112,21 +116,21 @@ function payloadVolume(?string $level, int $n = 100_000): array
     config()->set('mobile-push.log.sinks', []);
     if ($level !== null) {
         $sink = new CountingPayloadSink;
-        \Padosoft\MobilePush\Laravel\Logging\SinkManager::extend('counting', static fn () => $sink);
+        SinkManager::extend('counting', static fn () => $sink);
         config()->set('mobile-push.log.sinks', ['counting']);
         config()->set('mobile-push.log.payload', $level);
     }
     $world = IntegrationWorld::install(['connections' => ['ios' => W::apns()]]);
     $transport = $world->send->transport;
     $requests = 0;
-    $transport->respondUsing(static function () use (&$requests, $transport): \Padosoft\MobilePush\Core\Transport\Response {
+    $transport->respondUsing(static function () use (&$requests, $transport): Response {
         if (++$requests % 1000 === 0) {
             $transport->reset();
         }
 
-        return new \Padosoft\MobilePush\Core\Transport\Response(200);
+        return new Response(200);
     });
-    $tokens = (static function () use ($n): \Generator {
+    $tokens = (static function () use ($n): Generator {
         for ($i = 1; $i <= $n; $i++) {
             yield ApnsDeviceToken::of(sprintf('%064x', $i));
         }
@@ -142,8 +146,8 @@ function payloadVolume(?string $level, int $n = 100_000): array
             $peak = max($peak, memory_get_usage());
         }
     });
-    app(\Padosoft\MobilePush\Laravel\Logging\SinkManager::class)->flush();
-    \Padosoft\MobilePush\Laravel\Logging\SinkManager::forgetExtensions();
+    app(SinkManager::class)->flush();
+    SinkManager::forgetExtensions();
 
     return ['growth' => $peak - $baseline, 'results' => $seen, 'sink' => $sink];
 }

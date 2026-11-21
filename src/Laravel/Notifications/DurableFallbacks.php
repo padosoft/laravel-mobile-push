@@ -6,7 +6,7 @@ namespace Padosoft\MobilePush\Laravel\Notifications;
 
 use Illuminate\Contracts\Cache\Factory as CacheFactory;
 use Illuminate\Contracts\Config\Repository as Config;
-use Illuminate\Contracts\Encryption\Encrypter;
+use Illuminate\Contracts\Encryption\StringEncrypter;
 use Illuminate\Notifications\Notification;
 use Padosoft\MobilePush\Core\Ledger\DeliveryStore;
 use Padosoft\MobilePush\Laravel\Integration\EffectSettled;
@@ -45,7 +45,7 @@ final class DurableFallbacks
     public function __construct(
         private readonly Config $config,
         private readonly CacheFactory $cache,
-        private readonly Encrypter $encrypter,
+        private readonly StringEncrypter $encrypter,
         private readonly \Closure $deliveries,
         private readonly \Closure $evaluator,
         private readonly ?LoggerInterface $logger = null,

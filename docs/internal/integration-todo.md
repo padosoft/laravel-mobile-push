@@ -108,9 +108,9 @@ Queue follow-ups: `SendPushJob::failed()` logs to the default logger, not to the
 - Client contract for the docs is in the W3-L report (progress.md) and must be turned into `docs/live-activities.md`.
 
 ### Testing fakes (W4-T) — follow-up after W4-I releases `src/Laravel/Sending`
-- The fakes work through reflection into `PushManager`'s private connection cache and by making `$app->environment()` read `production` while a fake is active (app-wide side effect: host code calling `app()->isProduction()` sees true during a faked test). Replace both with official seams: an execution override on the manager (`forceExecution(?ExecutionMode, ?LiveSettings)`) and a supported way to install/remove a driver for a connection name; then remove the reflection and the environment toggle from `src/Laravel/Testing`.
+- [x] W5-T2: replaced by `PushManager::useDriver()/forgetDriver()`, `forceExecution(..., everyDestination: true)`, `forgetEligibility()`, `unregister()`; the environment is never touched. Was: the fakes work through reflection into `PushManager`'s private connection cache and by making `$app->environment()` read `production` while a fake is active (app-wide side effect: host code calling `app()->isProduction()` sees true during a faked test). Replace both with official seams: an execution override on the manager (`forceExecution(?ExecutionMode, ?LiveSettings)`) and a supported way to install/remove a driver for a connection name; then remove the reflection and the environment toggle from `src/Laravel/Testing`.
 - [x] `PendingSend::options()` dropped `SendOptions::$observers` (passed to W4-I as F1).
-- Runtime `register()` cannot be undone (`unregister`), which the fakes need for cleanup.
+- [x] W5-T2: `PushManager::unregister()`. Was: runtime `register()` cannot be undone (`unregister`), which the fakes need for cleanup.
 - [x] Config key: `testing.allow_fakes` (bool, default false, no env).
 
 ### Whole-suite state on 2026-11-21 (2178 tests)
@@ -144,13 +144,13 @@ Done (each with a scenario under `tests/Scenario/Laravel/Integration`):
 
 Remaining:
 - [ ] The orchestrator adds `Padosoft\MobilePush\Laravel\Integration\IntegrationModule` to `MobilePushServiceProvider::MODULES` (until then the integration scenarios register it themselves).
-- [ ] Facade `@method` docblocks for the new manager/PendingSend methods: `resetBadge`, `currentBadge`, `forceExecution` (internal), `PendingSend::forNotification`, `PendingSend::onlyProvider`.
-- [ ] Notifications channel: use `forNotification()` and `onlyProvider()` instead of resolving routes itself; durable fallback: a listener on `EffectSettled` that rebuilds the notification and calls `FallbackEvaluator::evaluate()` (the package stores no Notification object).
-- [ ] `src/Laravel/Console/Support/ConnectionInspector.php` and `ManagerCredentialsSource` inspect credentials twice: converge the console on `ConnectionCredentialsSource` / `ResolvedConnection::$credentials`.
-- [ ] `log.payload` = keys/full has no effect on the manager path: the observer never receives the message payload (`AttemptReport` carries only its size). Pass the compiled payload keys (redacted) if the feature must work.
+- [x] W5-T2: Facade `@method` docblocks (every public manager method, internals marked) for the new manager/PendingSend methods: `resetBadge`, `currentBadge`, `forceExecution` (internal), `PendingSend::forNotification`, `PendingSend::onlyProvider`.
+- [x] W5-T2: channel uses `forNotification()`/`onlyProvider()`; durable fallback = `Notifications\DurableFallbacks` (encrypted record per effect at queue time, TTL `fallback.idempotency_ttl`, max 64 KiB; `EffectSettled` listener evaluates once all effects of the push settled). Was: Notifications channel: use `forNotification()` and `onlyProvider()` instead of resolving routes itself; durable fallback: a listener on `EffectSettled` that rebuilds the notification and calls `FallbackEvaluator::evaluate()` (the package stores no Notification object).
+- [x] W5-T2: the console takes the findings of a resolved connection from `ConnectionCredentialsSource` + the container `CredentialCheck` (test: four commands agree). Was: `src/Laravel/Console/Support/ConnectionInspector.php` and `ManagerCredentialsSource` inspect credentials twice: converge the console on `ConnectionCredentialsSource` / `ResolvedConnection::$credentials`.
+- [x] W5-T2: `AttemptReport::payload()` (lazy, redacted) + `SendingObserver` passes `payload` to the sinks only when the level is not none. Was: `log.payload` = keys/full has no effect on the manager path: the observer never receives the message payload (`AttemptReport` carries only its size). Pass the compiled payload keys (redacted) if the feature must work.
 - [ ] Campaigns: `campaigns.retention_days` default is 30 in `CampaignSettings` (the orchestrator suggested 90): the config file follows the code (30); confirm.
 - [ ] Consent gates (`eligibleUsing`) still see every destination kind, Live Activity tokens included (the callback gets the typed destination and decides); confirm that this is wanted.
-- [ ] Testing seams beyond `forceExecution()` (connection-cache injection, `unregister()`) for the testing module.
+- [x] W5-T2 (see above). Was: Testing seams beyond `forceExecution()` (connection-cache injection, `unregister()`) for the testing module.
 
 ### Findings from the module documentation pass (W5-D3), 2026-11-21
 - Live Activities: `local_expires_at` enforced only by the pruner → passed back to the module author (enforce at transition time).
@@ -180,3 +180,10 @@ Remaining:
 - A synchronous `send()` never retries a `Deferred` result with `inline_threshold_ms = 0`: by design (documented).
 - The `explain` catalog now has 95 entries; `docs/commands.md` documents 30 commands (+8 campaign commands just added: re-sync the page in the final reconciliation).
 - The banner PNG is marked `assume-unchanged` in git until its author finishes iterating (to avoid committing every intermediate render); undo with `git update-index --no-assume-unchanged resources/laravel-mobile-push-banner.png` and commit the final file.
+
+## W5-T2 follow-ups
+- [x] G1: `PendingSend::send()/queue()` pre-flight every connection before the network/queue; a message invalid for some connections only gives Rejected(PayloadInvalid) results for them (queue: nothing queued nor written for them), invalid for all throws.
+- [x] G2: the intent fake validates with the real compilers by default; `PushFake::withoutValidation()` opts out.
+- [x] `PushManager::campaign()`.
+- [ ] `src/Laravel/Console/Ops/ProbeEnvironmentCommand.php` (edited by another agent at 01:04) has 2 phpstan errors (`cast.string`, lines 113 and 140).
+- [ ] With `IntegrationModule` now in MODULES, three health tests that expect "not verifiable" without a credentials source are red (`HealthScenariosTest`, `SpatieCheckTest`, `HealthAndCredentialsTest` "not verifiable"): ManagerCredentialsSource is always available now; the tests must bind `NullConnectionCredentialsSource` themselves (not in W5-T2's lane).

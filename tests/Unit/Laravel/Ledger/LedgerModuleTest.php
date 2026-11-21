@@ -30,13 +30,17 @@ it('binds the ledger contracts to one database ledger', function (): void {
         ->and($ledger->claimStrategy())->toBe(ClaimStrategy::Optimistic); // SQLite
 });
 
-it('loads the ledger migrations only in the durable profile', function (): void {
+it('loads the ledger migrations only in the durable profile, and only when migrations.autoload is on', function (): void {
     $ledgerPaths = static fn (): array => array_values(array_intersect(app('migrator')->paths(), LedgerModule::migrationPaths()));
 
     expect(config('mobile-push.delivery.profile', 'light'))->toBe('light')
         ->and($ledgerPaths())->toBe([]);
 
     config()->set('mobile-push.delivery.profile', 'durable');
+    LedgerModule::boot(app());
+    expect($ledgerPaths())->toBe([]);   // published, not auto-loaded, by default
+
+    config()->set('mobile-push.migrations.autoload', true);
     LedgerModule::boot(app());
 
     expect($ledgerPaths())->toBe(LedgerModule::migrationPaths());
