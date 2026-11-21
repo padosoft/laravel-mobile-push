@@ -193,7 +193,7 @@ and the command can simply be run again, every step is idempotent):
 | Ledger: pending deliveries cancelled | The owner's non-terminal deliveries become `cancelled` **first**, so a queued job cannot send them. A request already on the wire cannot be recalled (the report says so). |
 | Devices | The owner's device registrations are **deleted, tokens included**. |
 | Live Activities | The owner's activities and push-to-start tokens are deleted. |
-| Ledger: deliveries erased | The encrypted destination, the owner and the device reference are erased; the encrypted **message snapshot** of every effect addressed to the owner **alone** is erased (and, where an effect records the notifiable it originates from, that reference too). **Non-personal tombstones stay**: state, counters and the non-reversible logical key, which keep a re-submitted job from re-creating rows. |
+| Ledger: deliveries erased | The encrypted destination, the owner and the device reference are erased; the encrypted **message snapshot** of every effect addressed to the owner **alone** is erased; so is the snapshot of an effect that records the owner as the notifiable it originates from (an application that builds its own `EffectIntent` with an `origin`), whoever else it was sent to, together with that reference. **Non-personal tombstones stay**: state, counters and the non-reversible logical key, which keep a re-submitted job from re-creating rows. |
 | Send log | Rows tied to the owner, and rows that name only a destination that was one of the owner's tokens (a send by raw token, no notifiable). A row that belongs to **another** notifiable is never touched, even if it addressed the same phone. |
 
 What it **cannot reach**, printed with every report (and in the `export` notes):

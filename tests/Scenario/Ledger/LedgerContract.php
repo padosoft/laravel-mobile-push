@@ -334,6 +334,25 @@ function ledgerContract(Closure $make): void
         }
     });
 
+    it('forget me: an effect that records me as its origin loses its snapshot even when it also went to somebody else', function () use ($make): void {
+        /** @var H $h */
+        $h = $make();
+        // An application that records the notifiable on the effect: the message was written about that person, and a
+        // copy also went to a device of somebody else.
+        $intent = new EffectIntent(H::binding(), H::alert('Alice, your invoice is ready'), 'invoice', origin: new EffectOrigin('App\\Models\\User', '1', 'App\\Notifications\\Invoice'));
+        $effect = $h->ledger->recordIntent($intent, [H::device(1), H::device(3, ownerId: '2')])->effect;
+        $unrelated = $h->ledger->recordIntent(H::intent(H::alert('Sale today'), 'sale'), [H::device(2), H::device(4, ownerId: '2')])->effect;
+
+        expect($h->ledger->forgetOwner('default', 'App\\Models\\User', '1'))->toBe(2)
+            ->and($h->ledger->message('default', $effect->id))->toBeNull()                // by origin, although it is shared
+            ->and($h->ledger->message('default', $unrelated->id))->not->toBeNull();      // no origin, shared: kept
+        foreach ($h->rows()['effects'] as $row) {
+            if ($row['id'] === $effect->id) {
+                expect($row['origin_id'])->toBeNull();
+            }
+        }
+    });
+
     it('forget me with jobs pending: cancelled, unclaimable, not re-created, no personal data left', function () use ($make): void {
         /** @var H $h */
         $h = $make();
