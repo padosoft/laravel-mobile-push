@@ -214,6 +214,10 @@ it('refreshes the token once for the whole batch and retries only the rejected o
         ->and($transport->requests())->toHaveCount(4);
 });
 
+afterEach(function (): void {
+    ini_restore('zend.exception_ignore_args');   // one test below turns it off: never leave it off for the rest of the run
+});
+
 it('never leaks the registration id or the bearer through exceptions', function () {
     ini_set('zend.exception_ignore_args', '0');
     $tokens = new ScriptedTokenProvider;

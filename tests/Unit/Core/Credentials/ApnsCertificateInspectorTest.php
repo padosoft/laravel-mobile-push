@@ -123,7 +123,10 @@ it('replaces a combined certificate+key argument with a SensitiveParameterValue 
         expect($frame['function'])->toBe('fromPem')
             ->and($frame['args'][0] ?? null)->toBeInstanceOf(SensitiveParameterValue::class)
             ->and($frame['args'][2] ?? null)->toBeInstanceOf(SensitiveParameterValue::class)
-            ->and(var_export($e->getTrace(), true))->not->toContain('SECRET-KEY-MATERIAL')->not->toContain('pass-phrase-secret');
+            // Only the library's own frames: with exception_ignore_args off the runner's frames hold the whole
+            // suite (circular references included), which var_export() cannot dump and this class cannot leak.
+            ->and(var_export(array_values(array_filter($e->getTrace(), static fn (array $f): bool => str_starts_with($f['class'] ?? '', 'Padosoft\\MobilePush\\Core\\'))), true))
+            ->not->toContain('SECRET-KEY-MATERIAL')->not->toContain('pass-phrase-secret');
     } finally {
         ini_set('zend.exception_ignore_args', $previous === false ? '1' : $previous);
     }

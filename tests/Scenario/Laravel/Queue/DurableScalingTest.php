@@ -35,7 +35,7 @@ beforeEach(function (): void {
         do {
             $progress = false;
             foreach (Queue::pushed(RelayDeliveriesJob::class) as $job) {
-                if (! $this->ran->contains($job)) {
+                if (! $this->ran->offsetExists($job)) {
                     $this->ran[$job] = true;
                     $this->w->run($job);
                     $n++;
