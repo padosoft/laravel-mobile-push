@@ -112,3 +112,13 @@ Queue follow-ups: `SendPushJob::failed()` logs to the default logger, not to the
 ### Whole-suite state on 2026-11-21 (2178 tests)
 - `tests/Unit/Laravel/Policies/PoliciesModuleTest` (2 cases) red while W4-I changes the `frequency.enabled` default (passed to W4-I as F2).
 - `tests/Scenario/Laravel/Queue/LightProfileTest` "queue it and forget" fails only in whole-suite runs (passes alone and with every sub-group tried): order- or load-dependent; under investigation.
+
+### Operational commands and erasure (W4-K2)
+Config keys to add: `ledger.retention_days` (MOBILE_PUSH_LEDGER_RETENTION_DAYS, 30), `devices.prune.invalidated_days` (MOBILE_PUSH_DEVICES_PRUNE_INVALIDATED_DAYS, 30), `devices.prune.inactive_days` (MOBILE_PUSH_DEVICES_PRUNE_INACTIVE_DAYS, 365).
+Follow-ups found:
+- `DeviceRegistrar::forgetOwner()` only detaches the owner and keeps the encrypted token: it is a logout, not an erasure (the `forget` command deletes the rows itself). Rename/document.
+- `DatabaseLedger::forgetOwner()`: deliveries to raw tokens carry no owner and cannot be found by owner; it erases the message snapshot of an effect that also addressed other recipients (their deliveries then end Skipped/Cancelled); `effect_key` is not erased.
+- `TopicSubscriptionClient` is not constructed anywhere in the Laravel layer except by the command.
+- Commands resolve `PushManager` directly because `PushDispatcher` cannot enumerate connections.
+- Schedule suggestions: `deliveries:prune`, `devices:prune`, `logs:prune`, `credentials:check`.
+- RESOLVED: `LightProfileTest` whole-suite failure was `queue:work`'s default `--memory=128` (now `--memory=2048` in the test).

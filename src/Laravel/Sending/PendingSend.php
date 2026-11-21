@@ -628,22 +628,23 @@ final class PendingSend
         }
     }
 
+    /**
+     * The send options of this pending send on top of the connection's defaults: every field of the base (mode,
+     * live settings, retry policy, receipt marker, window, gates, per-call observers) is carried over; only what was
+     * set here replaces it, and the gates added with withGate() run after the built-in ones.
+     */
     private function options(SendOptions $base): SendOptions
     {
-        return new SendOptions(
-            trafficClass: $this->trafficClass,
-            validateOnly: $this->validateOnly,
-            effectKey: $this->effectKey ?? $base->effectKey,
-            applicationEnvironment: $base->applicationEnvironment,
-            configuredMode: $base->configuredMode,
-            mode: $base->mode,
-            live: $base->live,
-            retryPolicy: $base->retryPolicy,
-            receiptMarker: $base->receiptMarker,
-            gates: [...$base->gates, ...$this->gates],
-            expiresAt: $this->expiresAt ?? $base->expiresAt,
-            window: $base->window,
-        );
+        $options = $base
+            ->withTrafficClass($this->trafficClass)
+            ->withValidateOnly($this->validateOnly)
+            ->withEffectKey($this->effectKey ?? $base->effectKey)
+            ->withExpiresAt($this->expiresAt ?? $base->expiresAt);
+        foreach ($this->gates as $gate) {
+            $options = $options->withGate($gate);
+        }
+
+        return $options;
     }
 
     private static function token(Platform $platform, #[\SensitiveParameter] string $token): Destination
