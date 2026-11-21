@@ -401,7 +401,7 @@ return [
         'timeout' => (int) env('MOBILE_PUSH_QUEUE_TIMEOUT', 50),                       // job timeout, seconds
         'chunk_deadline' => (int) env('MOBILE_PUSH_QUEUE_CHUNK_DEADLINE', 40),         // wall time of one relay run, seconds
         'after_commit' => (bool) env('MOBILE_PUSH_QUEUE_AFTER_COMMIT', true),
-        'follow_up_bucket' => (int) env('MOBILE_PUSH_QUEUE_FOLLOW_UP_BUCKET', 60),     // seconds; deferred retries this close share a job
+        'follow_up_bucket' => (int) env('MOBILE_PUSH_QUEUE_FOLLOW_UP_BUCKET', 60),     // seconds; deferred retries this close share a job (durable: also folds relay follow-ups)
         'worker_timeout' => env('MOBILE_PUSH_QUEUE_WORKER_TIMEOUT'),                   // seconds, when not on Horizon
         'visibility_timeout' => env('MOBILE_PUSH_QUEUE_VISIBILITY_TIMEOUT'),           // seconds, SQS
         'sweeper' => [

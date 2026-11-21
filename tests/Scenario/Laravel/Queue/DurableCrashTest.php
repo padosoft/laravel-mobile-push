@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Padosoft\MobilePush\Core\Ledger\Ledger;
 use Padosoft\MobilePush\Core\Message\PushMessage;
@@ -123,7 +124,7 @@ it('two relay jobs for the same effect at once: every delivery is sent exactly o
 function dieOnStatement(string $pattern, int $nth): Closure
 {
     $state = new ArrayObject(['seen' => 0, 'dead' => false, 'over' => false]);
-    Illuminate\Support\Facades\DB::connection()->beforeExecuting(static function (string $sql) use ($pattern, $nth, $state): void {
+    DB::connection()->beforeExecuting(static function (string $sql) use ($pattern, $nth, $state): void {
         if ($state['over']) {
             return;
         }
@@ -162,7 +163,7 @@ it('a worker killed while a window fills: the items not yet handed to the transp
         ->and($perToken)->toHaveCount(10)
         ->and(array_values(array_unique($perToken)))->toBe([1])
         // the requeued deliveries had no attempt counted before their real one
-        ->and(Illuminate\Support\Facades\DB::table('mobile_push_deliveries')->pluck('attempts')->unique()->values()->all())->toBe([1]);
+        ->and(DB::table('mobile_push_deliveries')->pluck('attempts')->unique()->values()->all())->toBe([1]);
 });
 
 it('a worker killed after a window was handed to the transport: every request of it follows the unknown-outcome rule', function (): void {

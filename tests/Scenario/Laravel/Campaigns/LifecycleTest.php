@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
 use Padosoft\MobilePush\Core\Exceptions\ConfigurationException;
+use Padosoft\MobilePush\Core\Ledger\DeliveryState;
 use Padosoft\MobilePush\Core\Transport\Request;
 use Padosoft\MobilePush\Core\Transport\TransportEvidence;
 use Padosoft\MobilePush\Core\Transport\TransportFailure;
@@ -15,6 +16,7 @@ use Padosoft\MobilePush\Laravel\Campaigns\CampaignStatus;
 use Padosoft\MobilePush\Laravel\Campaigns\Events\CampaignCompleted;
 use Padosoft\MobilePush\Laravel\Campaigns\Events\CampaignStarted;
 use Padosoft\MobilePush\Laravel\Campaigns\PlanCampaignJob;
+use Padosoft\MobilePush\Laravel\Integration\EffectSettled;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Campaigns\CampaignWorld;
 use Padosoft\MobilePush\Tests\Scenario\Send\SendKit;
 
@@ -163,7 +165,7 @@ it('a failed campaign is resumable, so prune keeps it; the prune count is exactl
 });
 
 it('completes as soon as its last relay run ends, without waiting for the sweep, and announces its effect once with the final counts', function (): void {
-    Event::fake([CampaignCompleted::class, Padosoft\MobilePush\Laravel\Integration\EffectSettled::class]);
+    Event::fake([CampaignCompleted::class, EffectSettled::class]);
     $w = CampaignWorld::boot();
     CampaignWorld::seedDevices(2500);
     $campaign = $w->dispatch(DeviceAudience::all());
@@ -171,7 +173,7 @@ it('completes as soon as its last relay run ends, without waiting for the sweep,
 
     expect(CampaignWorld::row($campaign->id)->status)->toBe('completed');
     Event::assertDispatchedTimes(CampaignCompleted::class, 1);
-    Event::assertDispatchedTimes(Padosoft\MobilePush\Laravel\Integration\EffectSettled::class, 1);
-    Event::assertDispatched(Padosoft\MobilePush\Laravel\Integration\EffectSettled::class, static fn ($e): bool => $e->effectId === $campaign->effectId
-        && $e->counts->of(Padosoft\MobilePush\Core\Ledger\DeliveryState::Accepted) === 2500 && $e->counts->total() === 2500);
+    Event::assertDispatchedTimes(EffectSettled::class, 1);
+    Event::assertDispatched(EffectSettled::class, static fn ($e): bool => $e->effectId === $campaign->effectId
+        && $e->counts->of(DeliveryState::Accepted) === 2500 && $e->counts->total() === 2500);
 });

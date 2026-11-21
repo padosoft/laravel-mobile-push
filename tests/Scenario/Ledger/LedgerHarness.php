@@ -28,6 +28,7 @@ use Padosoft\MobilePush\Core\Privacy\TokenCipher;
 use Padosoft\MobilePush\Core\Privacy\TokenIndex;
 use Padosoft\MobilePush\Core\Retry\RetryBudget;
 use Padosoft\MobilePush\Core\Retry\RetryPolicy;
+use Padosoft\MobilePush\Laravel\Ledger\DatabaseLedger;
 use Padosoft\MobilePush\Tests\Support\FakeClock;
 
 /**
@@ -75,7 +76,7 @@ final class LedgerHarness
      */
     public function rewriteLogicalKeys(string $effectId, \Closure $rewrite): void
     {
-        if ($this->ledger instanceof \Padosoft\MobilePush\Laravel\Ledger\DatabaseLedger) {
+        if ($this->ledger instanceof DatabaseLedger) {
             $table = $this->ledger->connection()->table('mobile_push_deliveries');
             foreach ((clone $table)->where('effect_id', $effectId)->get(['id', 'logical_key']) as $row) {
                 (clone $table)->where('id', $row->id)->update(['logical_key' => $rewrite((string) $row->logical_key)]);

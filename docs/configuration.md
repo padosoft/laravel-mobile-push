@@ -257,7 +257,7 @@ The QUEUE connection and names used by queue() (distinct from the push connectio
 | `queue.timeout` | `MOBILE_PUSH_QUEUE_TIMEOUT` | `50` | `int` | >= 1 | Job timeout, seconds. | queue |
 | `queue.chunk_deadline` | `MOBILE_PUSH_QUEUE_CHUNK_DEADLINE` | `40` | `int` | >= 1 | Wall time of one relay run before it hands over, seconds. | queue |
 | `queue.after_commit` | `MOBILE_PUSH_QUEUE_AFTER_COMMIT` | `true` | `bool` |  | Dispatch light jobs after the open transaction commits. | queue |
-| `queue.follow_up_bucket` | `MOBILE_PUSH_QUEUE_FOLLOW_UP_BUCKET` | `60` | `int` | >= 0 | Deferred destinations whose next attempts are this close share one continuation job, seconds. | queue |
+| `queue.follow_up_bucket` | `MOBILE_PUSH_QUEUE_FOLLOW_UP_BUCKET` | `60` | `int` | >= 0 | Deferred destinations whose next attempts are this close share one continuation job, seconds; on the durable profile it is also the bucket in which relay follow-ups beyond the first 20 per scope and queue are folded into one scope-wide relay. | queue |
 | `queue.worker_timeout` | `MOBILE_PUSH_QUEUE_WORKER_TIMEOUT` | `null` | `int\|null` |  | Declared worker timeout when it is not readable from Horizon. | queue |
 | `queue.visibility_timeout` | `MOBILE_PUSH_QUEUE_VISIBILITY_TIMEOUT` | `null` | `int\|null` |  | Declared SQS visibility timeout. | queue |
 | `queue.sweeper.schedule` | `MOBILE_PUSH_QUEUE_SWEEPER` | `true` | `bool` |  | Durable profile: schedule the ledger sweeper every minute. | queue |

@@ -11,9 +11,11 @@ use Illuminate\Contracts\Config\Repository;
 use Illuminate\Contracts\Foundation\Application;
 use Padosoft\MobilePush\Core\Ledger\Ledger;
 use Padosoft\MobilePush\Laravel\Contracts\PushDispatcher;
-use Padosoft\MobilePush\Laravel\Logging\SinkManager;
 use Padosoft\MobilePush\Laravel\Contracts\QueuedSender;
+use Padosoft\MobilePush\Laravel\Integration\EffectSettlement;
+use Padosoft\MobilePush\Laravel\Logging\SinkManager;
 use Padosoft\MobilePush\Laravel\Module;
+use Padosoft\MobilePush\Laravel\Queue\Events\RelayRunFinished;
 use Padosoft\MobilePush\Laravel\Receipts\ReceiptMarkerIssuer;
 use Psr\Clock\ClockInterface;
 
@@ -88,6 +90,24 @@ final class QueueModule implements Module
 
     public static function boot(Application $app): void
     {
+        // W5-P: every relay run (scope-wide ones included: the sweeper's and the coalesced follow-ups) checks the
+        // effects it worked on for settlement, so EffectSettled does not depend on which job finished an effect.
+        // EffectSettlement announces an effect once per set of deliveries (a second check is a cheap no-op).
+        if ($app->bound('events')) {
+            $app->make('events')->listen(RelayRunFinished::class, static function (RelayRunFinished $e) use ($app): void {
+                if (! class_exists(EffectSettlement::class) || ! $app->bound(EffectSettlement::class)) {
+                    return;
+                }
+                foreach ($e->report->effects as $effectId) {
+                    try {
+                        $app->make(EffectSettlement::class)->check($e->scope, $effectId);
+                    } catch (\Throwable) {
+                        // never fails the relay job
+                    }
+                }
+            });
+        }
+
         $schedule = static function (Schedule $schedule) use ($app): void {
             $settings = QueueSettings::fromConfig(self::config($app));
             if (! $settings->durable() || ! $settings->scheduleSweeper) {

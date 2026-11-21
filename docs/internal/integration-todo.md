@@ -198,3 +198,22 @@ Remaining:
 - [ ] For the orchestrator: `AGENTS.md` still says migrations are "also loaded by the module only when that module is enabled"; it should say they are published, with `migrations.autoload` as the opt-in.
 - [ ] `InstallPlan` campaigns group has no file suffixes (its "already published" detection does not run); `CampaignsModule::migrationPath()` could be used.
 - [ ] `tests/Scenario/Laravel/Console/InstallTest.php` publishes into `vendor/orchestra/testbench-core/laravel` (and cleans up); move it to a temporary application path like `tests/Scenario/Laravel/Install`.
+
+## W5-P scaling pass (2026-11-21)
+
+Done (scenarios in `tests/Scenario/Laravel/{Ledger,Queue,Campaigns}`, slow ones in the `slow` group):
+- [x] New migrations `2026_11_21_000013_add_mobile_push_ledger_scaling_indexes.php` (claim, effect-claim, work indexes; drops the two prefixes they replace) and `2026_11_21_000002_add_mobile_push_devices_audience_index.php`; listed in `LedgerModule::MIGRATIONS` / `DevicesModule::MIGRATIONS` (new `DevicesModule::migrationPaths()`), published with the module tags, idempotent.
+- [x] Claim in index order per state; set-based claim/start/record (`Core\Ledger\DeliveryBatches`); PK-only guards; device lookup by PK; `scopesWithWork()` per state; `Core\Ledger\SettlementProbe`.
+- [x] B1 `Core\Driver\TransmitObserver` (optional, per-call observers): the relay marks attempts started right before `Transport::send()`.
+- [x] B2 logical key of a registry device without generation (legacy keys still deduplicate a replay).
+- [x] B3 `IntentResult::$previousEffectId` / `reusedExpiredKey()`; rule documented in `docs/contracts/ledger.md`.
+- [x] B4 `Queue\Events\RelayRunFinished` after every relay run; campaign completion and `EffectSettlement` react to it (sweeps stay the safety net); `EffectSettlement` probes first, skips campaign effects (announced by `CampaignCompletion` on completion) and announces once per set of deliveries.
+- [x] C1 follow-ups of many effects folded per scope/queue/bucket (`RelayFollowUps::MAX_EFFECT_FOLLOW_UPS` = 20 precise ones, then one scope-wide relay).
+- [x] H1 binding mismatch in the relay and in `SendPushJob`: `BindingMismatchDetected` once per run, Skipped(BindingMismatch) per destination in the log sinks (`Queue\BindingMismatches`).
+- [x] H2 `CampaignStore::pruneFinished()` keeps `failed` campaigns; `CampaignManager::list()` / `countPrunable()`; List/Prune commands use them.
+
+Remaining (outside W5-P's lane):
+- [ ] `src/Laravel/Console/Support/InstallPlan.php` lists `DevicesModule::migrationPath()` (the table only): use `DevicesModule::migrationPaths()` so install/doctor show the devices index migration too.
+- [ ] `IntegrationModule`'s `JobProcessed` listener is now redundant with the `RelayRunFinished` listener of `QueueModule` (both go through `EffectSettlement`, deduplicated by its cache marker); it can be removed.
+- [ ] MySQL/PostgreSQL: run `ScalingQueryPlansTest`-like checks with `EXPLAIN` on those engines in the experimental CI jobs (the plans are asserted on SQLite only).
+- [ ] `docs/campaigns.md` / `docs/delivery-profiles.md`: completion is immediate (RelayRunFinished), failed campaigns are not pruned, `IntentResult::$previousEffectId`, follow-up folding (`queue.follow_up_bucket` now also bounds relay follow-ups).

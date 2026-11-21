@@ -233,7 +233,7 @@ final class ConfigSchema
                 self::k('queue.timeout', 'int', 50, 'MOBILE_PUSH_QUEUE_TIMEOUT', 'Job timeout, seconds.', 'queue', constraint: '>= 1'),
                 self::k('queue.chunk_deadline', 'int', 40, 'MOBILE_PUSH_QUEUE_CHUNK_DEADLINE', 'Wall time of one relay run before it hands over, seconds.', 'queue', constraint: '>= 1'),
                 self::k('queue.after_commit', 'bool', true, 'MOBILE_PUSH_QUEUE_AFTER_COMMIT', 'Dispatch light jobs after the open transaction commits.', 'queue'),
-                self::k('queue.follow_up_bucket', 'int', 60, 'MOBILE_PUSH_QUEUE_FOLLOW_UP_BUCKET', 'Deferred destinations whose next attempts are this close share one continuation job, seconds.', 'queue', constraint: '>= 0'),
+                self::k('queue.follow_up_bucket', 'int', 60, 'MOBILE_PUSH_QUEUE_FOLLOW_UP_BUCKET', 'Deferred destinations whose next attempts are this close share one continuation job, seconds; on the durable profile it is also the bucket in which relay follow-ups beyond the first 20 per scope and queue are folded into one scope-wide relay.', 'queue', constraint: '>= 0'),
                 self::k('queue.worker_timeout', 'int|null', null, 'MOBILE_PUSH_QUEUE_WORKER_TIMEOUT', 'Declared worker timeout when it is not readable from Horizon.', 'queue'),
                 self::k('queue.visibility_timeout', 'int|null', null, 'MOBILE_PUSH_QUEUE_VISIBILITY_TIMEOUT', 'Declared SQS visibility timeout.', 'queue'),
                 self::k('queue.sweeper.schedule', 'bool', true, 'MOBILE_PUSH_QUEUE_SWEEPER', 'Durable profile: schedule the ledger sweeper every minute.', 'queue'),

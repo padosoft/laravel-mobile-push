@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-use Illuminate\Support\Facades\Event;
-use Padosoft\MobilePush\Laravel\Queue\Events\RelayRunFinished;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Padosoft\MobilePush\Laravel\Campaigns\Audience\DeviceAudience;
+use Padosoft\MobilePush\Laravel\Queue\Events\RelayRunFinished;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Campaigns\CampaignWorld;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Campaigns\Console\CampaignConsole;
 

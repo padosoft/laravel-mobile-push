@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Padosoft\MobilePush\Laravel\Campaigns\Console;
 
-
 final class PruneCommand extends CampaignCommand
 {
     protected $signature = 'mobile-push:campaign:prune

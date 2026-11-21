@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
 use Padosoft\MobilePush\Core\Ledger\ClientReceiptStore;
 use Padosoft\MobilePush\Core\Ledger\SettlementProbe;
@@ -10,6 +11,7 @@ use Padosoft\MobilePush\Core\Message\PushMessage;
 use Padosoft\MobilePush\Core\Transport\Request;
 use Padosoft\MobilePush\Laravel\Contracts\QueuedSender;
 use Padosoft\MobilePush\Laravel\Contracts\QueueOptions;
+use Padosoft\MobilePush\Laravel\Integration\EffectSettled;
 use Padosoft\MobilePush\Laravel\Queue\RelayDeliveriesJob;
 use Padosoft\MobilePush\Laravel\Queue\RelayFollowUps;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Queue\QueueWorld;
@@ -59,7 +61,7 @@ function historyRows(int $n, string $scope = 'default'): string
     $pdo->beginTransaction();
     $insert = $pdo->prepare('insert into mobile_push_deliveries (id, effect_id, scope, kind, logical_key, state, attempts, next_attempt_at, version, accepted_at, created_at, updated_at, client_received_at) values (?, ?, ?, ?, ?, ?, 1, null, 2, 1, 1, 1, ?)');
     for ($i = 0; $i < $n; $i++) {
-        $insert->execute([sprintf('H%025d', $i), $effect, $scope, 'apns_device_token', 'h'.$i, 'accepted', $i % 3 === 0 ? 1 : null]);
+        $insert->execute([substr($scope, 0, 1).sprintf('%025d', $i), $effect, $scope, 'apns_device_token', 'h'.$i, 'accepted', $i % 3 === 0 ? 1 : null]);
     }
     $pdo->commit();
 
@@ -80,6 +82,7 @@ function bestMs(Closure $work): float
 }
 
 it('small effects deferred at the same instant (300 here, 10,000 in the slow group) share a bounded number of follow-up relays, and all are sent once due', function (int $effects): void {
+    Event::fake([EffectSettled::class]);
     $this->w->transport->respondUsing(static fn (Request $r) => SendKit::apnsReason(429, 'TooManyRequests'));
     for ($i = 0; $i < $effects; $i++) {
         ($this->queue)([QueueWorld::token($i)], 'order-'.$i);
@@ -101,6 +104,8 @@ it('small effects deferred at the same instant (300 here, 10,000 in the slow gro
 
     expect(QueueWorld::deliveryStates())->toBe(['accepted' => $effects])
         ->and(array_values(array_unique($this->w->apnsRequestsPerToken())))->toBe([2]);   // the 429, then the accept
+    // Effects finished by the shared scope-wide relay are announced like the others: once each.
+    Event::assertDispatchedTimes(EffectSettled::class, $effects);
 })->with([300]);
 
 it('10,000 small effects deferred at the same instant: measured', function (): void {
