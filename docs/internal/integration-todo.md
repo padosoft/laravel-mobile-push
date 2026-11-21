@@ -166,3 +166,17 @@ Remaining:
 ### M10 — docs site and banner (requested by the owner on 2026-11-21)
 - `docs-site/` built with docmd, modelled on `/home/user/padosoft/laravel-flow` (read-only clone), generated from `README.md` + `docs/*.md` by a sync script with a `--check` mode; Cloudflare Pages settings in `docs-site/README.md`. Owner must confirm the domain.
 - Banner: `art/banner.svg` → `resources/laravel-mobile-push-banner.png`; favicon `art/favicon.svg`.
+
+### Findings from the operational documentation pass (W5-D2) and the campaign commands (W5-K4), 2026-11-21
+- **Migrations run twice (real defect, verified on SQLite for the ledger):** an enabled module registers its migration files with the migrator AND `mobile-push:install` publishes copies under new names → `migrate` runs both and the second `create table` fails. Same pattern in devices, Live Activities, logs, campaigns, receipts. → W6-F.
+- `mobile-push:install` says a crashed worker "never loses or duplicates a push" on the durable profile: over-claim → W6-F.
+- Default config fails `doctor`: `queue.timeout` 120 s vs Laravel's default `retry_after` 90 → W6-F (coherent defaults).
+- Environment probe has no time-based limit (plan §4.4 asked for one), only `--limit` per run → W6-F.
+- Binding mismatch is inconsistent: direct `send()` returns `Skipped`/`binding_mismatch` + event; the durable relay records it without the event; the light job writes a warning and no result → W5-P.
+- `CampaignStore::pruneFinished()` also deletes `failed` campaigns, which are resumable; no list / prune-count query on the manager (commands query the table directly) → W5-P.
+- KMS: the `Signer` interface exists but `ConnectionFactory` always builds OpenSSL signers; no config path → after W5-T2 releases `src/Laravel/Sending`.
+- Endpoint override has no config key (test-only, by design): document as such.
+- Stale text in `docs/contracts/{ledger,modes,retry}.md` ("no implementation yet", open points since answered) → W6-F.
+- A synchronous `send()` never retries a `Deferred` result with `inline_threshold_ms = 0`: by design (documented).
+- The `explain` catalog now has 95 entries; `docs/commands.md` documents 30 commands (+8 campaign commands just added: re-sync the page in the final reconciliation).
+- The banner PNG is marked `assume-unchanged` in git until its author finishes iterating (to avoid committing every intermediate render); undo with `git update-index --no-assume-unchanged resources/laravel-mobile-push-banner.png` and commit the final file.
