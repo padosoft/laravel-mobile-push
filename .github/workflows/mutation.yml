@@ -107,6 +107,12 @@ jobs:
             min: 84
             classes: 'Padosoft\MobilePush\Core\Policy\Frequency,Padosoft\MobilePush\Core\Policy\Badge'
             tests: tests/Unit/Core/Policy/Frequency tests/Unit/Core/Policy/Badge tests/Scenario/Policy/Frequency tests/Scenario/Policy/Badge
+          # The metric counters, gauges and the error-rate window: added on 2026-11-22 after the counters were found
+          # never to be recorded on the database, memcached and dynamodb cache stores. Measured 90.1%.
+          - name: metrics
+            min: 85
+            classes: 'Padosoft\MobilePush\Laravel\Health\MetricsRecorder,Padosoft\MobilePush\Laravel\Health\ErrorRate,Padosoft\MobilePush\Laravel\Health\ErrorRateSample'
+            tests: tests/Scenario/Laravel/Health tests/Unit/Laravel/Health tests/Scenario/Laravel/Integration/BrokenMetricsStoreTest.php
     name: Mutation · ${{ matrix.name }}
     steps:
       - uses: actions/checkout@v4
