@@ -36,12 +36,21 @@ final readonly class Backoff
         $retry = max(1, $retry);
         $floor = (float) max(0, $minDelaySeconds ?? 0) * 1000.0;
         $exp = min((float) $this->policy->backoffMaxMs, $this->policy->backoffBaseMs * 2.0 ** min($retry - 1, 62));
-        $spread = $this->policy->jitter * $this->random->getFloat(0.0, 1.0);
+        $spread = $this->policy->jitter * $this->unit();
 
         $delay = $floor >= $exp
             ? $floor * (1.0 + $spread)
             : max($floor, $exp * (1.0 - $spread));
 
         return (int) ceil($delay);
+    }
+
+    /**
+     * A uniform float in [0, 1): 53 random bits over 2^53, every value exactly representable. Written this way
+     * because Randomizer::getFloat() exists only from PHP 8.3 and the package also runs on 8.2.
+     */
+    private function unit(): float
+    {
+        return $this->random->getInt(0, (1 << 53) - 1) / (1 << 53);
     }
 }

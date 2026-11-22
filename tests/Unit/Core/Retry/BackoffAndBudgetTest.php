@@ -17,7 +17,7 @@ it('never schedules before the provider minimum and stays within its bounds (pro
         $policy = new RetryPolicy(
             backoffBaseMs: $base = $random->getInt(0, 5000),
             backoffMaxMs: $max = $base + $random->getInt(0, 600_000),
-            jitter: $jitter = $random->getFloat(0.0, 1.0),
+            jitter: $jitter = $random->getInt(0, 1_000_000) / 1_000_000,   // not getFloat(): the suite also runs on PHP 8.2
         );
         $backoff = new Backoff($policy, new Randomizer(new Mt19937($i)));
         $retry = $random->getInt(1, 80);

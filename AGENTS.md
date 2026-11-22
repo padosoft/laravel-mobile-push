@@ -4,7 +4,7 @@ These rules apply to every agent and sub-agent working in this repository (Claud
 
 ## What this package is
 
-A Laravel package that sends push notifications **directly** to Apple APNs (HTTP/2 provider API, Live Activities and broadcast channels included) and to Android through Google FCM HTTP v1. Namespace `Padosoft\MobilePush`, facade `MobilePush`, config `mobile-push.php`, commands `mobile-push:*`, env `MOBILE_PUSH_*`, tables `mobile_push_*`. PHP 8.3+, Laravel 12–13.
+A Laravel package that sends push notifications **directly** to Apple APNs (HTTP/2 provider API, Live Activities and broadcast channels included) and to Android through Google FCM HTTP v1. Namespace `Padosoft\MobilePush`, facade `MobilePush`, config `mobile-push.php`, commands `mobile-push:*`, env `MOBILE_PUSH_*`, tables `mobile_push_*`. PHP 8.2+ (8.3+ with Laravel 13), Laravel 12–13.
 
 The full approved plan is `docs/PLAN.md` (Italian). The binding rules are the contracts in `docs/contracts/` and the interfaces/DTOs already in `src/Core`.
 

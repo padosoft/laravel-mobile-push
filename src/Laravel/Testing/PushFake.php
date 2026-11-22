@@ -326,7 +326,7 @@ final class PushFake
                 1,
                 $decision->providerMessageId,
                 $decision->httpStatus,
-                $outcome->status === SendStatus::Deferred ? (new \DateTimeImmutable)->modify('+'.$outcome->delaySeconds.' seconds') : null,
+                $outcome->status === SendStatus::Deferred ? (new \DateTimeImmutable)->add(new \DateInterval('PT'.max(0, $outcome->delaySeconds).'S')) : null,
                 $decision->destinationAction,
             );
         }

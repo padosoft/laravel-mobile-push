@@ -9,6 +9,7 @@
 /CLAUDE.md export-ignore
 /phpunit.xml export-ignore
 /phpstan.neon.dist export-ignore
+/phpstan.php82.neon.dist export-ignore
 /pint.json export-ignore
 /docs-site export-ignore
 /art export-ignore

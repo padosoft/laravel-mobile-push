@@ -17,6 +17,14 @@ jobs:
         php: ['8.3', '8.4', '8.5']
         laravel: ['12.*', '13.*']
         stability: [prefer-lowest, prefer-stable]
+        # PHP 8.2 is supported with Laravel 12 only: Laravel 13 itself requires PHP 8.3.
+        include:
+          - php: '8.2'
+            laravel: '12.*'
+            stability: prefer-lowest
+          - php: '8.2'
+            laravel: '12.*'
+            stability: prefer-stable
     name: PHP ${{ matrix.php }} · Laravel ${{ matrix.laravel }} · ${{ matrix.stability }}
     steps:
       - uses: actions/checkout@v4
@@ -138,15 +146,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        laravel: ['12', '13']
-    name: Fresh Laravel ${{ matrix.laravel }} application
+        include:
+          - laravel: '12'
+            php: '8.2'
+          - laravel: '12'
+            php: '8.3'
+          - laravel: '13'
+            php: '8.3'
+    name: Fresh Laravel ${{ matrix.laravel }} application on PHP ${{ matrix.php }}
     steps:
       - uses: actions/checkout@v4
         with:
           path: package
       - uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.3'
+          php-version: ${{ matrix.php }}
           extensions: curl, openssl, json, intl, pdo_sqlite
           coverage: none
       - name: Create the application and require the package
@@ -316,3 +330,5 @@ jobs:
       - run: composer update --prefer-dist --no-interaction
       - run: vendor/bin/pint --test
       - run: vendor/bin/phpstan analyse --memory-limit=1G
+      # The same analysis at the language level of PHP 8.2, the oldest supported version.
+      - run: vendor/bin/phpstan analyse -c phpstan.php82.neon.dist --memory-limit=1G

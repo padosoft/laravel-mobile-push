@@ -8,7 +8,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [1.0.0] - 2026-11-22
 
-First public release.
+First public release. Requires PHP 8.2 or newer and Laravel 12 or 13 (Laravel 13 itself requires PHP 8.3).
 
 ### Added
 

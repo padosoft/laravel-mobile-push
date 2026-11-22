@@ -75,8 +75,8 @@ MobilePush::to($user)->send(PushMessage::make('Order shipped', 'Arrives Friday')
 
 ## Requirements
 
-- PHP 8.3 or newer with `ext-curl`, `ext-openssl`, `ext-json`, and a libcurl built with HTTP/2 (7.68 or newer; `php artisan mobile-push:doctor` checks it).
-- Laravel 12 or 13.
+- PHP 8.2 or newer with `ext-curl`, `ext-openssl`, `ext-json`, and a libcurl built with HTTP/2 (7.68 or newer; `php artisan mobile-push:doctor` checks it).
+- Laravel 12 or 13. Laravel 13 itself needs PHP 8.3, so PHP 8.2 means Laravel 12.
 - A cache store shared by your workers and able to take locks (Redis, Memcached, database, DynamoDB) in production.
 
 ## About these pages

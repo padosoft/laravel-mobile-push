@@ -6,7 +6,7 @@
     "license": "MIT",
     "type": "library",
     "require": {
-        "php": "^8.3",
+        "php": "^8.2",
         "ext-curl": "*",
         "ext-json": "*",
         "ext-openssl": "*",
@@ -31,9 +31,9 @@
         "laravel/telescope": "^5.29",
         "open-telemetry/api": "^1.12",
         "orchestra/testbench": "^10.0|^11.0",
-        "pestphp/pest": "^4.0|^5.0",
-        "pestphp/pest-plugin-arch": "^4.0|^5.0",
-        "pestphp/pest-plugin-laravel": "^4.0|^5.0",
+        "pestphp/pest": "^3.0|^4.0|^5.0",
+        "pestphp/pest-plugin-arch": "^3.0|^4.0|^5.0",
+        "pestphp/pest-plugin-laravel": "^3.0|^4.0|^5.0",
         "spatie/laravel-health": "^1.42"
     },
     "suggest": {

@@ -9,7 +9,7 @@ Thank you for helping with `padosoft/laravel-mobile-push`. The package sends pus
 
 ## Setup
 
-Requirements: PHP 8.3 or later, Composer, `ext-curl`, `ext-openssl`, `ext-json`. Laravel 12 to 13 is supported.
+Requirements: PHP 8.2 or later (8.3 or later to run the test suite with Laravel 13), Composer, `ext-curl`, `ext-openssl`, `ext-json`. Laravel 12 to 13 is supported.
 
 ```bash
 composer install
@@ -36,7 +36,7 @@ Paste the real output of what you ran into the pull request if something fails.
 
 ## What CI runs
 
-- **`tests`** (every push and pull request): the suite on PHP 8.3, 8.4 and 8.5 with Laravel 12 and 13, lowest and latest dependencies; the `slow` group on one combination; Pint and PHPStan; the database-backed scenarios on MySQL 8.4, PostgreSQL 17 and MariaDB 11.4; `fresh-app`, which requires the package into a newly created Laravel application and drives it through install, migrations, commands, a simulated send and the durable queue; and `runtimes`, which does the same on a real Redis (queue and cache), under Horizon and under Octane on RoadRunner.
+- **`tests`** (every push and pull request): the suite on PHP 8.2 (Laravel 12 only), 8.3, 8.4 and 8.5 with Laravel 12 and 13, lowest and latest dependencies; the `slow` group on one combination; Pint and PHPStan; the database-backed scenarios on MySQL 8.4, PostgreSQL 17 and MariaDB 11.4; `fresh-app`, which requires the package into a newly created Laravel application and drives it through install, migrations, commands, a simulated send and the durable queue; and `runtimes`, which does the same on a real Redis (queue and cache), under Horizon and under Octane on RoadRunner.
 - **`docs-site`**: the generated documentation site is in sync with `docs/` and builds.
 - **`providers`** (weekly and on demand, never on a pull request): Google's live FCM Discovery document against the pinned snapshot, and probes that send made-up credentials to the APNs sandbox, FCM and Google's token endpoint to check that the real refusals are classified as documented. No secret is involved.
 - **`mutation`** (weekly and on demand): mutation testing of the dense core classes, and of the database ledger on SQLite, MySQL 8.4 and PostgreSQL 17 (some mutants can only be killed by a server engine). Its score is a signal, not a gate.

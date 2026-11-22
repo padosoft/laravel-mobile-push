@@ -296,6 +296,7 @@ final class PushMessage implements Message
             return $this->expiresAt;
         }
 
-        return $this->ttlSeconds === null ? null : $createdAt->modify("+{$this->ttlSeconds} seconds");
+        // add(), not modify(): on PHP 8.2 modify() is typed to return false for a string it cannot parse.
+        return $this->ttlSeconds === null ? null : $createdAt->add(new \DateInterval('PT'.$this->ttlSeconds.'S'));
     }
 }

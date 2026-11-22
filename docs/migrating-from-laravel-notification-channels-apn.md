@@ -8,7 +8,7 @@ behaves differently.
 **What I read.** The README, `src/ApnMessage.php`, `src/ApnChannel.php` and `composer.json` at tag **`v6.5.0`** (the latest
 tag listed by `git ls-remote --tags https://github.com/laravel-notification-channels/apn`), fetched from
 `raw.githubusercontent.com`. I did not run it. At that tag it requires PHP `^8.4`, `edamov/pushok ^0.18|^0.19` and
-`illuminate/* ^12.0|^13.0`; this package requires PHP 8.3+ and Laravel 12 to 13. For the Pushok side read the
+`illuminate/* ^12.0|^13.0`; this package requires PHP 8.2+ and Laravel 12 to 13 (PHP 8.3+ with Laravel 13). For the Pushok side read the
 [Pushok guide](migrating-from-pushok.md); everything about outcomes, configuration and the plan applies here too and is not
 repeated in full.
 

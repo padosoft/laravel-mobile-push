@@ -6,7 +6,7 @@ From an empty Laravel app to a push on your own phone, one step at a time. If yo
 
 ## 0. What you need
 
-- PHP 8.3 or newer with the `curl`, `openssl` and `json` extensions, and a libcurl built with HTTP/2 (`php -r 'var_dump(curl_version()["features"] & CURL_VERSION_HTTP2);'` must not print `int(0)`). `ext-intl` is recommended (exact text truncation).
+- PHP 8.2 or newer (8.3 or newer with Laravel 13) with the `curl`, `openssl` and `json` extensions, and a libcurl built with HTTP/2 (`php -r 'var_dump(curl_version()["features"] & CURL_VERSION_HTTP2);'` must not print `int(0)`). `ext-intl` is recommended (exact text truncation).
 - Laravel 12 or 13, with an application key (`php artisan key:generate`): the package derives its encryption and index keys from `APP_KEY` unless you configure dedicated ones.
 - For iOS: an Apple developer account and the bundle id of your app. For Android: a Firebase project with your app added.
 - For a real send: a phone with a development build of your app that has asked for notification permission, and its device token (step 8).

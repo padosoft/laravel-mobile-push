@@ -122,7 +122,7 @@ final class EnvironmentProber
             return null;
         }
         try {
-            $until = (new \DateTimeImmutable($last))->modify('+'.$hours.' hours');
+            $until = (new \DateTimeImmutable($last))->add(new \DateInterval('PT'.$hours.'H'));
         } catch (\Exception) {
             return null;
         }

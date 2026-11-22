@@ -15,7 +15,7 @@ MobilePush::to($user)->send(PushMessage::make('Order shipped', 'Arrives Friday')
 
 Version 1.0. What the automated verification consists of:
 
-- A **protocol-level HTTP/2 mock server** (a Node `http2` server that counts what it receives, drops connections, resets streams and sends `GOAWAY`) and the providers' **published schemas** (Apple's documentation, the FCM Discovery document revision 20261112). The suite has more than 3,500 tests (about 1,700 test cases, the rest are rows of their datasets); CI runs it on PHP 8.3, 8.4 and 8.5 with Laravel 12 and 13 (lowest and latest dependencies), runs the database-backed scenarios on MySQL 8.4, MariaDB 11.4 and PostgreSQL 17, and installs the package into a freshly created Laravel 12 and Laravel 13 application (install command, migrations, commands, a simulated send, the durable queue with a worker).
+- A **protocol-level HTTP/2 mock server** (a Node `http2` server that counts what it receives, drops connections, resets streams and sends `GOAWAY`) and the providers' **published schemas** (Apple's documentation, the FCM Discovery document revision 20261112). The suite has more than 3,500 tests (about 1,700 test cases, the rest are rows of their datasets); CI runs it on PHP 8.2 (with Laravel 12), 8.3, 8.4 and 8.5 with Laravel 12 and 13 (lowest and latest dependencies), runs the database-backed scenarios on MySQL 8.4, MariaDB 11.4 and PostgreSQL 17, and installs the package into a freshly created Laravel 12 and Laravel 13 application (install command, migrations, commands, a simulated send, the durable queue with a worker).
 - **Credential-less probes of the real endpoints**, run weekly: the APNs sandbox refused a provider token signed by a made-up key with `InvalidProviderToken` ([details](docs/credentials-apns.md#what-was-checked-against-apples-real-endpoint)), Google's FCM and OAuth endpoints refused made-up credentials ([details](docs/credentials-fcm.md#what-was-checked-against-googles-real-endpoints)), the package classified each answer as documented, and the live FCM Discovery document equals the pinned snapshot.
 
 Points the automated suite does not settle, stated so you know where to look first:
@@ -43,8 +43,8 @@ Points the automated suite does not settle, stated so you know where to look fir
 
 ## Requirements
 
-- PHP 8.3 or newer with `ext-curl`, `ext-openssl`, `ext-json`, and a libcurl built with HTTP/2 (7.68 or newer; `php artisan mobile-push:doctor` checks it).
-- Laravel 12 or 13.
+- PHP 8.2 or newer with `ext-curl`, `ext-openssl`, `ext-json`, and a libcurl built with HTTP/2 (7.68 or newer; `php artisan mobile-push:doctor` checks it).
+- Laravel 12 or 13. Laravel 13 itself needs PHP 8.3, so PHP 8.2 means Laravel 12.
 - Optional: `ext-intl` (exact grapheme truncation), `google/auth` (Application Default Credentials for FCM), `open-telemetry/api`, `laravel/pulse`, `laravel/telescope`, `spatie/laravel-health`.
 - A cache store shared by your workers and able to take locks (Redis, Memcached, database, DynamoDB) in production.
 
