@@ -17,6 +17,8 @@ Related pages: [messages](/sending/messages), [sending](/sending/sending), [noti
 
 What was verified under concurrency: eight real processes hitting the cap and the badge counter of one person at the same instant, on Redis, the `database` store (a shared SQLite file, and MySQL 8.4, MariaDB 11.4 and PostgreSQL 17 in CI) and the `file` store, plus memcached and DynamoDB Local in the `backends` workflow (`PolicyCoordinationTest`): the pushes allowed never exceed the cap, no badge number is handed out twice and the badge equals the increments that succeeded. What was not: a production cache under production traffic.
 
+One exception is not explained. On the **`file`** store, in one CI run of 2026-11-22, the badge counter went back once and handed out about 45 numbers a second time (155 distinct numbers for 200 increments). It happened inside a full run of the suite on a hosted runner; 320 repetitions of the scenario alone on the same kind of runner and 50 locally did not show it again, and the cause was not found. The scenario now traces that store's filesystem and prints what it saw when the assertion fails. Until it is understood, read the `file` store as the documentation of Laravel describes it, a store for one host, and use Redis, Memcached or the `database` store when several workers send to the same people and the cap or the badge must be exact.
+
 ## `policy` is not `actionCategory`
 
 Two different message fields, easy to confuse:

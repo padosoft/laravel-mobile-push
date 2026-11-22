@@ -2,8 +2,8 @@ name: hunt
 
 # Repeats one multi-process scenario many times to catch a rare failure with its trace. By hand only.
 # First use (2026-11-22): the badge counter on the `file` cache store handed out duplicate numbers once on a hosted
-# runner (155 distinct of 200) and never locally. MP_POLICY_TRACE makes the contenders report every empty read, failed
-# write and delete-on-read of the store's filesystem.
+# runner (155 distinct of 200) and never locally. The contenders report every empty read, failed write and
+# delete-on-read of the store's filesystem. First hunt: 320 repetitions on PHP 8.2 with Laravel 12, no anomaly.
 
 on:
   workflow_dispatch:
@@ -36,14 +36,13 @@ jobs:
       - run: composer update --prefer-dist --no-interaction
       - name: Repeat the scenario
         env:
-          MP_POLICY_TRACE: '1'
           MP_RUNTIME_REPORT: '1'
         run: |
           php -v | head -1 && composer show laravel/framework | grep -E '^versions'
           bad=0
           for i in $(seq 1 ${{ github.event.inputs.rounds || '40' }}); do
             vendor/bin/pest --colors=never tests/Scenario/Laravel/Runtime/PolicyCoordinationTest.php --filter="badge counter loses no increment" > out.txt 2>&1 || true
-            if grep -E '^\[badge/distinct file\]' out.txt | grep -qv 'counted=200 unique=200 contended(gave up)=0 final=200' || grep -E '^\[trace file\] [0-9]' out.txt > /dev/null || ! grep -q '^\[badge/distinct file\]' out.txt; then
+            if grep -E '^\[badge/distinct file\]' out.txt | grep -qv 'counted=200 unique=200 contended(gave up)=0 final=200' || grep -E '^\[trace file\]' out.txt > /dev/null || ! grep -q '^\[badge/distinct file\]' out.txt; then
               bad=$((bad+1))
               echo "===== round $i: anomaly ====="
               grep -E '^\[badge/distinct|^\[trace file\]|asserting|Tests:' out.txt | head -80

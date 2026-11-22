@@ -43,11 +43,13 @@ $args = json_decode($argv[1] ?? '{}', true, 8, JSON_THROW_ON_ERROR);
 
 $app = contenderApp($args);
 
-// Diagnostics (MP_POLICY_TRACE=1): the filesystem under the `file` cache store notes every read that came back
-// empty, every write that failed and every delete asked by FileStore::getPayload() (which deletes an entry it reads
-// as expired or corrupt). A counter that restarts from zero on that store must show up here.
+// Diagnostics, always on: the filesystem under the `file` cache store notes every read that came back empty, every
+// write that failed and every delete asked by FileStore::getPayload() (which deletes an entry it reads as expired or
+// corrupt). On 2026-11-22 the badge counter on that store handed out duplicate numbers once on a hosted runner (155
+// distinct of 200, inside a full-suite run) and never again in 320 targeted repetitions there or 50 locally: when it
+// happens again, the events noted here are printed with the failure.
 $trace = null;
-if (getenv('MP_POLICY_TRACE') !== false) {
+if (($args['store'] ?? null) === 'file') {
     $trace = new class extends Filesystem
     {
         /** @var list<string> */

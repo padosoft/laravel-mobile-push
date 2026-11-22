@@ -153,11 +153,19 @@ it('the badge counter loses no increment and hands out no number twice when eigh
     $values = array_merge(...array_column($race, 'values'));
     $contended = array_sum(array_column($race, 'contended'));
     reportPolicy('badge/distinct', $store, sprintf('counted=%d unique=%d contended(gave up)=%d final=%d', count($values), count(array_unique($values)), $contended, $read[0]['current']));
-    if (getenv('MP_POLICY_TRACE') !== false) {
-        fwrite(STDERR, sprintf("[trace %s] active in %d of %d processes\n", $store, count(array_filter(array_column($race, 'traceActive'))), count($race)));
-    }
-    foreach (array_merge(...array_map(static fn (array $line): array => $line['trace'] ?? [], $race)) as $event) {
-        fwrite(STDERR, sprintf("[trace %s] %s\n", $store, $event));   // only with MP_POLICY_TRACE=1
+    // What the `file` store's filesystem noted (see policy-contender.php): printed whenever there is something, so
+    // that a failure of the assertions below comes with its cause.
+    $events = array_merge(...array_map(static fn (array $line): array => $line['trace'] ?? [], $race));
+    sort($events);
+    if ($events !== [] || count(array_unique($values)) !== count($values)) {
+        fwrite(STDERR, sprintf("\n[trace %s] counted=%d unique=%d final=%d; filesystem tracing active in %d of %d processes; %d event(s)\n", $store, count($values), count(array_unique($values)), $read[0]['current'], count(array_filter(array_column($race, 'traceActive'))), count($race), count($events)));
+        foreach (array_slice($events, 0, 60) as $event) {
+            fwrite(STDERR, sprintf("[trace %s] %s\n", $store, $event));
+        }
+        // The order in which the numbers were handed out, per process: shows where the counter went back.
+        foreach ($race as $n => $line) {
+            fwrite(STDERR, sprintf("[trace %s] process %d values: %s\n", $store, $n, implode(',', $line['values'])));
+        }
     }
 
     expect(array_merge(...array_column($race, 'unexpected')))->toBe([])             // only the documented exception, if any
