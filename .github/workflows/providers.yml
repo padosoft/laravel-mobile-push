@@ -77,3 +77,12 @@ jobs:
           grep -q 'status=deferred code=auth_token_expired raw=UNAUTHENTICATED http=401 attempts=2 destination_action=none' fcm.txt
           grep -q 'The Google token exchange was refused with HTTP 400 (invalid_grant)' fcm.txt
           grep -q 'status=failed code=auth_token_invalid raw=- http=- attempts=0 destination_action=none' fcm.txt
+      # Which hosts know the routes the package uses besides plain sends (broadcast publish on the two hosts Apple's
+      # page names, channel management, FCM topic subscriptions). Printed for the record; only the facts that do not
+      # depend on Apple's choice of host are asserted.
+      - name: Routes answered without credentials (Apple broadcast hosts, FCM topic subscriptions)
+        run: |
+          php tests/Support/Probes/unauthenticated-routes-probe.php | tee routes.txt
+          test "$(grep -c ' | ' routes.txt)" = 8
+          grep -q '^fcm topic subscriptions (list) | fcm.googleapis.com:443 | dns=ok http=2 status=401' routes.txt
+          grep -Eq '^apns broadcast publish, .* \(sandbox\) \| .* status=403 reason=InvalidProviderToken' routes.txt
