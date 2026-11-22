@@ -61,7 +61,7 @@ What the 20-minute limit is counted on: Apple's page "Establishing a token-based
 ],
 ```
 
-Other APNs keys of a connection: `port` (`443`, default, or `2197`), `broadcast_host` (`standard` or `api-broadcast`, the host used to publish Live Activity broadcasts: Apple documents both and **which one is operational has not been verified** against Apple), `secondary` (below), `live` (sending outside production, see [safe-mode.md](/reliability/safe-mode)) and the transport keys. Every key, its env var and its default is in the generated [configuration reference](/get-started/configuration).
+Other APNs keys of a connection: `port` (`443`, default, or `2197`), `broadcast_host` (`standard` or `api-broadcast`, the host used to publish Live Activity broadcasts: Apple documents both; both names answer the broadcast route with `InvalidProviderToken` for a made-up key, in sandbox and production, so both exist, but **which one accepts a publication with a valid key has not been verified**), `secondary` (below), `live` (sending outside production, see [safe-mode.md](/reliability/safe-mode)) and the transport keys. Every key, its env var and its default is in the generated [configuration reference](/get-started/configuration).
 
 ## Where to put the key: secret sources
 

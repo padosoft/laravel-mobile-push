@@ -481,7 +481,11 @@ Taken from the authors' notes and the Apple pages they read; none was confirmed 
 - **Broadcast publish host.** Apple's page states the connection section uses the standard APNs hosts but its examples use
   `api-broadcast.sandbox.push.apple.com`. The connection key `broadcast_host` chooses between `standard` (default) and
   `api-broadcast`. The production name `api-broadcast.push.apple.com` is the symmetric form and is **not stated** on the
-  page. Try the other value if publications are not accepted.
+  page. Try the other value if publications are not accepted. What was observed without credentials, from a GitHub-hosted
+  runner on 2026-11-22 (`providers` workflow): all four names (`api` and `api-broadcast`, sandbox and production)
+  resolve, speak HTTP/2 and answer the broadcast route with `403 InvalidProviderToken` for a made-up key, and so do the
+  channel management hosts on ports 2195 and 2196. Both hosts therefore exist and reach authentication; which one
+  accepts a publication **after** authentication still needs a real key with broadcast enabled.
 - **Request-id header on broadcasts.** The page lists `apns-request-id` in the header table and the response, but one
   example uses `apns-id`. The compiler sends `apns-request-id` on broadcast publications and `apns-id` on per-device
   requests. Which one the broadcast host accepts is unverified.

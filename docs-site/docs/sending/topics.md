@@ -18,7 +18,7 @@ Two different things, often confused:
 
 Related pages: [sending](/sending/sending), [messages](/sending/messages), [safe mode](/reliability/safe-mode), [outcomes](/reliability/outcomes), [credentials for FCM](/get-started/credentials-fcm), [commands](/operations/commands).
 
-What the test suite does not cover: real FCM. The subscription client follows Google's Discovery document (revision 20261112) and is tested against a mock server. Whether FCM counts the 2048 bytes exactly as the package counts them was **not measured** (below).
+What the test suite does not cover: real FCM. The subscription client follows Google's Discovery document (revision 20261112) and is tested against a mock server; without credentials the real route answers `401 UNAUTHENTICATED` over HTTP/2 while a made-up sibling route answers 404 (`providers` workflow, 2026-11-22). Whether FCM counts the 2048 bytes exactly as the package counts them was **not measured** (below).
 
 ## Publishing to a topic or a condition
 

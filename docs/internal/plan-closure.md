@@ -26,12 +26,14 @@ Where an item has an emulated part and a real-service part, it has two rows.
 **Totals at the audit (commit `18138b7`): 329 rows.** DONE 271; DONE, DIFFERENTLY 31 (17 of them with a deviation
 written down nowhere); NOT DONE, ATTEMPTABLE 7; BLOCKED 20.
 
-**Totals after the release of 2026-11-22: 329 rows.** DONE 281; DONE, DIFFERENTLY 32 (none unwritten: the 17
+**Totals after the release of 2026-11-22: 329 rows.** DONE 282; DONE, DIFFERENTLY 32 (none unwritten: the 17
 are now in the "Deviations kept on purpose" list of `docs/internal/integration-todo.md`, and the facade assertions
-were implemented); NOT DONE, ATTEMPTABLE 0; BLOCKED 16 (the two source-reading rows were closed once the owner
+were implemented); NOT DONE, ATTEMPTABLE 0; BLOCKED 15 (the two source-reading rows were closed once the owner
 allowed the documentation hosts; tag, public repository and Packagist were done by the owner). The owner reports
-that real pushes with a real `.p8` key on iOS and on Android were sent and work; the rows about real providers stay
-BLOCKED here because nothing of it was observed from this repository. The rows that changed carry "CLOSED 2026-11-22" or the new
+that real pushes with a real `.p8` key on iOS and on Android were sent and work: that closes the alpha gate row
+(marked as reported, not observed); the other rows about real providers name specific behaviours the report does not
+cover (token refresh after expiry, the other-environment probe, broadcast channels, topic subscriptions, `doctor
+--live`, limits measured) and stay BLOCKED. Each BLOCKED row now says what was attempted without credentials. The rows that changed carry "CLOSED 2026-11-22" or the new
 reason in their evidence cell; the two closing lists below are kept as the audit wrote them, with one line added to
 each entry saying how it ended.
 
@@ -92,7 +94,7 @@ each entry saying how it ended.
 | A late answer on generation 7 does not touch generation 8, even with the same token | DONE | `DeviceOutcomeApplier` docblock and `GenerationChanged`; `DeviceOutcomeApplierTest.php`. |
 | Probe command `mobile-push:devices:probe-environment {--device=} {--quarantined} {--allow-cross-environment}` sends a silent push on the other environment and fixes the label (emulated) | DONE | `Console/Ops/ProbeEnvironmentCommand.php` (all three options plus `--limit`, `--ignore-cooldown`), `EnvironmentProber.php`; `tests/Scenario/Laravel/Console/Ops/ProbeEnvironmentTest.php`. |
 | Probe: rate-limited; refused for keys bound to one environment | DONE | `devices.probe.cooldown_hours` (`ProbeCooldownTest.php`); `connections.*.key_environments` refusal (integration-todo W6-E). |
-| Probe against the real APNs other environment | BLOCKED | Needs a real `.p8` key and a real device token (owner). |
+| Probe against the real APNs other environment | BLOCKED | Needs a real `.p8` key and a real device token (owner). Attempted without credentials on 2026-11-22 (`providers` run 45083672099, hosted runner, direct HTTP/2): the real APNs sandbox refuses a made-up key with `403 InvalidProviderToken`, also for a provider token issued two hours earlier (Apple checks the key before the age). Past that answer a real key and a real device token are needed. |
 | The normal environment is the one declared by the app at registration; no automatic environment switch while sending | DONE | `devices.environment` column, `DeviceRegistrar`; no code path changes the environment outside the probe (`docs/devices.md`). |
 
 ## §4.5 Single retry budget
@@ -110,7 +112,7 @@ each entry saying how it ended.
 | `rate.fcm_per_minute` is an application ceiling, not Google's quota | DONE, DIFFERENTLY | Key is `guards.rate.fcm` (env `MOBILE_PUSH_RATE_FCM`), stated as a ceiling in `config/mobile-push.php` and `docs/retries-and-limits.md`. The renaming is **UNDOCUMENTED** as a deviation. |
 | Separate breakers: authentication (per credential), quota (per project), destination quality (per binding, minimum sample, controlled probe before reopening) | DONE, DIFFERENTLY | `Guard/AuthBreaker.php`, `DestinationQualityBreaker.php` (min sample, half-open probe batch). No quota breaker class: the quota signal is `ThrottleGate` + `RateLimiter`, written in `docs/contracts/retry.md` and `docs/retries-and-limits.md`. Tests: `tests/Scenario/Guard/BreakerScenariosTest.php`, unit tests per breaker. |
 | APNs `ExpiredProviderToken`: one coordinated refresh of the relevant generation, then one attempt (emulated) | DONE | `ApnsReasonCatalog` (`RefreshToken`), `ApnsTokenProvider` (single lock winner); `tests/Scenario/Auth/ApnsProviderTokenLifecycleTest.php`, `tests/Scenario/Send/RefusedBearerTest.php`. |
-| ... against the real APNs | BLOCKED | Needs the owner's `.p8` key (integration-todo, "ExpiredProviderToken refresh path"). |
+| ... against the real APNs | BLOCKED | Needs the owner's `.p8` key (integration-todo, "ExpiredProviderToken refresh path"). Attempted without credentials on 2026-11-22 (`providers` run 45083672099, hosted runner, direct HTTP/2): the real APNs sandbox refuses a made-up key with `403 InvalidProviderToken`, also for a provider token issued two hours earlier (Apple checks the key before the age). `ExpiredProviderToken` can only be obtained with a key Apple knows. |
 | APNs `TooManyProviderTokenUpdates`: slow renewals, never switch to the secondary | DONE | `ApnsReasonCatalog` (`SlowTokenRefresh`), `AuthBreaker` docblock; `docs/retries-and-limits.md`. |
 | APNs 5xx on device send: `Deferred` per Apple (15 min, **fixed with a citation in a fixture**); `Expired` if the expiry comes first | DONE, DIFFERENTLY | 900 s (`apns.server_error_retry_delay`), quote of Apple in `ApnsOutcomeClassifier.php` docblock, `docs/retries-and-limits.md` and `lesson.md`, not in a fixture under `tests/Fixtures/apns`. The location of the citation is **UNDOCUMENTED** as a deviation (minor). |
 | FCM `QUOTA_EXCEEDED` / `UNAVAILABLE`: initial minimum 1 min, `Retry-After` when present, jitter never earlier than the minimum | DONE | `fcm.throttled_min_delay`, `Retry/RetryAfter.php` (delta-seconds or HTTP-date), `Retry/Backoff.php` (never below the minimum); `tests/Scenario/Outcome/FcmQuotaAndBatchTest.php`. |
@@ -171,14 +173,14 @@ each entry saying how it ended.
 |---|---|---|
 | `Signer` (`sign()`, `algorithm()`, `keyId()`), internal OpenSSL implementations | DONE | `Core/Auth/Signer.php`, `OpenSslEs256Signer.php`, `OpenSslRs256Signer.php`. |
 | A non-exportable KMS integrates by implementing `Signer` (emulated) | DONE | `connections.*.signer` (ConfigSchema line for `signer`); `tests/Scenario/Laravel/Sending/ExternalSignerTest.php`, `KmsSignerTest.php` (AWS KMS API emulator), `Console/ExternalSignerConsoleTest.php`. |
-| ... against a real KMS/HSM | BLOCKED | Needs an AWS (or other KMS) account. |
+| ... against a real KMS/HSM | BLOCKED | Needs an AWS (or other KMS) account: none was supplied. A look for cloud credentials in the session on 2026-11-22 was refused by the session's permission system and not repeated. The emulated part is DONE (`KmsSignerTest`). |
 | `SecretResolver` for exportable secrets | DONE | `Core/Auth/SecretResolver.php`. |
 | APNs ES256 on P-256, JWS `R\|\|S` 64 bytes from OpenSSL DER | DONE | `Auth/DerSignature.php`; `tests/Unit/Core/Auth/DerSignatureTest.php` (leading-zero cases), `SignersTest.php` (RFC 7515 A.3, cross-check with `firebase/php-jwt`). |
 | Google: RS256 service-account assertion exchanged for an OAuth access token (native provider) | DONE | `Fcm/Auth/ServiceAccountTokenProvider.php`; `tests/Scenario/Auth/GoogleTokenExchangeTest.php`, `GoogleServiceAccountRulesTest.php`. |
 | ADC and metadata server through `google/auth` (emulated) | DONE | `Fcm/Auth/GoogleAuthLibraryProvider.php`; `tests/Scenario/Laravel/Sending/AdcOnGoogleCloudTest.php` (metadata server emulated), `GoogleAuthLibraryProviderTest.php`. |
 | Impersonation through `google/auth` | DONE | `tests/Scenario/Auth/GoogleAuthLibraryRulesTest.php` ("impersonated service account", identity read offline). The token exchange of impersonation is not exercised; not verified by this audit beyond that test name. |
 | Workload Identity Federation through `google/auth` (emulated) | DONE | CLOSED 2026-11-22: `tests/Scenario/Laravel/Sending/WorkloadIdentityFederationTest.php` (`external_account`, local STS, with and without service-account impersonation); `docs/credentials-fcm.md`. |
-| ADC / WIF on Google Cloud itself | BLOCKED | Needs a GCP project (integration-todo). |
+| ADC / WIF on Google Cloud itself | BLOCKED | Needs a GCP project: none was supplied (same refusal as the row above for looking in the session). Emulated parts are DONE (`AdcOnGoogleCloudTest`, `WorkloadIdentityFederationTest`). |
 | Token cache key = hash of (scope, provider, identity, OAuth scope, delegation context), a name, not crypto material | DONE | `Auth/TokenCacheKey.php` ("It is a name, not cryptographic material"). |
 | Cache value protected with authenticated encryption (**Laravel Encrypter**) and a rotatable, optionally dedicated key | DONE, DIFFERENTLY | `Laravel/Cache/CacheTokenStore.php` uses `Privacy/TokenCipher` (AES-256-GCM, dedicated key ring, bound to the cache key), not Laravel's Encrypter. Stated as the implementation in `docs/security-and-privacy.md` (Cache row); not listed among the decided deviations. |
 | Concurrent refreshes reuse the valid token (non-blocking lock + compare-and-swap) | DONE | `ApnsTokenProvider` (single lock winner), `CacheTokenStore::compareAndSwap`; `tests/Unit/Core/Auth/TokenStoreRulesTest.php`, `ApnsProviderTokenLifecycleTest.php` (fifty workers, one token). |
@@ -208,7 +210,7 @@ each entry saying how it ended.
 | An installation with FID and token receives one send per effect (`fcm.prefer = fid \| token`) | DONE, DIFFERENTLY | Key is `devices.fcm_prefer` (integration-todo "Closed", W6-A); `tests/Scenario/Laravel/Devices/FcmPreferenceStoriesTest.php`. Rename recorded there. |
 | `android` and `androidV2` mutually exclusive, builder refuses both | DONE | `Fcm/Message/FcmMessage.php` (`InvalidMessageException` both ways); `tests/Unit/Core/Fcm/Message/FcmMessageTest.php`. |
 | Topic publish separate from subscription management (`topicSubscriptions` create/get/list/patch/delete per installation); no bulk promised | DONE | `Fcm/Topics/TopicSubscriptionClient.php` (`subscribe`, `get`, `list`, `patch`, `unsubscribe`; `*Many()` multiplex single calls); `tests/Scenario/Fcm/Topics/TopicSubscriptionTest.php`, `tests/Unit/Core/Fcm/Topics/TopicDiscoveryContractTest.php`. |
-| ... against the real FCM | BLOCKED | Needs a Firebase service account and a registration token. |
+| ... against the real FCM | BLOCKED | Attempted without credentials on 2026-11-22: the real `topicSubscriptions` route answers `401 UNAUTHENTICATED` and a made-up sibling route 404 (`providers` run 45083672099). Past authentication it needs a Firebase service account and a registration token. |
 | No use of the legacy IID API | DONE | No `iid` endpoint in `EndpointCatalog`; `docs/topics.md`. |
 | Discovery snapshot in tests with revision and fingerprint | DONE | `tests/Fixtures/fcm/discovery-v1.json`, `discovery-v1.meta.json` (rev `20261112`, sha256); `tests/Unit/Core/Fcm/Message/DiscoverySchemaContractTest.php`. |
 | A scheduled workflow compares upstream and opens an issue with the diff | DONE | `.github/workflows/providers.yml` job `fcm-discovery` (weekly cron, `gh issue create`/`comment`). |
@@ -220,14 +222,14 @@ each entry saying how it ended.
 | Disjoint operations and tokens: `start` → push-to-start (iOS 17.2+); `update`/`end` → activity token or broadcast channel (iOS 18+); broadcast never starts | DONE | `ApnsLiveActivityToken`, `ApnsPushToStartToken`, `ApnsBroadcastChannel`; `ChannelHandle::start()` throws; `tests/Scenario/Apns/Compile/LiveActivityCompileTest.php`, `CompileRulesTest.php` ("names the destination and the event"). |
 | Explicit mapping to the Swift type: `LiveActivityType` with `swiftName()` and `version()` | DONE | `Apns/LiveActivity/LiveActivityType.php` (an interface, as shown in `docs/live-activities.md`), `Laravel/LiveActivities/TypeRegistry.php`. |
 | Fixture shared with the iOS test app (emulated part: an app that decodes the fixtures) | DONE | CLOSED 2026-11-22: `tests/Support/SwiftFixtures` (Swift package, six XCTest cases decoding `la-*.json`), run by `simulator.yml` on macOS (run 45025242263, Swift 6.3.3, green); `docs/live-activities.md`. |
-| ... on a real device | BLOCKED | Needs a physical iPhone and the owner's APNs key. |
+| ... on a real device | BLOCKED | Needs a physical iPhone and the owner's APNs key. The parts that need no device are DONE: `xcrun simctl push` on a macOS runner and the Swift decoding of the fixtures (`simulator` run 45025242263). |
 | Tokens with generation and rotation; serialised transitions per activity/channel; `end` terminal, an old update never reopens it | DONE | `Transition/TransitionRules.php` (ticket order, terminal states), `TokenChange`; `tests/Scenario/Laravel/LiveActivities/TokenRotationTest.php`, `ConcurrentWorkersTest.php`, `DeliveryStoryTest.php` ("a stale update job sends nothing"). |
 | `timestamp` = current Unix second; two updates in the same second coalesced (last wins) or deferred; no invented future second | DONE | `TransitionRules` rule 3; `DeliveryStoryTest.php` ("two updates in the same second"). |
 | Server limits high-priority attempts (`high_priority.max_per_hour`); does not measure the device budget | DONE | `live_activities.high_priority.max_per_hour` (20), `Transition/HourlyLimiter.php`; `HighPriorityBudgetTest.php`. |
 | "Automatic close" distinguishes local expiry, accepted `end`, state seen by the client | DONE | `LiveActivities/CloseReason.php`, `ClientActivityState.php`, local expiry in `TransitionRules` rule 1. |
 | Broadcast: channel management and publication separate profiles per operation and environment; one acceptance = one publication | DONE | `EndpointRole::ApnsChannelManagement` / `ApnsBroadcastPublish`; `docs/live-activities.md` ("one publication, not N deliveries"); `MatchDayBroadcastTest.php`. |
 | Channel reconciliation when the creation answer is lost (`channels:sync`), limits and cleanup | DONE | `Apns/Channels/ChannelReconciliation.php`, `ChannelLimitReachedException`, `ChannelsSyncCommand`; `tests/Scenario/Apns/Channels/ChannelManagementTest.php`, `LiveActivities/Console/BroadcastChannelsTest.php`. |
-| ... against the real broadcast API | BLOCKED | Needs the owner's APNs key with broadcast enabled. |
+| ... against the real broadcast API | BLOCKED | Needs the owner's APNs key with broadcast enabled. Attempted without credentials on 2026-11-22 (`providers` run 45083672099): the management hosts on 2195/2196 and both publish hosts answer `403 InvalidProviderToken`. |
 
 ## §6.6 Queues
 
@@ -312,7 +314,7 @@ Every command below exists as `mobile-push:<name>` (signatures read from `src/La
 |---|---|---|
 | `install` | DONE | `Console/Commands/InstallCommand.php`; `tests/Scenario/Laravel/Console/InstallTest.php`, `Install/*`. |
 | `doctor {--live}` (local checks and emulated live probe) | DONE | `DoctorCommand.php` (`--live`); `tests/Scenario/Laravel/Console/DoctorTest.php`. |
-| `doctor --live` against the real providers | BLOCKED | `live-probes.yml` exists but has never run: needs the owner's APNs key and Firebase service account as environment secrets. |
+| `doctor --live` against the real providers | BLOCKED | `live-probes.yml` exists but has never run: needs the owner's APNs key and Firebase service account as environment secrets. Not dispatched by the session: the workflow asks for a typed human confirmation ("send real probes") and uses the owner's secrets, and the secrets API is refused by the session proxy, so the session cannot even see whether they are set. |
 | `send` | DONE | `SendCommand.php`; `SendTest.php`. |
 | `preview` | DONE | `PreviewCommand.php`; `PreviewTest.php`. |
 | `explain` | DONE | `ExplainCommand.php`; `ExplainTest.php`. |
@@ -357,7 +359,7 @@ Every command below exists as `mobile-push:<name>` (signatures read from `src/La
 | M4 Laravel layer, light profile: manager, modes, report, fake, helpers, CLI | DONE | `src/Laravel/{Sending,Testing,Console}`, `helpers.php`. |
 | Alpha gate: the mock records the request and closes before the response → one unknown outcome, no target missing from the report | DONE | `tests/Scenario/Transport/ResponseLostTest.php`, `tests/Scenario/Send/ResponseLostTest.php`, `tests/Scenario/Send/EndToEndHttp2Test.php` (mock counts). |
 | Alpha gate: independent fixtures and per-platform limits | DONE | `tests/Fixtures/apns/*` (Apple examples), `tests/Fixtures/fcm/*`; `AppleFixturesTest.php`, `ByteLimitTest.php`, `PayloadLimitScenarioTest.php`. |
-| Alpha gate: test on controlled devices, distinct from `validate_only` | BLOCKED | Needs physical devices and the owner's credentials. (integration-todo: the owner reported a production test; nothing of it is in the repository or public docs.) |
+| Alpha gate: test on controlled devices, distinct from `validate_only` | DONE | Reported by the owner on 2026-11-22, not observed from the repository: real pushes with a real `.p8` key on iOS and with real credentials on Android were sent to real devices and work (the owner released 1.0.0 on that basis). Nothing about it is stated in the public docs, by the owner's choice. |
 | M5: ledger/outbox/relay, queues, retry budget, limits, breakers, devices, quarantine/invalidation, eligibility, confidentiality | DONE | See §4.3-§4.5, §6.6, §8 rows. |
 | M5: tests on long-lived runtimes | DONE | `tests/Scenario/Runtime/LongLivedWorkerTest.php`, `ForkSafetyTest.php`, `tests/Scenario/Laravel/Runtime/*`; Octane RoadRunner/Swoole/OpenSwoole/FrankenPHP and PHP-FPM jobs in `tests.yml` / `backends.yml`. |
 | Beta gate: crash before dispatch, mid-chunk, after the response but before saving | DONE | `tests/Scenario/Laravel/Queue/DurableCrashTest.php` (all three), `DurableOutboxTest.php`. |
@@ -369,7 +371,7 @@ Every command below exists as `mobile-push:<name>` (signatures read from `src/La
 | M6: typed tokens, `start/update/end`, channels and broadcast | DONE | See §6.5 rows. |
 | M6: versioned client/server documentation | DONE | `docs/live-activities.md` (iOS versions stated, Swift sketch), `src/Laravel/Receipts/CLIENT_CONTRACT.md`. |
 | RC1 gate (emulated): two simultaneous updates, rotated token, `end` followed by an old job | DONE | `ConcurrentWorkersTest.php`, `TokenRotationTest.php`, `DeliveryStoryTest.php`. |
-| RC1 gate: iOS test app and isolated channel: create → update → end → delete | BLOCKED | Needs an iPhone, the owner's APNs key with broadcast, an Apple developer account. |
+| RC1 gate: iOS test app and isolated channel: create → update → end → delete | BLOCKED | Needs an iPhone, the owner's APNs key with broadcast, an Apple developer account. No part of it can be run without a device and a key; the nearest checks without them are the simulator job and the credential-less broadcast probe. |
 | M7 observability, health, credentials | DONE | See §8 rows. |
 | M8 campaigns, cap, badge, fallback, receipts | DONE | See §8 rows. |
 | RC2 gate: each module passes its case of the release table (§11) | DONE | See §11 release table rows. |
@@ -401,7 +403,7 @@ Every command below exists as `mobile-push:<name>` (signatures read from `src/La
 | CI: PHP 8.3-8.5 × Laravel 12-13 × lowest/stable | DONE | `tests.yml` matrix (plus PHP 8.2 with Laravel 12, owner's request, integration-todo "Release 1.0.0"). |
 | Untrusted PRs use only mocks and ephemeral keys | DONE | `tests.yml` on `pull_request` references no secret (only `live-probes.yml` uses `secrets.*`); keys generated with `openssl_pkey_new()` in tests. |
 | Live probes separate, on a protected ref, with dedicated project/app and allowed destinations, zero secrets in logs (workflow) | DONE | `.github/workflows/live-probes.yml` (manual, `refs/heads/main` only, environment `live-probes`, confirmation input, output scanned for secrets). |
-| Live probes actually run; environment `live-probes` protected with a reviewer | BLOCKED | Never run: needs the owner's credentials as environment secrets and the environment protection in repository settings. |
+| Live probes actually run; environment `live-probes` protected with a reviewer | BLOCKED | Never run: needs the owner's credentials as environment secrets and the environment protection in repository settings. Same reason as `doctor --live`: a typed human confirmation and repository settings. |
 | Benchmarks in `benchmarks/`: same payloads, batch, concurrency, versions and hardware declared; warm/cold separate; throughput, p95/p99, memory, errors, connections | DONE | `benchmarks/results/*.json` (`env` block with CPU/PHP/libcurl/commit; `transport-warm-*` vs `transport-cold-*`; `rps`, `latency_ms.p95/p99`, memory, `transport_errors`, `fds`, `server.connections_opened`). |
 | No superiority claim without these numbers | DONE | `docs/comparison.md` ("makes no performance claim and quotes no number"); README "Performance" links `benchmarks/RESULTS.md`. |
 | Release table: mixed batch with two definitive outcomes and one uncertain: one current outcome per destination, coherent counters, no exception erases other results | DONE | `tests/Scenario/Send/MixedBatchTest.php`, `tests/Scenario/Transport/MixedBatchTest.php`. |
@@ -448,21 +450,21 @@ Every command below exists as `mobile-push:<name>` (signatures read from `src/La
 |---|---|---|
 | Apple: exact text of the 5xx advice (15 minutes) | DONE | `lesson.md` "APNs: testo esatto sui 5xx"; quote in `ApnsOutcomeClassifier.php` and `docs/retries-and-limits.md`. |
 | Apple: scope of `TooManyProviderTokenUpdates` (per key, team, connection?) | DONE | CLOSED 2026-11-22: Apple states the 20-minute rule "on the same connection" and no other scope (page read through its JSON form); recorded in `docs/credentials-apns.md` and `lesson.md`. Measuring it needs a real key: see the BLOCKED row. |
-| ... measured against the real APNs | BLOCKED | Needs the owner's `.p8` key. |
+| ... measured against the real APNs | BLOCKED | Needs the owner's `.p8` key. Attempted without credentials on 2026-11-22 (`providers` run 45083672099, hosted runner, direct HTTP/2): the real APNs sandbox refuses a made-up key with `403 InvalidProviderToken`, also for a provider token issued two hours earlier (Apple checks the key before the age). |
 | Apple: connection rules for team keys and topic keys (documentation) | DONE | `docs/credentials-apns.md` (team-scoped vs topic-specific keys, environment restriction, limits). |
-| Apple: error returned for a topic outside a topic-specific key | BLOCKED | `docs/credentials-apns.md`: "has not been verified"; needs a real topic-specific key. |
-| Apple: which of the two broadcast publish hosts is operational (integration check) | BLOCKED | Stays a `standard`/`api-broadcast` choice (`lesson.md` line 50, README "Project status"); needs the owner's key with broadcast. |
+| Apple: error returned for a topic outside a topic-specific key | BLOCKED | `docs/credentials-apns.md`: "has not been verified"; needs a real topic-specific key. A made-up key is refused before the topic is looked at (`InvalidProviderToken`, `providers` run 45083672099), so nothing can be learned without a real topic-specific key. |
+| Apple: which of the two broadcast publish hosts is operational (integration check) | BLOCKED | Attempted without credentials on 2026-11-22 (`providers` run 45083672099, hosted runner, HTTP/2): `api` and `api-broadcast`, sandbox and production, all answer the broadcast route with `403 InvalidProviderToken`; the management hosts on 2195/2196 too. Both hosts exist; which one accepts a publication after authentication needs a real key with broadcast. Written in `docs/live-activities.md` and `docs/credentials-apns.md`. |
 | Apple: strings `BadEnvironmentKeyIdInToken` / `BadEnvironmentKeyInToken` | DONE | Both accepted (`ApnsReasonCatalog` header comment; `lesson.md` 5xx entry: only the first is in Apple's table). |
 | Google: cessation date of each IID function (for the migration guide only) | DONE | CLOSED 2026-11-22 (host allowed by the owner): Google states the Instance ID server-side API is turned down on September 29, 2027 and closed to new projects after October 1, 2026; topic subscriptions move to the topic subscription API the package already uses (`projects.registrations.topicSubscriptions`, checked against the reference page). Recorded in `docs/topics.md` and `lesson.md`. |
 | Google: exact measuring rule of the 4096/2048 bytes (reading Google's documentation) | DONE | CLOSED 2026-11-22 (host allowed by the owner): Google documents 4096 bytes, 2048 for topics, keys and values both counted, same maximum for notification and data messages. The package rule agrees on all of it; what it adds (notification texts counted, conditions like topics) is marked as its own reading in `FcmPayloadLimits`, the fixture, `docs/messages.md` and `docs/topics.md`. Measuring against FCM stays the BLOCKED row. |
-| ... measured against the real FCM | BLOCKED | Needs a Firebase service account. |
+| ... measured against the real FCM | BLOCKED | Needs a Firebase service account. Without credentials FCM answers `401 UNAUTHENTICATED` before it looks at the message (`providers` run 45083672099); the documented rule was read and matches (row above). |
 | Google: shape of `Retry-After` | DONE | `lesson.md` (firebase-admin-python: delta-seconds or HTTP-date on 413/429/503); `Retry/RetryAfter.php` parses both. Verified on SDK sources, not on Google's pages (stated in `lesson.md`). |
 | curl/PHP: what the binding exposes on `REFUSED_STREAM` and `GOAWAY` | DONE | `lesson.md` (entries of 2026-11-20), `docs/transport.md`, `StreamRefusalTest.php`. |
 | curl/PHP: default of `CURLOPT_MAXAGE_CONN` | DONE | `docs/transport.md` (118 s, `url.c`, measured), `lesson.md` "MAXAGE_CONN". |
 | curl/PHP: libcurl internal automatic retries | DONE | `lesson.md` (`Curl_retry_request()`, `REQUEST_SIZE` cumulative), `docs/transport.md`, `LibcurlBehaviourTest.php`. |
 | curl/PHP: behaviour with Swoole | DONE | `lesson.md` "Swoole con hook di coroutine"; `backends.yml` `swoole-coroutine-hooks` and `octane` jobs; integration-todo deviation (unsupported with coroutine hooks). |
 | curl/PHP: mTLS blob support | DONE | `lesson.md` (`CURLOPT_SSLCERT_BLOB` available), `CurlCapabilities`, `tests/Scenario/Transport/MutualTlsTest.php`. |
-| curl/PHP: decoding of Apple certificate topic/environment extensions on a real certificate | BLOCKED | `Credentials/ApnsCertificateInspector.php` tested on generated certificates only (README "Project status"); needs a real Apple push certificate. |
+| curl/PHP: decoding of Apple certificate topic/environment extensions on a real certificate | BLOCKED | `Credentials/ApnsCertificateInspector.php` tested on generated certificates only (README "Project status"); needs a real Apple push certificate. A real APNs certificate exists only inside an Apple developer account; none is public. |
 | Laravel: Pulse API on Laravel 13 | DONE | `lesson.md` "Pulse e Telescope: contratti reali" (Pulse 1.11); the Pulse tests run in the Laravel 13 matrix of `tests.yml`. |
 | Laravel: custom entries in Telescope | DONE | Same `lesson.md` entry; `Telescope/PushWatcher.php`; `FailedPushScenariosTest.php`. |
 | Laravel: stability of the Notification UUID across retries | DONE | `lesson.md` (id assigned once per notifiable and serialised in `SendQueuedNotifications`); `QueueOwnershipTest.php` ("a retry reuses the same effect and apns-id"). |
