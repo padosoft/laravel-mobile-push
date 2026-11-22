@@ -51,6 +51,7 @@ final readonly class LightQueuedSender implements QueuedSender
                 LedgerTime::msOrNull($expiresAt),
                 0,
                 $this->settings->timeout,
+                $now->getTimestamp(),
             );
             $this->jobs->dispatch($job, $queue, $options->trafficClass);
         }

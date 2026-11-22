@@ -19,6 +19,7 @@ use Padosoft\MobilePush\Core\Outcome\ReasonCode;
 use Padosoft\MobilePush\Core\Outcome\SendResult;
 use Padosoft\MobilePush\Core\Outcome\SendStatus;
 use Padosoft\MobilePush\Laravel\Contracts\PushDispatcher;
+use Padosoft\MobilePush\Laravel\Health\MetricsRecorder;
 use Padosoft\MobilePush\Laravel\Logging\SinkManager;
 use Psr\Clock\ClockInterface;
 use Psr\Log\LoggerInterface;
@@ -61,6 +62,12 @@ final class SendPushJob implements ShouldBeEncrypted, ShouldQueue
     public bool $failOnTimeout = true;
 
     /**
+     * Unix second at which this job was built (dispatch time; a continuation gets its own). Null = unknown: a job
+     * serialized before this field existed unserializes with the default, and no queue wait is recorded for it.
+     */
+    public ?int $queuedAt = null;
+
+    /**
      * @param  array{scope: string, name: string, provider: string, app_id: string, environment: string, generation: string}  $binding
      * @param  list<array<string, mixed>>  $destinations  QueuedDestination::toArray() entries
      */
@@ -77,13 +84,19 @@ final class SendPushJob implements ShouldBeEncrypted, ShouldQueue
         /** 0 for the first job of a send, n for the n-th continuation. */
         public readonly int $continuation = 0,
         int $timeout = 120,
+        ?int $queuedAt = null,
     ) {
         $this->timeout = $timeout;
+        $this->queuedAt = $queuedAt;
     }
 
-    public function handle(PushDispatcher $dispatcher, SendJobDispatcher $jobs, ClockInterface $clock, QueueSettings $settings, LoggerInterface $logger, ?BindingMismatches $mismatches = null): void
+    public function handle(PushDispatcher $dispatcher, SendJobDispatcher $jobs, ClockInterface $clock, QueueSettings $settings, LoggerInterface $logger, ?BindingMismatches $mismatches = null, ?MetricsRecorder $metrics = null): void
     {
         $binding = BindingRef::fromArray($this->binding);
+        if ($this->queuedAt !== null) {
+            // How long the job waited in the queue backend; recording never throws and never delays the send.
+            $metrics?->recordQueueWait($binding, max(0, $clock->now()->getTimestamp() - $this->queuedAt));
+        }
         $message = unserialize($this->message);
         if (! $message instanceof Message) {
             $logger->warning('mobile-push: a queued send carried no readable message; nothing was sent.', $this->context());
@@ -140,12 +153,12 @@ final class SendPushJob implements ShouldBeEncrypted, ShouldQueue
                 'handed_over' => count($rest),
                 'chunk_deadline' => $settings->chunkDeadline,
             ]);
-            $jobs->dispatchNow($this->continue($rest), $this->connection, $this->queue);
+            $jobs->dispatchNow($this->continue($rest, $clock->now()->getTimestamp()), $this->connection, $this->queue);
         }
 
         $planner = new FollowUpPlanner($settings->followUpBucket);
         foreach ($planner->plan($deferred->deferred, $clock->now()) as $followUp) {
-            $jobs->dispatchNow($this->continue($followUp->destinations), $this->connection, $this->queue, $followUp->delaySeconds);
+            $jobs->dispatchNow($this->continue($followUp->destinations, $clock->now()->getTimestamp()), $this->connection, $this->queue, $followUp->delaySeconds);
         }
     }
 
@@ -212,7 +225,7 @@ final class SendPushJob implements ShouldBeEncrypted, ShouldQueue
     }
 
     /** @param  list<QueuedDestination>  $destinations */
-    private function continue(array $destinations): self
+    private function continue(array $destinations, int $now): self
     {
         return new self(
             $this->binding,
@@ -225,6 +238,7 @@ final class SendPushJob implements ShouldBeEncrypted, ShouldQueue
             $this->expiresAtMs,
             $this->continuation + 1,
             $this->timeout,
+            $now,
         );
     }
 

@@ -693,3 +693,23 @@ Modello di voce:
 - **Fatto 2:** `Repository::many()` normalizza le chiavi associative, quindi `many($index)` e `many(array_keys($index))` sono equivalenti: mutante non uccidibile. `isset($rejected[$k])` e' vero anche con valore `false`. `reset()` NON e' sospeso da `metrics.enabled=false` (e' una chiamata esplicita), le altre scritture si'.
 - **Fatto 3:** durante la misura un altro agente ha committato una modifica a `MetricsRecorder` (attesa del lock su file in 5 round): i numeri di riga dei mutanti sono slittati; rileggere il sorgente prima di commentare un log vecchio.
 - **Regola:** per un componente con TTL provare ogni durata sul confine esatto; per «non fa X» contare le chiamate allo store con un doppio che le registra.
+
+## 2026-11-22 — Asserzioni statiche sulla facade con __callStatic
+- **Contesto:** W8-D, `MobilePush::assertSent()`.
+- **Fatto:** `Facade::__callStatic($method, $args)` si può sovrascrivere in una classe `final` senza tipi sui parametri (la firma padre è senza tipi) e chiamare `parent::__callStatic()` per tutto il resto; PHPStan max passa con righe `@method static` nel docblock, senza ignore. Una chiamata a un metodo inesistente sul manager lancia `Error` (non `BadMethodCallException`) quando passa da `Facade::__callStatic`. La sessione `TestingSession::intent()` è `null` dopo `reset()` e dopo `fakeTransport()`.
+- **Regola:** le asserzioni restano nel layer di test; la facade inoltra solo i nomi in una lista chiusa e solleva `LogicException` se nessun fake d'intento è attivo.
+
+## 2026-11-22 — Workload Identity Federation con google/auth (external_account) senza rete
+- **Contesto:** W8-A, `tests/Scenario/Laravel/Sending/WorkloadIdentityFederationTest.php`, google/auth v1.55.3.
+- **Fatto:** `auth => adc` basta: `GOOGLE_APPLICATION_CREDENTIALS` che punta a un JSON `external_account` (credential_source.file) viene risolto da `ApplicationDefaultCredentials` in `ExternalAccountCredentials`, e `HttpClientCache::setHttpClient()` sostituisce l'handler anche per STS (`sts.googleapis.com/v1/token`, form urlencoded con grant_type token-exchange, audience, subject_token, scope FCM) e per l'impersonation (`iamcredentials...:generateAccessToken`, con `Authorization: Bearer <token STS>` e scope nel body JSON; risposta `accessToken`). Nessun cambio in `src/` necessario.
+- **Regola:** nei test di dump/redazione non fare `print_r` del `PushManager` (attraversa tutto il container, ~600 MB, e include gli spy del test stesso: falso positivo); fare il dump del provider e di `ConnectionFactory::make()`.
+
+## 2026-11-22 — Un campo aggiunto a un job in coda deve essere una proprietà con default, non promossa
+- **Contesto:** W8-C, istante di accodamento in `SendPushJob`.
+- **Fatto:** un payload serializzato prima dell'aggiunta del campo si deserializza lo stesso, ma una proprietà promossa/`readonly` resta NON inizializzata e leggerla lancia `Error`. Una proprietà dichiarata a parte con default (`public ?int $queuedAt = null;`) riprende il default. Nei test il payload «vecchio» si ottiene togliendo `s:8:"queuedAt";i:N;` da `serialize()` e decrementando il numero di proprietà in `O:..:"Classe":N:`. Nei test che cambiano `metrics.enabled` dopo il boot vanno dimenticati sia `HealthSettings` sia `MetricsRecorder` (singleton).
+- **Regola:** campi nuovi dei job in coda: default `null` = «sconosciuto», nessuna azione se manca.
+
+## 2026-11-22 — «Il dominio non risponde» da una sessione con rete limitata non dice nulla sul sito
+- **Contesto:** avevo scritto che il sito della documentazione non era pubblicato perché `curl https://doc.laravel-mobile-push.padosoft.com` dava HTTP 000, e sono arrivato a chiedere al proprietario un token Cloudflare per pubblicarlo io. Il proprietario ha fatto notare che Cloudflare era già collegato al repository.
+- **Fatto (verificato dopo):** quel 000 era `CONNECT tunnel failed, response 403`: il proxy di rete della sessione rifiuta gli host fuori dalla lista. Su ogni commit di `main` c'è invece il check run «Cloudflare Pages: Deployed successfully» (app `cloudflare-workers-and-pages`), visibile con `gh api repos/<owner>/<repo>/commits/<sha>/check-runs`.
+- **Regola:** prima di dichiarare «non pubblicato / non raggiungibile» leggere l'errore di curl per intero (un 403 del proxy non è una risposta del sito) e cercare la prova dal lato che si può vedere: check run, commit status e deployment su GitHub dicono se un servizio esterno è agganciato al repository. E prima di chiedere una credenziale, verificare che il lavoro non sia già fatto da un'integrazione.

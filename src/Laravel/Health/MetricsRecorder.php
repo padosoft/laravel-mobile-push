@@ -46,15 +46,21 @@ final class MetricsRecorder
 
     public const ACCOUNT_THROTTLED = 'mobile_push_account_throttled';
 
+    public const QUEUE_WAIT = 'mobile_push_queue_wait_seconds';
+
     private const HELP = [
         self::RESULTS => 'Send outcomes by provider, connection, environment, status, reason code and traffic class.',
         self::THROTTLED => 'Times a connection was paused by a provider throttle (HTTP 429 / quota), by traffic class.',
         self::TRANSITIONS => 'Circuit breaker transitions by guard and transition.',
         self::CIRCUIT_OPEN => '1 while the circuit of this guard is open or half-open for the connection, else 0.',
         self::ACCOUNT_THROTTLED => '1 while the connection is paused by a provider throttle, else 0.',
+        self::QUEUE_WAIT => 'Seconds the most recent light-profile job of this connection waited in the queue before it started (disappears when no job runs for a while).',
     ];
 
     private const STATE_TTL = 604800;
+
+    /** Life of the queue wait gauge: with no job started for ten minutes the series disappears instead of lying. */
+    private const QUEUE_WAIT_TTL = 600;
 
     /** Life of a counter on the stores where it has to be created with add(): a year, then it restarts from zero. */
     private const COUNTER_TTL = 31_536_000;
@@ -119,6 +125,22 @@ final class MetricsRecorder
             $this->increment(self::THROTTLED, $labels);
             $until = $pausedUntil?->getTimestamp() ?? ($this->clock->now()->getTimestamp() + 60);
             $this->setState(self::ACCOUNT_THROTTLED, $labels, $until, max(60, $until - $this->clock->now()->getTimestamp() + 60));
+        } catch (\Throwable) {
+        }
+    }
+
+    /**
+     * A light-profile job started after waiting $seconds in the queue (never negative: a clock skew gives 0). Gauge of
+     * the most recent job of the connection, labelled by provider, connection and environment only.
+     */
+    public function recordQueueWait(BindingRef $binding, int $seconds): void
+    {
+        if (! $this->enabled) {
+            return;
+        }
+
+        try {
+            $this->setState(self::QUEUE_WAIT, self::bindingLabels($binding), max(0, $seconds), self::QUEUE_WAIT_TTL);
         } catch (\Throwable) {
         }
     }

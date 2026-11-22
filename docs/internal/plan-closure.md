@@ -23,8 +23,14 @@ Statuses:
 
 Where an item has an emulated part and a real-service part, it has two rows.
 
-**Totals: 329 rows.** DONE 271; DONE, DIFFERENTLY 31 (17 of them with a deviation written down nowhere); NOT DONE,
-ATTEMPTABLE 7; BLOCKED 20.
+**Totals at the audit (commit `18138b7`): 329 rows.** DONE 271; DONE, DIFFERENTLY 31 (17 of them with a deviation
+written down nowhere); NOT DONE, ATTEMPTABLE 7; BLOCKED 20.
+
+**Totals after the closing wave of 2026-11-22: 329 rows.** DONE 276; DONE, DIFFERENTLY 32 (none unwritten: the 17
+are now in the "Deviations kept on purpose" list of `docs/internal/integration-todo.md`, and the facade assertions
+were implemented); NOT DONE, ATTEMPTABLE 0; BLOCKED 21. The rows that changed carry "CLOSED 2026-11-22" or the new
+reason in their evidence cell; the two closing lists below are kept as the audit wrote them, with one line added to
+each entry saying how it ended.
 
 ## §4.1 Outcomes
 
@@ -96,7 +102,7 @@ ATTEMPTABLE 7; BLOCKED 20.
 | Durable: `next_attempt_at` persisted; light queued: a new job with the remaining list, not `release()` | DONE | Deliveries `next_attempt_at`; `SendPushJob` never calls `release()` (only `RelayRecorder::release()`, a lease release); `docs/delivery-profiles.md` "never `release()`s itself"; `LightProfileTest.php`. |
 | A deferred attempt past the expiry never touches the network → `Expired` | DONE | `tests/Scenario/Send/ExpiryAndResumeTest.php`, `NowOrNeverTest.php`. |
 | Limits counted in messages, keyed by Firebase project / Apple team, not by alias | DONE | `Guard/RateLimiter.php`, `AccountKey.php`; `tests/Scenario/Laravel/Integration/SharedRateBudgetTest.php`. |
-| ... then per topic/device when signalled | NOT DONE, ATTEMPTABLE | APNs `TooManyRequests` defers only that destination (`apns.device_rate_limit_delay`), but FCM `QUOTA_EXCEEDED` always pauses the whole project (`FcmReasonCatalog`: "project, device or topic ... sends to this project are throttled"); no per-topic or per-device limiter exists and the choice is not written as a deviation. |
+| ... then per topic/device when signalled | DONE, DIFFERENTLY | CLOSED 2026-11-22 as a decided deviation: FCM `QUOTA_EXCEEDED` pauses the whole project; no documented machine-readable field tells the three quotas apart (Discovery rev. 20261112 silent; `firebase-admin` 14.5 / 7.8 map the v1 error to one generic rate error; `firebase.google.com` outside the session network). Written in `docs/internal/integration-todo.md` and `docs/retries-and-limits.md`. |
 | Reserved quota for transactional traffic | DONE | `guards.rate.reserved_share` (0.2), `TrafficClass`; `tests/Scenario/Guard/RateLimitScenariosTest.php`. |
 | `rate.fcm_per_minute` is an application ceiling, not Google's quota | DONE, DIFFERENTLY | Key is `guards.rate.fcm` (env `MOBILE_PUSH_RATE_FCM`), stated as a ceiling in `config/mobile-push.php` and `docs/retries-and-limits.md`. The renaming is **UNDOCUMENTED** as a deviation. |
 | Separate breakers: authentication (per credential), quota (per project), destination quality (per binding, minimum sample, controlled probe before reopening) | DONE, DIFFERENTLY | `Guard/AuthBreaker.php`, `DestinationQualityBreaker.php` (min sample, half-open probe batch). No quota breaker class: the quota signal is `ThrottleGate` + `RateLimiter`, written in `docs/contracts/retry.md` and `docs/retries-and-limits.md`. Tests: `tests/Scenario/Guard/BreakerScenariosTest.php`, unit tests per breaker. |
@@ -168,7 +174,7 @@ ATTEMPTABLE 7; BLOCKED 20.
 | Google: RS256 service-account assertion exchanged for an OAuth access token (native provider) | DONE | `Fcm/Auth/ServiceAccountTokenProvider.php`; `tests/Scenario/Auth/GoogleTokenExchangeTest.php`, `GoogleServiceAccountRulesTest.php`. |
 | ADC and metadata server through `google/auth` (emulated) | DONE | `Fcm/Auth/GoogleAuthLibraryProvider.php`; `tests/Scenario/Laravel/Sending/AdcOnGoogleCloudTest.php` (metadata server emulated), `GoogleAuthLibraryProviderTest.php`. |
 | Impersonation through `google/auth` | DONE | `tests/Scenario/Auth/GoogleAuthLibraryRulesTest.php` ("impersonated service account", identity read offline). The token exchange of impersonation is not exercised; not verified by this audit beyond that test name. |
-| Workload Identity Federation through `google/auth` (emulated) | NOT DONE, ATTEMPTABLE | No test uses an `external_account` credential (grep for `external_account`/`workload` in `tests/` finds nothing); delegated to `google/auth` untested. |
+| Workload Identity Federation through `google/auth` (emulated) | DONE | CLOSED 2026-11-22: `tests/Scenario/Laravel/Sending/WorkloadIdentityFederationTest.php` (`external_account`, local STS, with and without service-account impersonation); `docs/credentials-fcm.md`. |
 | ADC / WIF on Google Cloud itself | BLOCKED | Needs a GCP project (integration-todo). |
 | Token cache key = hash of (scope, provider, identity, OAuth scope, delegation context), a name, not crypto material | DONE | `Auth/TokenCacheKey.php` ("It is a name, not cryptographic material"). |
 | Cache value protected with authenticated encryption (**Laravel Encrypter**) and a rotatable, optionally dedicated key | DONE, DIFFERENTLY | `Laravel/Cache/CacheTokenStore.php` uses `Privacy/TokenCipher` (AES-256-GCM, dedicated key ring, bound to the cache key), not Laravel's Encrypter. Stated as the implementation in `docs/security-and-privacy.md` (Cache row); not listed among the decided deviations. |
@@ -210,7 +216,7 @@ ATTEMPTABLE 7; BLOCKED 20.
 |---|---|---|
 | Disjoint operations and tokens: `start` → push-to-start (iOS 17.2+); `update`/`end` → activity token or broadcast channel (iOS 18+); broadcast never starts | DONE | `ApnsLiveActivityToken`, `ApnsPushToStartToken`, `ApnsBroadcastChannel`; `ChannelHandle::start()` throws; `tests/Scenario/Apns/Compile/LiveActivityCompileTest.php`, `CompileRulesTest.php` ("names the destination and the event"). |
 | Explicit mapping to the Swift type: `LiveActivityType` with `swiftName()` and `version()` | DONE | `Apns/LiveActivity/LiveActivityType.php` (an interface, as shown in `docs/live-activities.md`), `Laravel/LiveActivities/TypeRegistry.php`. |
-| Fixture shared with the iOS test app (emulated part: an app that decodes the fixtures) | NOT DONE, ATTEMPTABLE | `tests/Fixtures/apns/la-*.json` exist; no iOS app, no Swift code in the repository (`docs/live-activities.md`: "The Swift snippets were not compiled"). |
+| Fixture shared with the iOS test app (emulated part: an app that decodes the fixtures) | DONE | CLOSED 2026-11-22: `tests/Support/SwiftFixtures` (Swift package, six XCTest cases decoding `la-*.json`), run by `simulator.yml` on macOS (run 45025242263, Swift 6.3.3, green); `docs/live-activities.md`. |
 | ... on a real device | BLOCKED | Needs a physical iPhone and the owner's APNs key. |
 | Tokens with generation and rotation; serialised transitions per activity/channel; `end` terminal, an old update never reopens it | DONE | `Transition/TransitionRules.php` (ticket order, terminal states), `TokenChange`; `tests/Scenario/Laravel/LiveActivities/TokenRotationTest.php`, `ConcurrentWorkersTest.php`, `DeliveryStoryTest.php` ("a stale update job sends nothing"). |
 | `timestamp` = current Unix second; two updates in the same second coalesced (last wins) or deferred; no invented future second | DONE | `TransitionRules` rule 3; `DeliveryStoryTest.php` ("two updates in the same second"). |
@@ -264,7 +270,7 @@ ATTEMPTABLE 7; BLOCKED 20.
 | Live Activities module (§6.5) | DONE | See §6.5 rows. |
 | Log sinks `log`, `database`, `otel` in any combination | DONE | `Logging/LogChannelSink.php`, `DatabaseSink.php`, `OpenTelemetrySink.php`, `log.sinks`; `tests/Scenario/Laravel/Logging/ChooseSinksTest.php`. |
 | A failing sink never makes an accepted send retry | DONE | `SinkManager` isolation; `tests/Scenario/Laravel/Logging/DatabaseDownTest.php`, `Integration/BrokenMetricsStoreTest.php`. |
-| Metrics: queue age, unknowns, deferred/expired, buffer drops, open circuits | NOT DONE, ATTEMPTABLE | Unknowns, deferred/expired (`mobile_push_results_total` by status, `ledger_unknown`, `ledger_deferred`), drops (`mobile_push_log_records_dropped_total`), circuits (`mobile_push_circuit_open`) exist. Queue age exists only as `mobile_push_ledger_oldest_due_age_seconds` (durable profile); nothing measures the age of the light profile's queued jobs, and that limit is not stated. |
+| Metrics: queue age, unknowns, deferred/expired, buffer drops, open circuits | DONE | CLOSED 2026-11-22: light-profile gauge `mobile_push_queue_wait_seconds` (`MetricsRecorder::recordQueueWait`, `SendPushJob::$queuedAt`, `QueueWaitMetricTest`, `LightQueueWaitTest`); durable: `mobile_push_ledger_oldest_due_age_seconds`. The other metrics were already there. |
 | Pulse and Telescope | DONE | `Laravel/Pulse/*`, `Laravel/Telescope/PushWatcher.php`; `tests/Scenario/Laravel/Pulse/DashboardScenariosTest.php`, `Telescope/FailedPushScenariosTest.php`. Browser check made once by hand (`docs/observability.md`), not in a workflow. |
 | Health: liveness, readiness and live probe separate | DONE | `Health/HealthInspector.php` (liveness/readiness), `mobile-push:health`, live probe = `doctor --live`; `HealthScenariosTest.php`. |
 | Check for `spatie/laravel-health` | DONE | `Health/MobilePushHealthCheck.php`; `SpatieCheckTest.php`. |
@@ -374,7 +380,7 @@ Every command below exists as `mobile-push:<name>` (signatures read from `src/La
 | M10: `npm run build` builds without errors | DONE | `.github/workflows/docs-site.yml` (`npm run build`, `npm run verify`). |
 | M10: pages generated from `README.md` and `docs/*.md`, a check fails when out of sync | DONE | `docs-site/scripts/sync-docs.mjs --check --strict` in `docs-site.yml`; `npm run check`. |
 | M10: package banner at the top of README and site; PNG + SVG source in the repository | DONE | `resources/laravel-mobile-push-banner.png`, `art/banner.svg`, `art/render.mjs`; README line 6, `docs-site/docs/index.md`. |
-| M10: published on Cloudflare Pages at `doc.laravel-mobile-push.padosoft.com` | BLOCKED | No Cloudflare credential in the session; DNS not configured (owner). Settings in `docs-site/README.md`. |
+| M10: published on Cloudflare Pages at `doc.laravel-mobile-push.padosoft.com` | DONE | By the owner's Git integration: every commit on `main` has the check run "Cloudflare Pages: Deployed successfully" (app `cloudflare-workers-and-pages`). Not visible from the session: whether the custom domain is attached (the session proxy refuses the host). |
 
 ## §11 Quality, testing and documentation
 
@@ -438,14 +444,14 @@ Every command below exists as `mobile-push:<name>` (signatures read from `src/La
 | Plan item | Status | Evidence or what is missing |
 |---|---|---|
 | Apple: exact text of the 5xx advice (15 minutes) | DONE | `lesson.md` "APNs: testo esatto sui 5xx"; quote in `ApnsOutcomeClassifier.php` and `docs/retries-and-limits.md`. |
-| Apple: scope of `TooManyProviderTokenUpdates` (per key, team, connection?) | NOT DONE, ATTEMPTABLE | The code and docs state Apple's "at most once every 20 minutes" rule and the reaction, but no entry in `lesson.md` or `docs/` settles what the limit is counted on. |
+| Apple: scope of `TooManyProviderTokenUpdates` (per key, team, connection?) | DONE | CLOSED 2026-11-22: Apple states the 20-minute rule "on the same connection" and no other scope (page read through its JSON form); recorded in `docs/credentials-apns.md` and `lesson.md`. Measuring it needs a real key: see the BLOCKED row. |
 | ... measured against the real APNs | BLOCKED | Needs the owner's `.p8` key. |
 | Apple: connection rules for team keys and topic keys (documentation) | DONE | `docs/credentials-apns.md` (team-scoped vs topic-specific keys, environment restriction, limits). |
 | Apple: error returned for a topic outside a topic-specific key | BLOCKED | `docs/credentials-apns.md`: "has not been verified"; needs a real topic-specific key. |
 | Apple: which of the two broadcast publish hosts is operational (integration check) | BLOCKED | Stays a `standard`/`api-broadcast` choice (`lesson.md` line 50, README "Project status"); needs the owner's key with broadcast. |
 | Apple: strings `BadEnvironmentKeyIdInToken` / `BadEnvironmentKeyInToken` | DONE | Both accepted (`ApnsReasonCatalog` header comment; `lesson.md` 5xx entry: only the first is in Apple's table). |
-| Google: cessation date of each IID function (for the migration guide only) | NOT DONE, ATTEMPTABLE | No date is recorded anywhere. No migration guide from an FCM library exists (both guides are APNs libraries), so the point has no consumer today; `lesson.md` notes `firebase.google.com` was unreachable from the session. |
-| Google: exact measuring rule of the 4096/2048 bytes (reading Google's documentation) | NOT DONE, ATTEMPTABLE | `FcmPayloadLimits.php` and `tests/Fixtures/fcm/payload-size-rule.json` say "UNVERIFIED against Google"; a conservative own rule is applied and stated in README "Project status". Reading Google's pages needs `firebase.google.com` reachable from the session. |
+| Google: cessation date of each IID function (for the migration guide only) | BLOCKED | Source not reachable: `firebase.google.com` and `developers.google.com` are outside the session network (tried 2026-11-22). Moot for the package: no IID endpoint is used and no migration guide from an FCM library exists. Side fact from a reachable source: `firebase-admin` 14.5 (Node) still calls `iid.googleapis.com` for topic management. |
+| Google: exact measuring rule of the 4096/2048 bytes (reading Google's documentation) | BLOCKED | Source not reachable (same hosts, tried 2026-11-22). The reachable first-party sources state no rule: the Discovery document is silent and `firebase-admin` only says the payload "exceeds the FCM size limits". The fixture keeps its UNVERIFIED mark; the measurement itself is the other BLOCKED row (Firebase project). |
 | ... measured against the real FCM | BLOCKED | Needs a Firebase service account. |
 | Google: shape of `Retry-After` | DONE | `lesson.md` (firebase-admin-python: delta-seconds or HTTP-date on 413/429/503); `Retry/RetryAfter.php` parses both. Verified on SDK sources, not on Google's pages (stated in `lesson.md`). |
 | curl/PHP: what the binding exposes on `REFUSED_STREAM` and `GOAWAY` | DONE | `lesson.md` (entries of 2026-11-20), `docs/transport.md`, `StreamRefusalTest.php`. |
@@ -467,26 +473,33 @@ Every row above with this status, with the smallest work that would close it.
    defer only the destination (device) or the topic, as APNs `TooManyRequests` already does, with a unit test in
    `tests/Unit/Core/Fcm/Outcome/FcmOutcomeClassifierTest.php`; or record "FCM quota is always paused per project" as a
    decided deviation in `docs/internal/integration-todo.md` and in `docs/retries-and-limits.md`.
+   → Closed as a decided deviation (no documented field to tell the quotas apart).
 2. **§6.2 Workload Identity Federation (emulated).** No test exercises an `external_account` credential through
    `GoogleAuthLibraryProvider`. Smallest work: a scenario next to `tests/Scenario/Laravel/Sending/AdcOnGoogleCloudTest.php`
    with an `external_account` JSON (file-sourced subject token) and `google/auth`'s HTTP handler answering the STS
    exchange locally, asserting the FCM request carries the exchanged bearer.
+   → Done: `WorkloadIdentityFederationTest`.
 3. **§6.5 fixture shared with the iOS test app (emulated part).** No Swift code exists. Smallest work: a small Xcode
    test target (attributes and `ContentState` structs) run by `simulator.yml` on the macOS runner, decoding
    `tests/Fixtures/apns/la-*.json` with `JSONDecoder`; whether `simctl push` can also start a Live Activity on the
    simulator was not verified by this audit.
+   → Done: `tests/Support/SwiftFixtures`, green on the macOS runner.
 4. **§8 metric "queue age" for the light profile.** Only `mobile_push_ledger_oldest_due_age_seconds` (durable) exists.
    Smallest work: state in `docs/observability.md` that queue age is measured only from the ledger (the light profile's
    jobs live in the Laravel queue backend), or add a gauge from the job's creation time recorded in `SendPushJob` when it
    starts.
+   → Done: `mobile_push_queue_wait_seconds`.
 5. **§13 scope of `TooManyProviderTokenUpdates`.** Smallest work: read Apple's "Establishing a token-based connection"
    page (Apple's JSON pages were reachable, `lesson.md` line 49), record what the limit is counted on in `lesson.md` and
    `docs/credentials-apns.md`, or write that Apple does not say.
+   → Done: Apple states "on the same connection" only.
 6. **§13 IID cessation dates.** Smallest work: record the dates in `lesson.md` when `firebase.google.com` is reachable,
    or mark the point moot in `docs/internal/integration-todo.md` (no FCM migration guide exists).
+   → Blocked: source hosts outside the session network; moot for the package.
 7. **§13 FCM 4096/2048 measuring rule (documentation reading).** Smallest work: read Google's FCM message-size pages
    (needs `firebase.google.com` reachable from the session) and either confirm `tests/Fixtures/fcm/payload-size-rule.json`
    or adjust `FcmPayloadLimits`.
+   → Blocked: source hosts outside the session network; reachable first-party sources state no rule.
 
 ## Blocked
 
@@ -514,12 +527,13 @@ Grouped by what blocks them.
 - §10 tag `v1.0.0` (proxy refuses tag pushes).
 - §10 public repository (settings write refused).
 - §10 Packagist registration (404, needs the owner's Packagist account and a public repository).
-- §10 M10 Cloudflare Pages publication and DNS of `doc.laravel-mobile-push.padosoft.com`.
+- §10 M10 Cloudflare Pages: NOT blocked after all, the owner's Git integration deploys every commit (see the row).
 - §11 protection of the `live-probes` environment with a reviewer (repository settings) and its secrets.
 
 ## Undocumented deviations (findings)
 
-Implemented differently from the plan and written down nowhere as a deviation:
+Implemented differently from the plan and, at the audit, written down nowhere as a deviation (all recorded on
+2026-11-22 in `docs/internal/integration-todo.md`; the first one was implemented instead):
 
 1. §7 `MobilePush::assertSent(...)` as a static facade call does not exist; assertions are on the `PushFake` returned
    by `MobilePush::fake()` (`src/Laravel/Facades/MobilePush.php`, accessor `PushManager`).

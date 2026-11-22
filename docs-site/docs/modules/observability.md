@@ -220,6 +220,7 @@ Two **defects were found and fixed** here on 2026-11-22: on the `database` store
 | `mobile_push_guard_transitions_total` | counter | `provider`, `connection`, `environment`, `guard`, `transition` | circuit breaker transitions |
 | `mobile_push_circuit_open` | gauge | `provider`, `connection`, `environment`, `guard` | 1 while open or half-open |
 | `mobile_push_account_throttled` | gauge | `provider`, `connection`, `environment`, `class` | 1 while paused by a throttle |
+| `mobile_push_queue_wait_seconds` | gauge | `provider`, `connection`, `environment` | light profile: seconds the most recent job of the connection waited in the queue before starting; disappears after 10 minutes without a job |
 | `mobile_push_metrics_series` | gauge | none | number of recorded series |
 | `mobile_push_ledger_reachable` | gauge | none | durable profile: 1 when the ledger could be read at scrape time |
 | `mobile_push_ledger_due` | gauge | none | deliveries due now |
@@ -233,7 +234,7 @@ Two **defects were found and fixed** here on 2026-11-22: on the `database` store
 | `mobile_push_log_records_dropped_total` | counter | none | ... dropped (buffer full) |
 | `mobile_push_log_buffered` | gauge | none | records waiting in that process's buffer |
 
-The ledger gauges are read from the database at scrape time and are global; the log-sink metrics are process-local.
+The ledger gauges are read from the database at scrape time and are global; the log-sink metrics are process-local. Queue age is the ledger gauge `mobile_push_ledger_oldest_due_age_seconds` for the durable profile and `mobile_push_queue_wait_seconds` for the light profile.
 
 ```php
 use Padosoft\MobilePush\Laravel\Health\Metric;

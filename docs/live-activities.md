@@ -474,6 +474,8 @@ They consult safe mode before writing anything, and refuse to write when nothing
 
 ## Unverified provider details
 
+What was checked on the app side: the Live Activity fixtures the PHP tests compile against (`tests/Fixtures/apns/la-*.json`, Apple's own "Adventure" sample) are decoded by a Swift package, `tests/Support/SwiftFixtures`, into the `Codable` structs an app would declare, with a default `JSONDecoder`. It runs on a macOS runner in the manual `simulator` workflow (Swift 6.3, six tests, run of 2026-11-22): every `content-state` and the `attributes` of the start push decode and equal the fixture values, `attributes-type` equals the Swift type name, `event`, `timestamp` and `relevance-score` have the JSON types Apple documents, and a `content-state` key spelled differently fails to decode. It imports no ActivityKit, starts no activity and delivers no push: what a device does with the payload is still unverified.
+
 Taken from the authors' notes and the Apple pages they read; none was confirmed against a real APNs:
 
 - **Broadcast publish host.** Apple's page states the connection section uses the standard APNs hosts but its examples use
