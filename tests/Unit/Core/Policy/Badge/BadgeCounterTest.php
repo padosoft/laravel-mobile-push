@@ -7,6 +7,7 @@ require_once dirname(__DIR__, 4).'/Scenario/Policy/Frequency/PolicyKit.php';
 use Padosoft\MobilePush\Core\Guard\InMemoryGuardStore;
 use Padosoft\MobilePush\Core\Policy\Badge\BadgeCounter;
 use Padosoft\MobilePush\Core\Policy\Badge\BadgeStoreUnavailable;
+use Padosoft\MobilePush\Tests\Scenario\Policy\Frequency\BusyGuardStore;
 use Padosoft\MobilePush\Tests\Scenario\Policy\Frequency\SilentDeadGuardStore;
 use Padosoft\MobilePush\Tests\Support\FakeClock;
 
@@ -53,9 +54,33 @@ it('lets the counter expire after its TTL of inactivity', function () {
     expect($counter->current('s', 'u'))->toBe(0);
 });
 
-it('reports a dead store on writes and reads as empty', function () {
-    $counter = new BadgeCounter(new SilentDeadGuardStore, new FakeClock, maxAttempts: 2);
+it('reports a dead store on the first lost write and reads as empty', function () {
+    $store = new SilentDeadGuardStore;
+    $counter = new BadgeCounter($store, new FakeClock, maxAttempts: 4);
 
-    expect($counter->current('s', 'u'))->toBe(0);
-    $counter->increment('s', 'u', 'a');
-})->throws(BadgeStoreUnavailable::class);
+    expect($counter->current('s', 'u'))->toBe(0)
+        ->and(fn () => $counter->increment('s', 'u', 'a'))->toThrow(BadgeStoreUnavailable::class, 'unavailable')
+        ->and($store->compareAndSets)->toBe(1);
+});
+
+it('gives up on a live store whose writes keep losing only after the bounded attempts, and counts nothing', function () {
+    $clock = new FakeClock('2026-11-20T10:00:00Z');
+    $inner = new InMemoryGuardStore($clock);
+    $store = new BusyGuardStore($inner);
+    $counter = new BadgeCounter($store, $clock, maxAttempts: 4);
+
+    expect(fn () => $counter->increment('s', 'u', 'a'))->toThrow(BadgeStoreUnavailable::class, 'too contended')
+        ->and($store->compareAndSets)->toBe(4)
+        ->and((new BadgeCounter($inner, $clock))->current('s', 'u'))->toBe(0);
+});
+
+it('counts once when the write is lost a few times and then lands', function () {
+    $clock = new FakeClock('2026-11-20T10:00:00Z');
+    $inner = new InMemoryGuardStore($clock);
+    $store = new BusyGuardStore($inner, losses: 5);
+    $counter = new BadgeCounter($store, $clock);
+
+    expect($counter->increment('s', 'u', 'a'))->toBe(1)
+        ->and($store->compareAndSets)->toBe(6)
+        ->and($counter->current('s', 'u'))->toBe(1);
+});

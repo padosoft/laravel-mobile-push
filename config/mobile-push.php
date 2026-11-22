@@ -542,7 +542,8 @@ return [
     | no_policy_bucket (null = not capped). Never applied to topics, broadcasts or Live Activity transitions, and
     | bypassFrequencyCap() never bypasses consent. Off by default: enable it and adapt the table below.
     |   limits: bucket => ['per_hour' => n, 'per_day' => n] (either or both), or 'unlimited'
-    |   on_store_failure: allow (send when the counters cannot be read) | deny
+    |   on_store_failure: allow (send when the counter store is unavailable) | deny (skip). A store that is alive
+    |   but too contended to update always defers the destination for a few seconds: the cap was not checked.
     | The table and on_store_failure are validated only while the cap is enabled (a ConfigurationException at
     | the first send then names the wrong key).
     |

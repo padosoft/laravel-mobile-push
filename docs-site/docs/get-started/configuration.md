@@ -352,7 +352,7 @@ Decided once per logical effect and per person (all devices of a user count once
 | `frequency.enabled` | `MOBILE_PUSH_FREQUENCY_ENABLED` | `false` | `bool` |  | Enable the frequency cap. | policies |
 | `frequency.limits` | – | `['default' => ['per_hour' => 5, 'per_day' => 20], 'marketing' => ['per_day' => 2], 'security' => 'unlimited']` | `map<string, array\|string>` |  | Bucket => [per_hour, per_day] (either or both) or "unlimited"; a message picks its bucket with ->policy(). | policies |
 | `frequency.no_policy_bucket` | `MOBILE_PUSH_FREQUENCY_NO_POLICY_BUCKET` | `'default'` | `string\|null` |  | Bucket of messages without a policy; null or "" = not capped. | policies |
-| `frequency.on_store_failure` | `MOBILE_PUSH_FREQUENCY_ON_STORE_FAILURE` | `'allow'` | `string` | `allow`, `deny` | What to do when the counters cannot be read. | policies |
+| `frequency.on_store_failure` | `MOBILE_PUSH_FREQUENCY_ON_STORE_FAILURE` | `'allow'` | `string` | `allow`, `deny` | What to do when the counter store is unavailable (a store that is alive but too contended always defers). | policies |
 | `badge.enabled` | `MOBILE_PUSH_BADGE_ENABLED` | `true` | `bool` |  | Resolve incrementBadge() on the server. | policies |
 | `badge.ttl_days` | `MOBILE_PUSH_BADGE_TTL_DAYS` | `90` | `int` | >= 1 | An idle counter is forgotten after this many days. | policies |
 | `badge.per_binding` | `MOBILE_PUSH_BADGE_PER_BINDING` | `false` | `bool` |  | One counter per connection instead of one per owner. | policies |

@@ -300,7 +300,7 @@ final class ConfigSchema
                 self::k('frequency.enabled', 'bool', false, 'MOBILE_PUSH_FREQUENCY_ENABLED', 'Enable the frequency cap.', 'policies'),
                 self::k('frequency.limits', 'map<string, array|string>', ['default' => ['per_hour' => 5, 'per_day' => 20], 'marketing' => ['per_day' => 2], 'security' => 'unlimited'], null, 'Bucket => [per_hour, per_day] (either or both) or "unlimited"; a message picks its bucket with ->policy().', 'policies'),
                 self::k('frequency.no_policy_bucket', 'string|null', 'default', 'MOBILE_PUSH_FREQUENCY_NO_POLICY_BUCKET', 'Bucket of messages without a policy; null or "" = not capped.', 'policies'),
-                self::k('frequency.on_store_failure', 'string', 'allow', 'MOBILE_PUSH_FREQUENCY_ON_STORE_FAILURE', 'What to do when the counters cannot be read.', 'policies', ['allow', 'deny']),
+                self::k('frequency.on_store_failure', 'string', 'allow', 'MOBILE_PUSH_FREQUENCY_ON_STORE_FAILURE', 'What to do when the counter store is unavailable (a store that is alive but too contended always defers).', 'policies', ['allow', 'deny']),
                 self::k('badge.enabled', 'bool', true, 'MOBILE_PUSH_BADGE_ENABLED', 'Resolve incrementBadge() on the server.', 'policies'),
                 self::k('badge.ttl_days', 'int', 90, 'MOBILE_PUSH_BADGE_TTL_DAYS', 'An idle counter is forgotten after this many days.', 'policies', constraint: '>= 1'),
                 self::k('badge.per_binding', 'bool', false, 'MOBILE_PUSH_BADGE_PER_BINDING', 'One counter per connection instead of one per owner.', 'policies'),

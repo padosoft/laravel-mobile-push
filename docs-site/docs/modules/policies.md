@@ -15,7 +15,7 @@ Two optional behaviours that decide *how often* and *with what number* a person 
 
 Related pages: [messages](/sending/messages), [sending](/sending/sending), [notifications and fallback](/sending/notifications-and-fallback), [devices](/modules/devices), [configuration](/get-started/configuration), [outcomes](/reliability/outcomes).
 
-What was not verified: both are covered by scenario and unit tests against the in-memory store and the `array` cache. Behaviour on Redis, Memcached or a database cache under real concurrency was not exercised for these two features (the cache layer they sit on was: eight processes on Redis, memcached, DynamoDB Local, a database and a file store; see [runtimes](/operations/runtimes)).
+What was verified under concurrency: eight real processes hitting the cap and the badge counter of one person at the same instant, on Redis, the `database` store (a shared SQLite file, and MySQL 8.4, MariaDB 11.4 and PostgreSQL 17 in CI) and the `file` store, plus memcached and DynamoDB Local in the `backends` workflow (`PolicyCoordinationTest`): the pushes allowed never exceed the cap, no badge number is handed out twice and the badge equals the increments that succeeded. What was not: a production cache under production traffic.
 
 ## `policy` is not `actionCategory`
 
@@ -90,12 +90,16 @@ The table and `on_store_failure` are validated only while the cap is enabled; a 
 
 ### Store failure policy
 
-The gate never throws. If the counter store is unavailable (the counter retries its compare-and-set several times, then gives up):
+The gate never throws. If the counter store is **unavailable** (it throws, or the package's cache adapter reports the backend as unreachable; the adapter itself swallows cache errors and behaves like an empty store):
 
 - `allow` (default) **fails open**: the destinations proceed. A cache outage never silences notifications.
 - `deny` **fails closed**: the destinations are skipped with `PolicyFrequencyCapped` and the hint `Frequency counters unavailable; failing closed.` A cache outage never causes a flood.
 
-Note that the package's cache adapter swallows some cache errors and behaves like an empty store; the two policies apply when the counter itself reports that it could not be updated.
+### A busy store is not a failed store
+
+The counter of one person is one value updated by compare-and-set. When several workers send to the same person at the same instant, a worker can lose that write: it retries (up to 32 times, with a random pause of at most two milliseconds). If every attempt loses while the store is alive, the cap **was not checked**, so the destination is not let through under either policy: it comes back `Deferred` with reason code `quota_exceeded`, the hint `Frequency counters are too contended to update; ...` and `nextAttemptAt` five seconds later. With an effect key the later attempt gets the same decision the first would have had.
+
+This rule comes from a **defect found and fixed**: contention used to be reported as a store failure, and with the default `allow` the losing worker's push went through. Eight processes sending to one person got 6 pushes through a cap of 5 and 61 through a cap of 60 on the `database` cache store of PostgreSQL 16 (and on the `file` store on a loaded machine). After the fix the same runs allow exactly 5 and 60.
 
 ### Seeing it work
 
@@ -140,7 +144,7 @@ The iOS badge is a number on the icon. If your server computes it, every device 
 - **When it is incremented.** Once per owner per send, and **only if at least one of the owner's devices passes the device-registry eligibility check and every check registered with `MobilePush::eligibleUsing()`**. An owner whose devices are all refused by those two does not consume an increment (their devices come back `Skipped`, and the counter stays as it was). With the registry off, only the `eligibleUsing()` checks are asked.
 - **What is not asked at that point.** The frequency cap, safe mode, the guards (rate limiter, breakers) and gates added with `withGate()` consume budget or depend on the moment of the send, so they are not evaluated before the increment: a device that is later skipped by the frequency cap, by safe mode or by the guards **has already counted**. The counter is the server's idea of "unread", not a count of delivered pushes.
 - **Your checks run twice.** For a badge send the `eligibleUsing()` callbacks are called once to decide the increment and again when the send itself passes the gates, so they must be **free of side effects** (no counters, no writes, no "consent asked" markers). A callback that throws counts as "may pass" for the increment, and the send then decides and reports it.
-- If the counter store is unavailable the message is sent **unchanged** (no badge change on the device is better than a wrong number).
+- If the counter store is unavailable, or stays too contended to update after 32 attempts (several workers counting for the same person at the same instant), the message is sent **unchanged** (no badge change on the device is better than a wrong number). Nothing is counted for that message, and the number is never handed out twice.
 - The markers that make the increment idempotent expire after 3 days and only the newest 256 per owner are kept: a retry later than that, or after more than 256 other effects of the same owner, would increment again. Retries happen within minutes, so this is the documented trade-off.
 - The counter itself is forgotten after `badge.ttl_days` (default 90) without an increment or a set.
 

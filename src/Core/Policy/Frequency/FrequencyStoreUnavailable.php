@@ -4,5 +4,5 @@ declare(strict_types=1);
 
 namespace Padosoft\MobilePush\Core\Policy\Frequency;
 
-/** The guard store did not accept a compare-and-set within the bounded number of attempts (or threw). Internal. */
+/** The guard store threw, or reports itself unavailable (ReportsAvailability). Internal. */
 final class FrequencyStoreUnavailable extends \RuntimeException {}

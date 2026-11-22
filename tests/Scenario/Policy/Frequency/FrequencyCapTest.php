@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Padosoft\MobilePush\Core\Driver\GateContext;
 use Padosoft\MobilePush\Core\Driver\SendItem;
+use Padosoft\MobilePush\Core\Guard\InMemoryGuardStore;
 use Padosoft\MobilePush\Core\Guard\TrafficClass;
 use Padosoft\MobilePush\Core\Identity\Destination\ApnsBroadcastChannel;
 use Padosoft\MobilePush\Core\Identity\Destination\FcmCondition;
@@ -13,11 +14,13 @@ use Padosoft\MobilePush\Core\Identity\DestinationRef;
 use Padosoft\MobilePush\Core\Message\PushMessage;
 use Padosoft\MobilePush\Core\Outcome\ReasonCode;
 use Padosoft\MobilePush\Core\Policy\Frequency\StoreFailurePolicy;
+use Padosoft\MobilePush\Tests\Scenario\Policy\Frequency\BusyGuardStore;
 use Padosoft\MobilePush\Tests\Scenario\Policy\Frequency\InterleavingGuardStore;
 use Padosoft\MobilePush\Tests\Scenario\Policy\Frequency\PolicyKit;
 use Padosoft\MobilePush\Tests\Scenario\Policy\Frequency\SilentDeadGuardStore;
 use Padosoft\MobilePush\Tests\Scenario\Policy\Frequency\ThrowingGuardStore;
 use Padosoft\MobilePush\Tests\Scenario\Send\SendKit;
+use Padosoft\MobilePush\Tests\Support\FakeClock;
 
 const TABLE = [
     'default' => ['per_hour' => 5, 'per_day' => 20],
@@ -288,6 +291,39 @@ it('skips every individual destination when the cache is down and the policy is 
     'throwing store' => [fn () => new ThrowingGuardStore],
     'silently dead store' => [fn () => new SilentDeadGuardStore],
 ]);
+
+/*
+ * A busy store is not a dead one. When the counter cannot be updated because other workers keep winning, the cap was
+ * not checked: letting the push through could exceed it (it did: 6 from a cap of 5 with eight processes on a
+ * database cache store). The destination waits a few seconds instead, whatever the store-failure policy says.
+ */
+it('defers a person whose counter is too contended to update, with either store-failure policy, and sends nothing', function (StoreFailurePolicy $policy) {
+    $kit = new PolicyKit;
+    $store = new BusyGuardStore(new InMemoryGuardStore(new FakeClock('2026-11-20T10:00:00Z')));
+    $gate = $kit->gate(['marketing' => ['per_day' => 1]], $policy, store: $store);
+
+    [$transport, $results] = $kit->deliver($gate, promo(), [PolicyKit::device(1, 'u1'), PolicyKit::device(2, 'u1')], 'p1');
+
+    expect(PolicyKit::statuses($results))->toBe(['deferred', 'deferred'])
+        ->and($results[0]->reason->code)->toBe(ReasonCode::QuotaExceeded)
+        ->and($results[0]->reason->hint)->toContain('too contended')
+        ->and($results[0]->nextAttemptAt)->not->toBeNull()
+        ->and($transport->sentCount())->toBe(0);
+})->with([
+    'allow (the default)' => [StoreFailurePolicy::Allow],
+    'deny' => [StoreFailurePolicy::Deny],
+]);
+
+it('says when the deferred person may be tried again: five seconds after the check', function () {
+    $kit = new PolicyKit;
+    $now = new DateTimeImmutable('2026-11-20T10:00:00Z');
+    $gate = $kit->gate(['default' => ['per_day' => 1]], store: new BusyGuardStore(new InMemoryGuardStore(new FakeClock('2026-11-20T10:00:00Z'))));
+
+    $denials = $gate->check(new GateContext(SendKit::apnsBinding(), PushMessage::make('Sale'), TrafficClass::Bulk, $now, 'p1'), [new SendItem(PolicyKit::device(1, 'u1'))]);
+
+    expect($denials)->toHaveCount(1)
+        ->and($denials[0]->retryAt?->getTimestamp())->toBe($now->getTimestamp() + 5);
+});
 
 it('counts per call when there is no effect key, and says so by consuming again', function () {
     $kit = new PolicyKit;

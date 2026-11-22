@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Padosoft\MobilePush\Core\Policy\Frequency;
 
 use Padosoft\MobilePush\Core\Guard\GuardStore;
+use Padosoft\MobilePush\Core\Guard\ReportsAvailability;
 use Psr\Clock\ClockInterface;
 
 /**
@@ -16,6 +17,12 @@ use Psr\Clock\ClockInterface;
  * the second one finds the first one's decision instead of consuming again. A separate per-effect decision key
  * (TTL: longest window + one hour) is written after the decision and read first, so a retry long after the window
  * would have had room still gets the original answer.
+ *
+ * A lost compare-and-set is retried after a pause of at most two milliseconds, up to `$maxAttempts` times. What
+ * happens when they all lose depends on why: a store that reports itself unavailable (ReportsAvailability) or throws
+ * is a store failure (FrequencyStoreUnavailable: the caller applies its store-failure policy); a store that is alive
+ * and merely busy is contention (FrequencyStoreContended: nothing may be allowed, the caller defers). Telling the
+ * two apart matters: read as a store failure, contention between workers let more pushes through than the cap.
  *
  * Storage per subject is bounded: allowed entries never exceed the largest configured limit (an effect is only
  * recorded when every window had room), capped ids are limited to MAX_CAPPED. Subjects and effect keys are hashed
@@ -30,7 +37,7 @@ final class FrequencyCounter
     public function __construct(
         private readonly GuardStore $store,
         private readonly ClockInterface $clock,
-        private readonly int $maxAttempts = 16,
+        private readonly int $maxAttempts = 32,
     ) {
         if ($maxAttempts < 1) {
             throw new \InvalidArgumentException('maxAttempts must be at least 1.');
@@ -41,7 +48,8 @@ final class FrequencyCounter
      * Decides (and, when allowed, consumes one unit) for the effect. `$effectKey` null means there is no stable
      * identity: the call is its own effect and a retry may consume again.
      *
-     * @throws FrequencyStoreUnavailable
+     * @throws FrequencyStoreUnavailable the store failed: no decision
+     * @throws FrequencyStoreContended the store is alive but the update kept losing: no decision
      */
     public function decide(string $scope, string $subject, string $bucket, BucketLimits $limits, ?string $effectKey): FrequencyDecision
     {
@@ -77,7 +85,7 @@ final class FrequencyCounter
 
     private function consume(string $stateKey, BucketLimits $limits, string $effectId, int $ttl): FrequencyDecision
     {
-        for ($attempt = 0; $attempt < $this->maxAttempts; $attempt++) {
+        for ($attempt = 1; $attempt <= $this->maxAttempts; $attempt++) {
             $now = $this->clock->now()->getTimestamp();
             $raw = $this->read(fn (): ?string => $this->store->get($stateKey));
             [$allowed, $capped] = $this->parse($raw);
@@ -122,9 +130,16 @@ final class FrequencyCounter
             if ($this->swallow(fn (): bool => $this->store->compareAndSet($stateKey, $raw, $encoded, $ttl))) {
                 return $decision;
             }
+            if ($this->store instanceof ReportsAvailability && ! $this->store->available()) {
+                throw new FrequencyStoreUnavailable('The frequency store is unavailable.');
+            }
+            if ($attempt < $this->maxAttempts) {
+                // Another writer won. A short random pause keeps several workers from retrying in lock-step.
+                usleep(random_int(100, 2000));
+            }
         }
 
-        throw new FrequencyStoreUnavailable('The frequency counter could not be updated.');
+        throw new FrequencyStoreContended('The frequency counter is too contended to update.');
     }
 
     /**

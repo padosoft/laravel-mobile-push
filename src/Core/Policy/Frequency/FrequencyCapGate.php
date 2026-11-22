@@ -30,6 +30,9 @@ use Padosoft\MobilePush\Core\Privacy\TokenIndex;
  */
 final readonly class FrequencyCapGate implements DestinationGate
 {
+    /** How long a destination waits when its counter was too contended to update. */
+    public const CONTENDED_RETRY_SECONDS = 5;
+
     public function __construct(
         private FrequencyCounter $counter,
         private FrequencyLimits $limits,
@@ -93,6 +96,15 @@ final readonly class FrequencyCapGate implements DestinationGate
                     throw new FrequencyStoreUnavailable('No subject.');
                 }
                 $decision = $this->counter->decide($scope, $subject, $bucket, $limits, $context->effectKey);
+            } catch (FrequencyStoreContended) {
+                // The store is alive and the cap could not be checked: sending now could exceed it. Not a store
+                // failure, so the store-failure policy does not apply: the destination waits a few seconds.
+                $retryAt = $context->now->add(new \DateInterval('PT'.self::CONTENDED_RETRY_SECONDS.'S'));
+                foreach ($positions as $position) {
+                    $denials[$position] = GateDenial::defer(ReasonCode::QuotaExceeded, $retryAt, 'Frequency counters are too contended to update; the cap could not be checked, so the destination is retried shortly.');
+                }
+
+                continue;
             } catch (\Throwable) {
                 foreach ($positions as $position) {
                     $denial = $this->failureDenial();

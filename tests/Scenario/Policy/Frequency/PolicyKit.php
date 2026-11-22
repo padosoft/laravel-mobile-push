@@ -6,6 +6,7 @@ namespace Padosoft\MobilePush\Tests\Scenario\Policy\Frequency;
 
 use Padosoft\MobilePush\Core\Guard\GuardStore;
 use Padosoft\MobilePush\Core\Guard\InMemoryGuardStore;
+use Padosoft\MobilePush\Core\Guard\ReportsAvailability;
 use Padosoft\MobilePush\Core\Guard\TrafficClass;
 use Padosoft\MobilePush\Core\Identity\Destination;
 use Padosoft\MobilePush\Core\Identity\Destination\ApnsDeviceToken;
@@ -126,9 +127,19 @@ final class ThrowingGuardStore implements GuardStore
     }
 }
 
-/** A cache that is down and says nothing: what CacheGuardStore does (get null, put no-op, compareAndSet false). */
-final class SilentDeadGuardStore implements GuardStore
+/**
+ * A cache that is down and does not throw: what CacheGuardStore does (get null, put no-op, compareAndSet false, and
+ * available() false, which is how it is told apart from a busy store).
+ */
+final class SilentDeadGuardStore implements GuardStore, ReportsAvailability
 {
+    public int $compareAndSets = 0;
+
+    public function available(): bool
+    {
+        return false;
+    }
+
     public function get(string $key): ?string
     {
         return null;
@@ -138,6 +149,44 @@ final class SilentDeadGuardStore implements GuardStore
 
     public function compareAndSet(string $key, ?string $expected, string $value, int $ttlSeconds): bool
     {
+        $this->compareAndSets++;
+
         return false;
+    }
+}
+
+/**
+ * A cache that is ALIVE and busy: another writer wins the first `$losses` compare-and-sets (null = every one), as
+ * happens to a worker among many on a slow shared store. Reads and the winning writes go to the inner store.
+ */
+final class BusyGuardStore implements GuardStore, ReportsAvailability
+{
+    public int $compareAndSets = 0;
+
+    public function __construct(private readonly GuardStore $inner, private readonly ?int $losses = null) {}
+
+    public function available(): bool
+    {
+        return true;
+    }
+
+    public function get(string $key): ?string
+    {
+        return $this->inner->get($key);
+    }
+
+    public function put(string $key, string $value, int $ttlSeconds): void
+    {
+        $this->inner->put($key, $value, $ttlSeconds);
+    }
+
+    public function compareAndSet(string $key, ?string $expected, string $value, int $ttlSeconds): bool
+    {
+        $this->compareAndSets++;
+        if ($this->losses === null || $this->compareAndSets <= $this->losses) {
+            return false;
+        }
+
+        return $this->inner->compareAndSet($key, $expected, $value, $ttlSeconds);
     }
 }

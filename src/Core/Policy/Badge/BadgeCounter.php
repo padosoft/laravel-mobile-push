@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Padosoft\MobilePush\Core\Policy\Badge;
 
 use Padosoft\MobilePush\Core\Guard\GuardStore;
+use Padosoft\MobilePush\Core\Guard\ReportsAvailability;
 use Psr\Clock\ClockInterface;
 
 /**
@@ -28,7 +29,7 @@ final class BadgeCounter
         private readonly ClockInterface $clock,
         private readonly int $ttlSeconds = 90 * 86400,
         private readonly int $markerTtlSeconds = 3 * 86400,
-        private readonly int $maxAttempts = 16,
+        private readonly int $maxAttempts = 32,
     ) {
         if ($ttlSeconds < 1 || $markerTtlSeconds < 1 || $maxAttempts < 1) {
             throw new \InvalidArgumentException('Badge TTLs and attempts must be positive.');
@@ -99,7 +100,7 @@ final class BadgeCounter
     {
         $key = $this->key($scope, $subject);
 
-        for ($attempt = 0; $attempt < $this->maxAttempts; $attempt++) {
+        for ($attempt = 1; $attempt <= $this->maxAttempts; $attempt++) {
             $now = $this->clock->now()->getTimestamp();
             try {
                 $raw = $this->store->get($key);
@@ -121,9 +122,16 @@ final class BadgeCounter
             } catch (\Throwable) {
                 throw new BadgeStoreUnavailable('The badge store could not be written.');
             }
+            if ($this->store instanceof ReportsAvailability && ! $this->store->available()) {
+                throw new BadgeStoreUnavailable('The badge store is unavailable.');
+            }
+            if ($attempt < $this->maxAttempts) {
+                // Another writer won. A short random pause keeps several workers from retrying in lock-step.
+                usleep(random_int(100, 2000));
+            }
         }
 
-        throw new BadgeStoreUnavailable('The badge counter could not be updated.');
+        throw new BadgeStoreUnavailable('The badge counter is too contended to update.');
     }
 
     /**
