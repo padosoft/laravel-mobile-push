@@ -11,7 +11,7 @@ on:
       rounds:
         description: 'Repetitions per shard'
         required: false
-        default: '40'
+        default: '12'
 
 permissions:
   contents: read
@@ -19,13 +19,13 @@ permissions:
 jobs:
   hunt:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
         shard: [1, 2, 3, 4, 5, 6, 7, 8]
-        php: ['8.2']
-    name: Badge counter on the file store · shard ${{ matrix.shard }} · PHP ${{ matrix.php }}
+        php: ['8.2', '8.3']
+    name: Coordination scenarios · shard ${{ matrix.shard }} · PHP ${{ matrix.php }}
     steps:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
@@ -40,12 +40,12 @@ jobs:
         run: |
           php -v | head -1 && composer show laravel/framework | grep -E '^versions'
           bad=0
-          for i in $(seq 1 ${{ github.event.inputs.rounds || '40' }}); do
-            vendor/bin/pest --colors=never tests/Scenario/Laravel/Runtime/PolicyCoordinationTest.php --filter="badge counter loses no increment" > out.txt 2>&1 || true
-            if grep -E '^\[badge/distinct file\]' out.txt | grep -qv 'counted=200 unique=200 contended(gave up)=0 final=200' || grep -E '^\[trace file\]' out.txt > /dev/null || ! grep -q '^\[badge/distinct file\]' out.txt; then
+          for i in $(seq 1 ${{ github.event.inputs.rounds || '12' }}); do
+            vendor/bin/pest --colors=never tests/Scenario/Laravel/Runtime/MetricsCoordinationTest.php tests/Scenario/Laravel/Runtime/PolicyCoordinationTest.php > out.txt 2>&1 || true
+            if grep -qE '^\[trace|asserting|FAILED' out.txt || ! grep -qE 'Tests: .* passed' out.txt; then
               bad=$((bad+1))
               echo "===== round $i: anomaly ====="
-              grep -E '^\[badge/distinct|^\[trace file\]|asserting|Tests:' out.txt | head -80
+              grep -E '^\[badge|^\[cap|^\[trace|asserting|FAILED|Tests:' out.txt | head -120
             fi
           done
           echo "rounds with an anomaly: $bad"

@@ -77,6 +77,27 @@ function tally(array $results, string $prefix): int
     return $total;
 }
 
+/**
+ * Prints what the `file` store's filesystem noted (see policy-contender.php) when there is something to explain.
+ *
+ * @param  list<array<string, mixed>>  $race
+ */
+function tracePolicy(string $label, string $store, array $race, bool $anomaly): void
+{
+    $events = array_merge(...array_map(static fn (array $line): array => $line['trace'] ?? [], $race));
+    sort($events);
+    if ($events === [] && ! $anomaly) {
+        return;
+    }
+    fwrite(STDERR, sprintf("\n[trace %s %s] anomaly=%s; filesystem tracing active in %d of %d processes; %d event(s)\n", $label, $store, $anomaly ? 'yes' : 'no', count(array_filter(array_column($race, 'traceActive'))), count($race), count($events)));
+    foreach (array_slice($events, 0, 60) as $event) {
+        fwrite(STDERR, sprintf("[trace %s %s] %s\n", $label, $store, $event));
+    }
+    foreach ($race as $n => $line) {
+        fwrite(STDERR, sprintf("[trace %s %s] process %d: %s\n", $label, $store, $n, json_encode($line['tally'] ?? $line['values'] ?? null)));
+    }
+}
+
 function reportPolicy(string $label, string $store, string $text): void
 {
     if (getenv('MP_RUNTIME_REPORT') !== false) {
@@ -107,6 +128,7 @@ it('the frequency cap never lets more than the cap through when eight processes 
     $capped = tally($race, 'capped');
     $contended = tally($race, 'contended');
     reportPolicy('cap/deny', $store, sprintf('cap=%d allowed=%d capped=%d contended(deferred)=%d', $cap, $allowed, $capped, $contended));
+    tracePolicy('cap/deny', $store, $race, $allowed > $cap);
 
     expect(array_sum(array_column($race, 'exceptions')))->toBe(0)                  // the gate never throws
         ->and($allowed + $capped + $contended)->toBe(CONTENDERS * SENDS_EACH)      // every attempt got one of the three answers
@@ -131,6 +153,7 @@ it('the frequency cap never lets more than the cap through with the default on_s
     $capped = tally($race, 'capped');
     $contended = tally($race, 'contended');
     reportPolicy('cap/allow', $store, sprintf('cap=%d allowed=%d capped=%d contended(deferred)=%d (probe afterwards: %s)', $cap, $allowed, $capped, $contended, json_encode($probe[0]['tally'])));
+    tracePolicy('cap/allow', $store, $race, $allowed > $cap);
 
     // Fail-open is for a store that is down. This one is alive and busy: a contended attempt is deferred, never let
     // through, so the default policy keeps the cap exactly like the strict one.
