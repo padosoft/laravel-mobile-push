@@ -18,7 +18,7 @@ Two different things, often confused:
 
 Related pages: [sending](/sending/sending), [messages](/sending/messages), [safe mode](/reliability/safe-mode), [outcomes](/reliability/outcomes), [credentials for FCM](/get-started/credentials-fcm), [commands](/operations/commands).
 
-What was not verified: nothing here has run against real FCM. The subscription client follows Google's Discovery document (revision 20261112) and is tested against a mock server. Whether the 2048-byte payload rule counts exactly as the package counts it is **unverified** (below).
+What the test suite does not cover: real FCM. The subscription client follows Google's Discovery document (revision 20261112) and is tested against a mock server. Whether the 2048-byte payload rule counts exactly as the package counts it is **unverified** (below).
 
 ## Publishing to a topic or a condition
 

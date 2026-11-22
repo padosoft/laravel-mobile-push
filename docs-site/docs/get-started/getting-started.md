@@ -9,8 +9,6 @@ From an empty Laravel app to a push on your own phone, one step at a time. If yo
 
 **What you will have at the end:** a Laravel app with one iOS connection (APNs) and one Android connection (FCM), a passing `mobile-push:doctor`, a first send in simulation (nothing leaves your machine), then a first real send to a test phone.
 
-**Status reminder:** the package is pre-release. It is verified against a protocol-level HTTP/2 mock server and the providers' published schemas, but has not yet been run against the real APNs/FCM servers in this project. Your first real send is also a test of the package: if something does not behave as described, please open an issue.
-
 ## 0. What you need
 
 - PHP 8.3 or newer with the `curl`, `openssl` and `json` extensions, and a libcurl built with HTTP/2 (`php -r 'var_dump(curl_version()["features"] & CURL_VERSION_HTTP2);'` must not print `int(0)`). `ext-intl` is recommended (exact text truncation).

@@ -1,19 +1,19 @@
 ---
 title: "Upgrading and versioning"
-description: "This page states the rules the package follows between versions, so you know what may change under you and what will not."
+description: "This page states the rules the package follows between versions, so you know what may change under you and what will not. It does not contain a release history: the list of changes of every version lives in CHANGELOG.md."
 ---
 
 # Upgrading and versioning
 
-This page states the rules the package follows between versions, so you know what may change under you and what will not. It does not contain a release history: the package has not reached 1.0, and the list of changes lives in `CHANGELOG.md` (the "Unreleased" section until a version is tagged).
+This page states the rules the package follows between versions, so you know what may change under you and what will not. It does not contain a release history: the list of changes of every version lives in `CHANGELOG.md`.
 
 Related pages: [commands](/operations/commands), [outcomes](/reliability/outcomes), [delivery profiles](/reliability/delivery-profiles), [configuration](/get-started/configuration).
 
-## Versioning policy before 1.0
+## Versioning policy
 
-The package follows semantic versioning, read the way semver reads `0.x`: **a minor version may contain breaking changes, a patch version does not.** Pin the minor in `composer.json` (`^0.5` means "at least 0.5.0 and below 0.6.0" for a 0.x package) and read `CHANGELOG.md` before moving to the next minor.
+The package follows semantic versioning from 1.0.0: **a breaking change of the public contract below needs a new major version**; a minor version adds, a patch version fixes. Require `^1.0` in `composer.json` and read `CHANGELOG.md` before moving to a new minor.
 
-| May change in a minor version before 1.0 | Does **not** change without being called out in `CHANGELOG.md` |
+| May change in a minor version | Does **not** change within a major version |
 |---|---|
 | Signatures and constructors of classes that are not part of the contracts below, and anything marked `@internal` | The values of `SendStatus` (`accepted`, `rejected`, `failed`, `deferred`, `outcome_unknown`, `expired`, `skipped`, `simulated`, `validated`) and what each one means |
 | New config keys, new defaults of **optional** modules, renamed keys (with a note) | The **exit codes** of the documented commands (see [commands](/operations/commands)) |
@@ -39,7 +39,7 @@ At 1.0 the contracts above become the stable public API in the strict semver sen
 
 ## Migrations across versions
 
-- A schema change ships as a **new migration file** with a later name, never as an edit of one that has been released. (Before the first release the files may still be edited; do not build on a pre-release schema.)
+- A schema change ships as a **new migration file** with a later name, never as an edit of one that has been released.
 - Migrations are **published, not auto-loaded** (`migrations.autoload`, `MOBILE_PUSH_MIGRATIONS_AUTOLOAD`, default `false`): after an upgrade, run `php artisan vendor:publish --tag=mobile-push-migrations-<module>` (or `php artisan mobile-push:install`, which publishes a module's group when any of its files is missing). Publishing copies the whole group under new names; the files you already had run once and the copies are skipped by their `hasTable` / `hasColumn` / index guards, so you may delete the older duplicates afterwards. Then `php artisan migrate`. With autoload on, the enabled modules hand their package files to `migrate` and the new files arrive with the upgrade; nothing is published, and a copy you published earlier takes precedence over the package file ([delivery profiles](/reliability/delivery-profiles#delivery-profiles-light-and-durable-switching-migrations)). Upgrading from a build that auto-loaded **and** published: see [troubleshooting](/operations/troubleshooting).
 - **Scaling indexes (campaign and relay work).** Two migrations only add indexes: `2026_11_21_000013_add_mobile_push_ledger_scaling_indexes.php` (in the ledger group; it adds the claim, effect-claim and work indexes of the deliveries table and drops the two index prefixes they replace) and `2026_11_21_000002_add_mobile_push_devices_audience_index.php` (in the devices group; the audience index). An application that published its migrations **before** these files existed must publish again (`php artisan mobile-push:install`, or `vendor:publish` with the `-ledger` and `-devices` tags) and run `php artisan migrate`; without them nothing breaks, but claims and audience reads on large tables are slow. They are idempotent (an index that exists is not created again) and run on SQLite and, in CI, on MySQL 8.4 and PostgreSQL 17 (on empty tables: how long they take on a large table was not measured). On a table with many rows creating an index takes time and locks according to your database engine: run it in a quiet period.
 - Receipts add columns to the deliveries table through their own migration (`..._create_mobile_push_ledger_receipt_columns`), which is part of the ledger set.

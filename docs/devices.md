@@ -370,4 +370,4 @@ app and in your declaration table (see the controller above), not the probe.
 ## Not verified
 
 The probe, quarantine and invalidation logic follow Apple's and Google's documented answers as recorded in the outcome
-catalogues; none of it has run against real providers. The 410 timestamp comparison is tested with synthetic values.
+catalogues; the test suite does not run it against real providers. The 410 timestamp comparison is tested with synthetic values.

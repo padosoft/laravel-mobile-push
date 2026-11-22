@@ -17,10 +17,6 @@ description: "Send push notifications from Laravel directly to Apple APNs and Go
 MobilePush::to($user)->send(PushMessage::make('Order shipped', 'Arrives Friday'));
 ```
 
-::: callout warning "Project status: pre-release" icon:triangle-alert
-The package is complete enough to try, but it has **never been run against the real APNs or FCM servers, nor on a real device**, in this project. It is verified against a protocol-level HTTP/2 mock server and against the providers' published schemas. Real-provider verification is the next step before 1.0. The list of what is not yet verified is in the [README](https://github.com/padosoft/laravel-mobile-push#project-status); if you try it against the real services, an issue with what you saw (even "it worked") is the most useful contribution right now.
-:::
-
 ::: callout info "New here? Start with the walkthrough" icon:compass
 [Getting started](/get-started/getting-started) takes an empty Laravel app to a push on your own phone, one step at a time. Then read [Outcomes](/reliability/outcomes) (what "accepted" and "unknown" really mean) and [Safe mode](/reliability/safe-mode) (why nothing leaves your machine by accident). Credentials: [APNs](/get-started/credentials-apns) and [FCM](/get-started/credentials-fcm).
 :::

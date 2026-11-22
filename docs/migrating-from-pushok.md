@@ -227,5 +227,4 @@ token table you had before step 7. Anything sent through the package was really 
 
 ## Not verified
 
-Nothing in this package has run against real APNs or a real device; it is tested against a local HTTP/2 mock and a fake
-transport. The behaviour of Pushok described above comes from reading its source at `0.19.1`, not from running it.
+The test suite runs against a local HTTP/2 mock and a fake transport, not against real APNs. The behaviour of Pushok described above comes from reading its source at `0.19.1`, not from running it.

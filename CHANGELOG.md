@@ -6,9 +6,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-Nothing in this list has been exercised against the real APNs or FCM services yet: everything is verified against
-fixtures, a local HTTP/2 mock server and the published API descriptions. See "Project status" in the README for the
-list of unverified points.
+## [1.0.0] - 2026-11-22
+
+First public release.
 
 ### Added
 
@@ -78,6 +78,14 @@ list of unverified points.
 - Testing fakes: `MobilePush::fake()` (intent) and `MobilePush::fakeTransport()` (bytes on the wire).
 - `docs/configuration.md` generated from the configuration schema; documentation examples executed by the test suite.
 - Reproducible benchmarks in `benchmarks/`, and a runtime compatibility page (`docs/runtimes.md`) that separates what
-  was measured (queue worker loop, forks, many tenants, cache coordination across processes) from what was not run
-  (Octane, Swoole, RoadRunner, FrankenPHP, Horizon, Vapor).
+  was measured (queue worker loop, forks, many tenants, cache coordination across processes; in CI: Redis, Horizon,
+  SQS and DynamoDB emulators, memcached, beanstalkd, Octane on RoadRunner, Swoole, OpenSwoole and FrankenPHP) from what
+  was not run (Vapor).
 - Documentation site sources in `docs-site/` (docmd).
+- `transport.reuse` (`auto`, `on`, `off`): connection reuse between sends can be switched off, and is switched off by
+  itself for a send that starts while Swoole or OpenSwoole hooks curl.
+- `devices.fcm_prefer` (`token`, `fid`): where a device row that holds both an FCM token and an installation id is sent.
+- `connections.*.key_environments`: declares an APNs key restricted to one environment, so that the environment probe
+  refuses it before any request.
+- Both delivery profiles enforce `queue.chunk_deadline`; the effect id of a queued send is on the per-result and batch
+  events and in the send log.

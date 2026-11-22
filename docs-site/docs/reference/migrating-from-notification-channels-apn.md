@@ -166,7 +166,7 @@ All the points of the [Pushok guide](/reference/migrating-from-pushok#migrating-
 
 ## Not verified
 
-Nothing here has run against real APNs or a real device. How the channel behaves is read from its source at `v6.5.0`, not from running it; check the method names against the version you have installed.
+The comparison on this page is not run against real APNs by the test suite. How the channel behaves is read from its source at `v6.5.0`, not from running it; check the method names against the version you have installed.
 
 ---
 

@@ -17,7 +17,7 @@ The sources were read on 2026-11-21 at these refs:
 | [kreait/firebase-php](https://github.com/kreait/firebase-php) | `8.6.0`, `e6900e5b0b80` | Firebase Admin SDK for PHP (messaging and much more) |
 | [M2mobi/ApnsPHP](https://github.com/M2mobi/ApnsPHP) (`m2mobi/apns-php`) | `4.0.0`, `75e82a58625f` | Maintained fork of the original ApnsPHP (`duccio/ApnsPHP`, now archived as `immobiliare/ApnsPHP`, whose last tags still use the legacy binary protocol) |
 
-"This package" cells describe `padosoft/laravel-mobile-push` as it is in this repository today (pre-release, not yet run against the real providers: see the [README](https://github.com/padosoft/laravel-mobile-push/blob/main/README.md#project-status)). A cell says "not checked" when the fact could not be established from the source with confidence.
+"This package" cells describe `padosoft/laravel-mobile-push` as it is in this repository today (how it is verified: see the [README](https://github.com/padosoft/laravel-mobile-push/blob/main/README.md#project-status)). A cell says "not checked" when the fact could not be established from the source with confidence.
 
 ## What these libraries do well
 

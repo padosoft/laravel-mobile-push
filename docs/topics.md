@@ -14,7 +14,7 @@ Two different things, often confused:
 Related pages: [sending](sending.md), [messages](messages.md), [safe mode](safe-mode.md), [outcomes](outcomes.md),
 [credentials for FCM](credentials-fcm.md), [commands](commands.md).
 
-What was not verified: nothing here has run against real FCM. The subscription client follows Google's Discovery document
+What the test suite does not cover: real FCM. The subscription client follows Google's Discovery document
 (revision 20261112) and is tested against a mock server. Whether the 2048-byte payload rule counts exactly as the package
 counts it is **unverified** (below).
 

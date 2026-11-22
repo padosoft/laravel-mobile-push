@@ -181,7 +181,7 @@ Pushok's README warns that its JWT goes stale after an hour and that you must re
 
 ## Not verified
 
-Nothing in this package has run against real APNs or a real device; it is tested against a local HTTP/2 mock and a fake transport. The behaviour of Pushok described above comes from reading its source at `0.19.1`, not from running it.
+The test suite runs against a local HTTP/2 mock and a fake transport, not against real APNs. The behaviour of Pushok described above comes from reading its source at `0.19.1`, not from running it.
 
 ---
 

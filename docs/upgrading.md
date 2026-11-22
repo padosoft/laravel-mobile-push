@@ -1,19 +1,18 @@
 # Upgrading and versioning
 
 This page states the rules the package follows between versions, so you know what may change under you and what will
-not. It does not contain a release history: the package has not reached 1.0, and the list of changes lives in
-`CHANGELOG.md` (the "Unreleased" section until a version is tagged).
+not. It does not contain a release history: the list of changes of every version lives in `CHANGELOG.md`.
 
 Related pages: [commands](commands.md), [outcomes](outcomes.md), [delivery profiles](delivery-profiles.md),
 [configuration](configuration.md).
 
-## Versioning policy before 1.0
+## Versioning policy
 
-The package follows semantic versioning, read the way semver reads `0.x`: **a minor version may contain breaking
-changes, a patch version does not.** Pin the minor in `composer.json` (`^0.5` means "at least 0.5.0 and below 0.6.0" for a
-0.x package) and read `CHANGELOG.md` before moving to the next minor.
+The package follows semantic versioning from 1.0.0: **a breaking change of the public contract below needs a new major
+version**; a minor version adds, a patch version fixes. Require `^1.0` in `composer.json` and read `CHANGELOG.md` before
+moving to a new minor.
 
-| May change in a minor version before 1.0 | Does **not** change without being called out in `CHANGELOG.md` |
+| May change in a minor version | Does **not** change within a major version |
 |---|---|
 | Signatures and constructors of classes that are not part of the contracts below, and anything marked `@internal` | The values of `SendStatus` (`accepted`, `rejected`, `failed`, `deferred`, `outcome_unknown`, `expired`, `skipped`, `simulated`, `validated`) and what each one means |
 | New config keys, new defaults of **optional** modules, renamed keys (with a note) | The **exit codes** of the documented commands (see [commands](commands.md)) |
@@ -49,7 +48,6 @@ version, with deprecation first.
 ## Migrations across versions
 
 - A schema change ships as a **new migration file** with a later name, never as an edit of one that has been released.
-  (Before the first release the files may still be edited; do not build on a pre-release schema.)
 - Migrations are **published, not auto-loaded** (`migrations.autoload`, `MOBILE_PUSH_MIGRATIONS_AUTOLOAD`, default
   `false`): after an upgrade, run `php artisan vendor:publish --tag=mobile-push-migrations-<module>` (or
   `php artisan mobile-push:install`, which publishes a module's group when any of its files is missing). Publishing copies
