@@ -286,17 +286,23 @@ Be precise about these; they are the reason the word "exactly once" does not app
 ### Measured on MySQL and PostgreSQL
 
 The `scaling` workflow runs the slow scaling guards of the durable profile and of campaigns on GitHub-hosted runners,
-with a fake transport (no network). The figures below are from the run of 2026-11-21; hosted runners are noisy, so
-read them as orders of magnitude. The assertions are the ratios, not the absolute times.
+with a fake transport (no network). The figures below are from the run of 2026-11-21 (the campaign row of the first
+two columns from the run of 2026-11-22, see the note under the table); hosted runners are noisy, so read them as
+orders of magnitude. The assertions are the ratios, not the absolute times.
 
 | Guard | PostgreSQL 17 | MySQL 8.4, 2 GB buffer pool | MySQL 8.4, 128 MB (image default) |
 |---|---|---|---|
-| Campaign, 25,000 then 200,000 devices (linear = 8 times) | 33.6 s, 293.7 s (8.8 times) | 47.1 s, 430.0 s (9.1 times) | 38.8 s, 630.5 s (16.2 times, **guard failed**) |
+| Campaign, 25,000 then 200,000 devices (linear = 8 times) | 33.9 s, 259.2 s (7.6 times) | 35.8 s, 293.7 s (8.2 times) | 38.8 s, 630.5 s (16.2 times, **guard failed**) |
 | One effect: seconds per 1,000 destinations at 25,000, then at 200,000 | 1.13, 1.25 (ratio 1.11) | 1.61, 1.91 (ratio 1.18) | 1.43, 2.98 (ratio 2.08, **guard failed**) |
 | One-destination effects: ms per effect for the first 2,000, then for 2,000 after 48,000 | 17.8, 16.4 | 18.0, 19.9 | 17.6, 24.4 |
 | 10,000 effects deferred at the same instant: follow-up relay jobs | 21 | 21 | 21 |
 | `health()`, `scopesWithWork()`, counts, funnel, open-deliveries probe next to 1.2 million final rows | 0.5 to 1.7 ms | 0.6 to 2.1 ms | 0.5 to 1.6 ms |
 | A claim with its reclaim and expiry sweeps next to 1.2 million final rows | 2.2 ms | 3.5 ms | 2.6 ms |
+
+Until 2026-11-22 the campaign guard did not empty a server database between its two runs, so its second campaign
+also planned the 25,000 devices of the first one (225,000 deliveries, 25,000 of them `Skipped`). Measured that way
+the campaign row read 33.6 s and 293.7 s on PostgreSQL and 47.1 s and 430.0 s on MySQL with 2 GB; the 128 MB column
+was measured that way and not repeated.
 
 With the 2 GB buffer pool MySQL made about a thousand disk reads for 300 million page requests. With 128 MB the
 deliveries table and its indexes no longer fit in memory at 200,000 rows, and the per-destination cost doubles: size
@@ -342,7 +348,9 @@ below).
   planner **chooses** is checked at size instead, in the `scaling` workflow: next to 1.2 million final rows, with
   fresh statistics, none of the 14 statements issued by the health reads, the settlement probes, the counts, the
   funnel and a claim with its sweeps reads the whole deliveries table, on PostgreSQL 17 and on MySQL 8.4 (run of
-  2026-11-21). The audience and device-lookup reads were not explained at that size.
+  2026-11-21). The reads a campaign makes on the device registry (the upper bound, the first slice, a slice from the
+  middle, the devices of one chunk) are checked the same way with 200,000 devices: none of the 4 statements reads
+  the whole devices table, on PostgreSQL 17 and on MySQL 8.4 (run of 2026-11-22).
 - Behaviour with a database that has a very high write latency, or read replicas for the ledger connection.
 - The fingerprint hashing cost on very large messages.
 

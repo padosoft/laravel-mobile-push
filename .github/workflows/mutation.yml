@@ -90,6 +90,12 @@ jobs:
             min: 85
             classes: 'Padosoft\MobilePush\Core\Driver'
             tests: tests/Unit/Core/Driver tests/Scenario/Send
+          # The cache-backed stores of the guards and of the provider tokens: added on 2026-11-22, after a deadlock
+          # answered by MySQL on the lock table was found to make the guards fail open (measured 89.8%).
+          - name: cache-stores
+            min: 85
+            classes: 'Padosoft\MobilePush\Laravel\Cache\CacheGuardStore,Padosoft\MobilePush\Laravel\Cache\CacheLocks,Padosoft\MobilePush\Laravel\Cache\CacheTokenStore'
+            tests: tests/Unit/Laravel/Cache tests/Scenario/Laravel/Cache
     name: Mutation · ${{ matrix.name }}
     steps:
       - uses: actions/checkout@v4

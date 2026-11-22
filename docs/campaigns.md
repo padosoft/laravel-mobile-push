@@ -278,13 +278,14 @@ What to know:
   500,000 destinations went from `dispatch()` to `completed` in 457 seconds, and the time per 1,000 destinations grew
   about 1.3 times from 25,000 to 200,000 destinations (the audience grew 8 times, the run took 10.3 times as long). The
   claim, audience and lookup queries read by index and their plans were checked on SQLite (the claim's plan also on PostgreSQL and MySQL in CI). On a local
-  **PostgreSQL 16** the same guard run took 29.7 seconds for 25,000 destinations and 273.6 seconds for 200,000 (9.2
-  times for 8 times the audience: 1.19 and 1.37 seconds per 1,000 destinations). The guard also runs weekly on
-  GitHub-hosted runners (the `scaling` workflow): on **PostgreSQL 17** 33.6 and 293.7 seconds (8.8 times), on
-  **MySQL 8.4** 47.1 and 430.0 seconds (9.1 times) with a 2 GB InnoDB buffer pool. With MySQL's image default of
-  128 MB the same run took 38.8 and 630.5 seconds (16.2 times) and the guard failed: the deliveries table and its
-  indexes no longer fit in memory at 200,000 rows. Give `innodb_buffer_pool_size` room for the ledger before a large
-  campaign. These numbers describe this implementation on that setup, not a provider and not your database, and are not a
+  **PostgreSQL 16** the same guard run took 32.4 seconds for 25,000 destinations and 277.1 seconds for 200,000 (8.6
+  times for 8 times the audience: 1.30 and 1.39 seconds per 1,000 destinations). The guard also runs weekly on
+  GitHub-hosted runners (the `scaling` workflow, run of 2026-11-22): on **PostgreSQL 17** 33.9 and 259.2 seconds
+  (7.6 times), on **MySQL 8.4** 35.8 and 293.7 seconds (8.2 times) with a 2 GB InnoDB buffer pool. With MySQL's image
+  default of 128 MB an earlier run took 38.8 and 630.5 seconds (16.2 times) and the guard failed: the deliveries
+  table and its indexes no longer fit in memory at 200,000 rows. Give `innodb_buffer_pool_size` room for the ledger
+  before a large campaign. With 200,000 devices in the registry the planner of both engines serves the campaign's
+  reads on it (the upper bound, a slice, the devices of one chunk) without reading the whole table. These numbers describe this implementation on that setup, not a provider and not your database, and are not a
   promise: size and test your own campaigns before relying on them.
 
 ## Configuration

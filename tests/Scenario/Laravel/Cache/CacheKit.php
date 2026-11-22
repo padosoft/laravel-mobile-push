@@ -193,3 +193,152 @@ final class DeadlockingStore extends ArrayStore
         };
     }
 }
+
+/**
+ * An ArrayStore that records what it is asked and can misbehave on demand: lock names and TTLs, lock attempts,
+ * written TTLs, forgotten keys, raw values handed back for chosen keys, failing release / forget.
+ */
+final class RecordingStore extends ArrayStore
+{
+    /** @var list<array{string, int}> name and seconds of every lock() call */
+    public array $lockCalls = [];
+
+    /** Number of acquire() attempts made on locks of this store. */
+    public int $attempts = 0;
+
+    /** Number of release() calls made on locks of this store. */
+    public int $releases = 0;
+
+    /** The first N acquire attempts fail as if somebody else held the lock. */
+    public int $heldAttempts = 0;
+
+    public ?\Throwable $releaseError = null;
+
+    public ?\Throwable $forgetError = null;
+
+    /** @var list<array{string, mixed, int}> key, value and seconds of every put() */
+    public array $puts = [];
+
+    /** @var list<string> */
+    public array $forgotten = [];
+
+    /** @var array<string, mixed> raw values returned by get() instead of the stored ones */
+    public array $raw = [];
+
+    public function get($key)
+    {
+        return array_key_exists($key, $this->raw) ? $this->raw[$key] : parent::get($key);
+    }
+
+    public function put($key, $value, $seconds)
+    {
+        $this->puts[] = [$key, $value, $seconds];
+
+        return parent::put($key, $value, $seconds);
+    }
+
+    public function forget($key)
+    {
+        if ($this->forgetError !== null) {
+            throw $this->forgetError;
+        }
+        $this->forgotten[] = $key;
+
+        return parent::forget($key);
+    }
+
+    public function lock($name, $seconds = 0, $owner = null)
+    {
+        $this->lockCalls[] = [$name, $seconds];
+
+        return new class($this, $name, $seconds, $owner) extends ArrayLock
+        {
+            public function acquire()
+            {
+                assert($this->store instanceof RecordingStore);
+                if (++$this->store->attempts <= $this->store->heldAttempts) {
+                    return false;
+                }
+
+                return parent::acquire();
+            }
+
+            public function release()
+            {
+                assert($this->store instanceof RecordingStore);
+                $this->store->releases++;
+                if ($this->store->releaseError !== null) {
+                    throw $this->store->releaseError;
+                }
+
+                return parent::release();
+            }
+        };
+    }
+}
+
+/** A working cache store that does not implement LockProvider (like the `null`-style or custom stores). */
+final class NoLockStore implements Store
+{
+    public ArrayStore $inner;
+
+    public function __construct()
+    {
+        $this->inner = new ArrayStore;
+    }
+
+    public function get($key)
+    {
+        return $this->inner->get($key);
+    }
+
+    public function many(array $keys)
+    {
+        return $this->inner->many($keys);
+    }
+
+    public function put($key, $value, $seconds)
+    {
+        return $this->inner->put($key, $value, $seconds);
+    }
+
+    public function putMany(array $values, $seconds)
+    {
+        return $this->inner->putMany($values, $seconds);
+    }
+
+    public function increment($key, $value = 1)
+    {
+        return $this->inner->increment($key, $value);
+    }
+
+    public function decrement($key, $value = 1)
+    {
+        return $this->inner->decrement($key, $value);
+    }
+
+    public function forever($key, $value)
+    {
+        return $this->inner->forever($key, $value);
+    }
+
+    public function touch($key, $seconds)
+    {
+        return $this->inner->touch($key, $seconds);
+    }
+
+    public function forget($key)
+    {
+        return $this->inner->forget($key);
+    }
+
+    public function flush()
+    {
+        return $this->inner->flush();
+    }
+
+    public function getPrefix()
+    {
+        return '';
+    }
+}

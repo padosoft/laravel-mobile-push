@@ -219,6 +219,7 @@ for the APNs provider token and take 30 permits each (240 asked) from a rate lim
 |---|---|---|---|
 | redis (real `redis-server`, `phpredis`) | yes | one token used by all 8 (1–8 signatures: on a cold store every process may sign, the compare-and-swap keeps one) | exactly 100 |
 | database (shared SQLite file, WAL) | yes | one token | exactly 100 |
+| database on a server engine (MySQL 8.4, MariaDB 11.4, PostgreSQL 17; eight connections) | yes, in CI (`databases` job) | one token | exactly 100 |
 | file (shared directory) | yes | one token | exactly 100 |
 | memcached 1.6 (`ext-memcached`) | yes, in CI (`backends` workflow) | one token | exactly 100 |
 | dynamodb (DynamoDB Local, `aws/aws-sdk-php`) | yes, in CI (`backends` workflow) | one token | exactly 100 |
@@ -234,6 +235,17 @@ destinations come back `Deferred` (`quota_exceeded`), never as an exception.
 This was a **defect found and fixed** here: before the fix an unreachable store surfaced as
 `RuntimeException('Guard state is too contended to update.')` thrown out of the send.
 
+A second **defect found and fixed** by the same scenario, on the `database` store with **MySQL**: Laravel's database
+lock takes a lock with an `INSERT` and, when the row is there, an `UPDATE` of the expired one. With eight processes
+after the same lock, MySQL answers some of those statements with a deadlock (error 1213, SQLSTATE 40001) instead of
+making them wait. The guard store read that answer as an unreachable backend and failed open for five seconds in
+that process: 175 permits were granted from a budget of 100 on MySQL 8.4 (124 to 129 in four of six runs on MySQL
+8.0). A deadlock, a serialization failure or a lock wait timeout reported by a database-backed store now counts as
+"the lock was not taken": the compare-and-set is lost and retried, the store stays available, and a deadlock while
+releasing a lock is retried so the lock is not left behind. After the fix eight of eight runs granted exactly 100.
+MariaDB 11.4 and PostgreSQL 17 did not show the deadlock. The frequency cap and the badge counter use the same store
+and were exposed to the same defect.
+
 ## Not verified
 
 - AWS Lambda/Vapor (needs an AWS account), PHP-FPM (not run; the conclusion follows from the design). Octane on
@@ -248,4 +260,6 @@ This was a **defect found and fixed** here: before the fix an unreachable store 
 - `queue:work` was run in the test process through `Artisan::call()` (the real worker loop), not as a separate
   `php artisan` process.
 - The cache stores against production services: memcached and DynamoDB were run against a local memcached and
-  DynamoDB Local, Redis against a local `redis-server`; MySQL/PostgreSQL as the `database` cache store were not run.
+  DynamoDB Local, Redis against a local `redis-server`, the `database` store against the MySQL, MariaDB and
+  PostgreSQL containers of the CI job. None of them is a production deployment (replication, a managed service, a
+  network in between).

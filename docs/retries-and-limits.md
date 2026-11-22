@@ -208,9 +208,18 @@ are told apart:
   `quota_exceeded`, a hint that says the shared state was too contended, no request is made and the retry planner picks
   them up again later. This is a deliberate refusal to send without a limit, not an error.
 
+A database-backed cache store has a third answer, which belongs to the second case: under contention **MySQL reports
+a deadlock** (error 1213) on the lock table of Laravel's `database` cache store instead of making the statement wait.
+The package reads a deadlock, a serialization failure or a lock wait timeout as "the lock was not taken": the
+compare-and-set is lost and retried, and the store is **not** treated as unreachable. (Before this was fixed, one
+such deadlock made the guards of that process fail open for five seconds; see
+[runtimes](runtimes.md#6-cache-backed-coordination-across-real-processes).)
+
 Neither case throws out of a send. Both are covered by `GuardStoreOutageTest` against in-memory stores that imitate an
-unreachable and a contended backend; the real adapter (`CacheGuardStore`) was exercised on the array driver and has **not
-been tried against a real Redis, Memcached or database cache** going down under load.
+unreachable and a contended backend. The real adapter (`CacheGuardStore`) is exercised by eight real processes on
+Redis, Memcached, DynamoDB Local, the file store and the `database` store (SQLite, MySQL, MariaDB, PostgreSQL), and
+against a Redis port with nothing listening ([runtimes](runtimes.md#6-cache-backed-coordination-across-real-processes)).
+It has **not** been tried against a cache server that goes down in the middle of a send under production load.
 
 ## The throttle gate
 
