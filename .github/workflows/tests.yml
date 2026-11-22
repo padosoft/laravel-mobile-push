@@ -172,11 +172,29 @@ jobs:
         include:
           - laravel: '12'
             php: '8.2'
+            db: sqlite
           - laravel: '12'
             php: '8.3'
+            db: sqlite
           - laravel: '13'
             php: '8.3'
-    name: Fresh Laravel ${{ matrix.laravel }} application on PHP ${{ matrix.php }}
+            db: sqlite
+          # Database, queue and cache store on MySQL, on the oldest supported PHP: what `laravel new` gives
+          # (everything on the `database` drivers) once the application is pointed at a MySQL server.
+          - laravel: '12'
+            php: '8.2'
+            db: mysql
+    name: Fresh Laravel ${{ matrix.laravel }} application on PHP ${{ matrix.php }} · ${{ matrix.db }}
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
+          MYSQL_DATABASE: fresh_app
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1"
+          --health-interval=10s --health-timeout=5s --health-retries=10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -184,12 +202,18 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
-          extensions: curl, openssl, json, intl, pdo_sqlite
+          extensions: curl, openssl, json, intl, pdo_sqlite, pdo_mysql
           coverage: none
       - name: Create the application and require the package
         run: |
           composer create-project "laravel/laravel:^${{ matrix.laravel }}.0" app --no-interaction --prefer-dist
           cd app
+          if [ "${{ matrix.db }}" = "mysql" ]; then
+            sed -i '/^#\? \?DB_/d' .env
+            printf '%s\n' DB_CONNECTION=mysql DB_HOST=127.0.0.1 DB_PORT=3306 DB_DATABASE=fresh_app DB_USERNAME=root DB_PASSWORD= >> .env
+            grep -E '^(DB_CONNECTION|QUEUE_CONNECTION|CACHE_STORE|SESSION_DRIVER)=' .env
+            php artisan migrate --no-interaction
+          fi
           composer config repositories.mobile-push '{"type":"path","url":"../package","options":{"symlink":false}}'
           composer require padosoft/laravel-mobile-push:@dev --no-interaction
       - name: Install, configure, migrate
@@ -216,6 +240,14 @@ jobs:
           php artisan tinker --execute="$(cat ../package/tests/Support/FreshApp/verify.php)" | tee verify.txt
           ! grep -q 'FRESH-APP SMOKE FAILED' verify.txt
           test "$(grep -c '^ok: ' verify.txt)" = 4
+      - name: The stack really is MySQL for database, queue and cache, and the doctor accepts the cache store
+        if: matrix.db == 'mysql'
+        working-directory: app
+        run: |
+          php artisan tinker --execute='echo "driver: ".DB::connection()->getDriverName()." cache: ".config("cache.default")." queue: ".config("queue.default")."\n";' | tee stack.txt
+          grep -q '^driver: mysql cache: database queue: database$' stack.txt
+          php artisan mobile-push:doctor | tee doctor.txt || true
+          grep -q 'The cache store takes locks' doctor.txt
       - name: The command line reports a simulated send with exit code 3
         working-directory: app
         run: |
