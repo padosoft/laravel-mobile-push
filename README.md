@@ -11,22 +11,23 @@
 MobilePush::to($user)->send(PushMessage::make('Order shipped', 'Arrives Friday'));
 ```
 
-## Project status
+## Contents
 
-Version 1.0. What the automated verification consists of:
-
-- A **protocol-level HTTP/2 mock server** (a Node `http2` server that counts what it receives, drops connections, resets streams and sends `GOAWAY`) and the providers' **published schemas** (Apple's documentation, the FCM Discovery document revision 20261112). The suite has more than 4,100 tests (about 1,900 test cases, the rest are rows of their datasets); CI runs it on PHP 8.2 (with Laravel 12), 8.3, 8.4 and 8.5 with Laravel 12 and 13 (lowest and latest dependencies), runs everything that needs Laravel on MySQL 8.4, MariaDB 11.4 and PostgreSQL 17 as well, and installs the package into a freshly created Laravel 12 and Laravel 13 application (install command, migrations, commands, a simulated send, the durable queue with a worker), once with database, queue and cache on MySQL.
-- **Credential-less probes of the real endpoints**, run weekly: the APNs sandbox refused a provider token signed by a made-up key with `InvalidProviderToken` ([details](docs/credentials-apns.md#what-was-checked-against-apples-real-endpoint)), Google's FCM and OAuth endpoints refused made-up credentials ([details](docs/credentials-fcm.md#what-was-checked-against-googles-real-endpoints)), the package classified each answer as documented, and the live FCM Discovery document equals the pinned snapshot.
-
-Points the automated suite does not settle, stated so you know where to look first:
-
-- which of Apple's two documented hosts for publishing Live Activity **broadcasts** is operational (`broadcast_host`: `standard` or `api-broadcast`), and whether the broadcast host expects `apns-request-id` (what the package sends) or `apns-id`;
-- the exact **FCM payload-size counting rule**: Google publishes the 4096 / 2048-byte limits but not how they are measured; the package applies a conservative rule of its own ([messages.md](docs/messages.md#size-limits-and-truncation));
-- FCM error codes and minimum delays come from the official Firebase Admin SDK sources, not from Google's web pages; the error strings of APNs broadcast **channel management** come from Apple's documentation by name;
-- the decoding of the topic and environment extensions of **Apple push certificates** (never tried on a real certificate);
-- the durable ledger **under real load on MySQL and PostgreSQL**: everything that needs Laravel runs on MySQL 8.4, MariaDB 11.4 and PostgreSQL 17 in CI, on PHP 8.2 and 8.3 (including a scenario where a second connection claims deliveries inside the first one's `SKIP LOCKED` transaction), and the scaling guards run weekly on the three engines on hosted runners (linear from 25,000 to 200,000 destinations; on MySQL only once the InnoDB buffer pool holds the ledger, see [delivery profiles](docs/delivery-profiles.md#not-verified)), but many worker processes at production volume have not been measured; the plans the planners choose were checked next to 1.2 million final rows for the ledger's hot reads and the claim, and with 200,000 devices for the reads a campaign makes on the registry, on the three engines; **cache coordination** between eight processes (the provider token, the rate limiter, the frequency cap and the badge counter of one person) was exercised on Redis, memcached, DynamoDB Local, a file store and the `database` store of SQLite, MySQL, MariaDB and PostgreSQL; SQS (on an emulator) and beanstalkd queues were run in CI with a handful of jobs, never under load;
-- long-lived runtimes: a real queue-worker loop, forked children, two hundred tenants in one process and cache coordination across eight processes were exercised locally, and Octane's per-request sandbox and overlapping sends were simulated ([runtimes](docs/runtimes.md)); CI jobs run a real **Redis** queue and cache, **Horizon**, an **SQS** queue on an emulator (ElasticMQ), **memcached** and **DynamoDB Local** as cache stores, a **beanstalkd** queue, **Octane on RoadRunner, Swoole, OpenSwoole and FrankenPHP** and **PHP-FPM** on a fresh application: simulated pushes, plus requests through the real transport (sequential, then eight at a time) to a local HTTP/2 mock server that counted one connection per Octane worker and, under PHP-FPM, one per HTTP request; **Vapor has not been run** (it needs an AWS account), Swoole's curl coroutine hooks are **not supported** for sending from HTTP workers (measured: the transport holds once the package switches connection reuse off there, Octane's shared application does not), and no real provider connection was observed under Octane or Horizon;
-- **Application Default Credentials** on Google Cloud itself (the metadata-server path was run against an emulation of that server), a real KMS or HSM for the APNs signer (it was run against an emulator of the AWS KMS API), and five cells of the [capability matrix](docs/messages.md#the-capability-matrix) marked "unverified".
+- [Why this package](#why-this-package)
+- [How it compares](#how-it-compares)
+- [Coming from another package](#coming-from-another-package)
+- [Requirements](#requirements)
+- [Quick start](#quick-start)
+- [Usage tour](#usage-tour)
+- [Features at a glance](#features-at-a-glance)
+- [Commands](#commands)
+- [Configuration](#configuration)
+- [Documentation](#documentation)
+- [Performance](#performance)
+- [Project status](#project-status)
+- [Contributing](#contributing)
+- [Security](#security)
+- [License](#license)
 
 ## Why this package
 
@@ -40,6 +41,27 @@ Points the automated suite does not settle, stated so you know where to look fir
 - **Live Activities, broadcast channels included.** Start (push-to-start), update and end activities, and create and publish to iOS 18 broadcast channels: one publication for every subscriber.
 - **First-class testing fakes.** `MobilePush::fake()` checks what your code asked to send; `MobilePush::fakeTransport()` runs the real pipeline and checks the exact bytes. Neither needs credentials.
 - **Redaction everywhere.** Device tokens, bearer tokens and receipt markers never reach logs, events, Telescope, Pulse or OpenTelemetry; tokens are encrypted at rest and looked up through a keyed HMAC index.
+
+## How it compares
+
+A capability comparison with `edamov/pushok`, `laravel-notification-channels/apn`, `laravel-notification-channels/fcm` / `kreait/firebase-php` and `ApnsPHP`, every cell pinned to a tag and a source file, is in [docs/comparison.md](docs/comparison.md). In short:
+
+| Capability | This package | pushok | notification-channels/apn | notification-channels/fcm + kreait | ApnsPHP (M2mobi) |
+|---|---|---|---|---|---|
+| APNs | yes | yes | yes (pushok) | no | yes |
+| FCM HTTP v1 | yes | no | no | yes | no |
+| Live Activity updates | yes | yes | yes | APNs block only | yes |
+| Live Activity broadcast channels | yes | no | no | no | no |
+| APNs provider token renewed automatically | yes | no | every 20 min (cached token) | – | no |
+| Explicit "unknown outcome" | yes | no | no | no | no |
+| Automatic retry of 429 / 5xx | yes | no | no | no | yes (3 attempts) |
+| Safe mode outside production | yes | no | no | no | no |
+
+They are smaller and older, with a longer track record: for a few best-effort notifications, or when you already use Firebase for more than messaging, they may well be the better choice. The comparison page says when.
+
+## Coming from another package
+
+Step-by-step migration guides, with the API of each package next to this one's: [from `edamov/pushok`](docs/migrating-from-pushok.md) and [from `laravel-notification-channels/apn`](docs/migrating-from-laravel-notification-channels-apn.md).
 
 ## Requirements
 
@@ -429,30 +451,26 @@ Each connection is validated the first time it is used: a missing key, an expire
 
 The full table of contents is [docs/index.md](docs/index.md). The same documentation is also built as a website, generated from `docs/` (sources in [`docs-site/`](docs-site/README.md)): <https://doc.laravel-mobile-push.padosoft.com>. The most used pages: [getting started](docs/getting-started.md) · [sending](docs/sending.md) · [messages](docs/messages.md) · [outcomes](docs/outcomes.md) · [testing](docs/testing.md) · [configuration](docs/configuration.md) · [commands](docs/commands.md) · [troubleshooting](docs/troubleshooting.md).
 
-## Coming from another package
-
-Step-by-step migration guides, with the API of each package next to this one's: [from `edamov/pushok`](docs/migrating-from-pushok.md) and [from `laravel-notification-channels/apn`](docs/migrating-from-laravel-notification-channels-apn.md).
-
-## How it compares
-
-A capability comparison with `edamov/pushok`, `laravel-notification-channels/apn`, `laravel-notification-channels/fcm` / `kreait/firebase-php` and `ApnsPHP`, every cell pinned to a tag and a source file, is in [docs/comparison.md](docs/comparison.md). In short:
-
-| Capability | This package | pushok | notification-channels/apn | notification-channels/fcm + kreait | ApnsPHP (M2mobi) |
-|---|---|---|---|---|---|
-| APNs | yes | yes | yes (pushok) | no | yes |
-| FCM HTTP v1 | yes | no | no | yes | no |
-| Live Activity updates | yes | yes | yes | APNs block only | yes |
-| Live Activity broadcast channels | yes | no | no | no | no |
-| APNs provider token renewed automatically | yes | no | every 20 min (cached token) | – | no |
-| Explicit "unknown outcome" | yes | no | no | no | no |
-| Automatic retry of 429 / 5xx | yes | no | no | no | yes (3 attempts) |
-| Safe mode outside production | yes | no | no | no | no |
-
-They are smaller and older, with a longer track record: for a few best-effort notifications, or when you already use Firebase for more than messaging, they may well be the better choice. The comparison page says when.
-
 ## Performance
 
 Benchmarks are reproducible with `php benchmarks/run.php` and their results, the hardware and the method are in [benchmarks/RESULTS.md](benchmarks/RESULTS.md). They are measured against a **local HTTP/2 mock server**, not against Apple or Google, so they describe the package's own overhead (and that of any library compared on the same mock), not the providers' latency or quotas. This README quotes no number.
+
+## Project status
+
+Version 1.0. What the automated verification consists of:
+
+- A **protocol-level HTTP/2 mock server** (a Node `http2` server that counts what it receives, drops connections, resets streams and sends `GOAWAY`) and the providers' **published schemas** (Apple's documentation, the FCM Discovery document revision 20261112). The suite has more than 4,100 tests (about 1,900 test cases, the rest are rows of their datasets); CI runs it on PHP 8.2 (with Laravel 12), 8.3, 8.4 and 8.5 with Laravel 12 and 13 (lowest and latest dependencies), runs everything that needs Laravel on MySQL 8.4, MariaDB 11.4 and PostgreSQL 17 as well, and installs the package into a freshly created Laravel 12 and Laravel 13 application (install command, migrations, commands, a simulated send, the durable queue with a worker), once with database, queue and cache on MySQL.
+- **Credential-less probes of the real endpoints**, run weekly: the APNs sandbox refused a provider token signed by a made-up key with `InvalidProviderToken` ([details](docs/credentials-apns.md#what-was-checked-against-apples-real-endpoint)), Google's FCM and OAuth endpoints refused made-up credentials ([details](docs/credentials-fcm.md#what-was-checked-against-googles-real-endpoints)), the package classified each answer as documented, and the live FCM Discovery document equals the pinned snapshot.
+
+Points the automated suite does not settle, stated so you know where to look first:
+
+- which of Apple's two documented hosts for publishing Live Activity **broadcasts** is operational (`broadcast_host`: `standard` or `api-broadcast`), and whether the broadcast host expects `apns-request-id` (what the package sends) or `apns-id`;
+- the exact **FCM payload-size counting rule**: Google publishes the 4096 / 2048-byte limits but not how they are measured; the package applies a conservative rule of its own ([messages.md](docs/messages.md#size-limits-and-truncation));
+- FCM error codes and minimum delays come from the official Firebase Admin SDK sources, not from Google's web pages; the error strings of APNs broadcast **channel management** come from Apple's documentation by name;
+- the decoding of the topic and environment extensions of **Apple push certificates** (never tried on a real certificate);
+- the durable ledger **under real load on MySQL and PostgreSQL**: everything that needs Laravel runs on MySQL 8.4, MariaDB 11.4 and PostgreSQL 17 in CI, on PHP 8.2 and 8.3 (including a scenario where a second connection claims deliveries inside the first one's `SKIP LOCKED` transaction), and the scaling guards run weekly on the three engines on hosted runners (linear from 25,000 to 200,000 destinations; on MySQL only once the InnoDB buffer pool holds the ledger, see [delivery profiles](docs/delivery-profiles.md#not-verified)), but many worker processes at production volume have not been measured; the plans the planners choose were checked next to 1.2 million final rows for the ledger's hot reads and the claim, and with 200,000 devices for the reads a campaign makes on the registry, on the three engines; **cache coordination** between eight processes (the provider token, the rate limiter, the frequency cap and the badge counter of one person) was exercised on Redis, memcached, DynamoDB Local, a file store and the `database` store of SQLite, MySQL, MariaDB and PostgreSQL; SQS (on an emulator) and beanstalkd queues were run in CI with a handful of jobs, never under load;
+- long-lived runtimes: a real queue-worker loop, forked children, two hundred tenants in one process and cache coordination across eight processes were exercised locally, and Octane's per-request sandbox and overlapping sends were simulated ([runtimes](docs/runtimes.md)); CI jobs run a real **Redis** queue and cache, **Horizon**, an **SQS** queue on an emulator (ElasticMQ), **memcached** and **DynamoDB Local** as cache stores, a **beanstalkd** queue, **Octane on RoadRunner, Swoole, OpenSwoole and FrankenPHP** and **PHP-FPM** on a fresh application: simulated pushes, plus requests through the real transport (sequential, then eight at a time) to a local HTTP/2 mock server that counted one connection per Octane worker and, under PHP-FPM, one per HTTP request; **Vapor has not been run** (it needs an AWS account), Swoole's curl coroutine hooks are **not supported** for sending from HTTP workers (measured: the transport holds once the package switches connection reuse off there, Octane's shared application does not), and no real provider connection was observed under Octane or Horizon;
+- **Application Default Credentials** on Google Cloud itself (the metadata-server path was run against an emulation of that server), a real KMS or HSM for the APNs signer (it was run against an emulator of the AWS KMS API), and five cells of the [capability matrix](docs/messages.md#the-capability-matrix) marked "unverified".
 
 ## Contributing
 
