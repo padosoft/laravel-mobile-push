@@ -26,9 +26,10 @@ Where an item has an emulated part and a real-service part, it has two rows.
 **Totals at the audit (commit `18138b7`): 329 rows.** DONE 271; DONE, DIFFERENTLY 31 (17 of them with a deviation
 written down nowhere); NOT DONE, ATTEMPTABLE 7; BLOCKED 20.
 
-**Totals after the closing wave of 2026-11-22: 329 rows.** DONE 276; DONE, DIFFERENTLY 32 (none unwritten: the 17
+**Totals after the closing wave of 2026-11-22: 329 rows.** DONE 278; DONE, DIFFERENTLY 32 (none unwritten: the 17
 are now in the "Deviations kept on purpose" list of `docs/internal/integration-todo.md`, and the facade assertions
-were implemented); NOT DONE, ATTEMPTABLE 0; BLOCKED 21. The rows that changed carry "CLOSED 2026-11-22" or the new
+were implemented); NOT DONE, ATTEMPTABLE 0; BLOCKED 19 (the two source-reading rows were closed once the owner
+allowed the documentation hosts). The rows that changed carry "CLOSED 2026-11-22" or the new
 reason in their evidence cell; the two closing lists below are kept as the audit wrote them, with one line added to
 each entry saying how it ended.
 
@@ -450,8 +451,8 @@ Every command below exists as `mobile-push:<name>` (signatures read from `src/La
 | Apple: error returned for a topic outside a topic-specific key | BLOCKED | `docs/credentials-apns.md`: "has not been verified"; needs a real topic-specific key. |
 | Apple: which of the two broadcast publish hosts is operational (integration check) | BLOCKED | Stays a `standard`/`api-broadcast` choice (`lesson.md` line 50, README "Project status"); needs the owner's key with broadcast. |
 | Apple: strings `BadEnvironmentKeyIdInToken` / `BadEnvironmentKeyInToken` | DONE | Both accepted (`ApnsReasonCatalog` header comment; `lesson.md` 5xx entry: only the first is in Apple's table). |
-| Google: cessation date of each IID function (for the migration guide only) | BLOCKED | Source not reachable: `firebase.google.com` and `developers.google.com` are outside the session network (tried 2026-11-22). Moot for the package: no IID endpoint is used and no migration guide from an FCM library exists. Side fact from a reachable source: `firebase-admin` 14.5 (Node) still calls `iid.googleapis.com` for topic management. |
-| Google: exact measuring rule of the 4096/2048 bytes (reading Google's documentation) | BLOCKED | Source not reachable (same hosts, tried 2026-11-22). The reachable first-party sources state no rule: the Discovery document is silent and `firebase-admin` only says the payload "exceeds the FCM size limits". The fixture keeps its UNVERIFIED mark; the measurement itself is the other BLOCKED row (Firebase project). |
+| Google: cessation date of each IID function (for the migration guide only) | DONE | CLOSED 2026-11-22 (host allowed by the owner): Google states the Instance ID server-side API is turned down on September 29, 2027 and closed to new projects after October 1, 2026; topic subscriptions move to the topic subscription API the package already uses (`projects.registrations.topicSubscriptions`, checked against the reference page). Recorded in `docs/topics.md` and `lesson.md`. |
+| Google: exact measuring rule of the 4096/2048 bytes (reading Google's documentation) | DONE | CLOSED 2026-11-22 (host allowed by the owner): Google documents 4096 bytes, 2048 for topics, keys and values both counted, same maximum for notification and data messages. The package rule agrees on all of it; what it adds (notification texts counted, conditions like topics) is marked as its own reading in `FcmPayloadLimits`, the fixture, `docs/messages.md` and `docs/topics.md`. Measuring against FCM stays the BLOCKED row. |
 | ... measured against the real FCM | BLOCKED | Needs a Firebase service account. |
 | Google: shape of `Retry-After` | DONE | `lesson.md` (firebase-admin-python: delta-seconds or HTTP-date on 413/429/503); `Retry/RetryAfter.php` parses both. Verified on SDK sources, not on Google's pages (stated in `lesson.md`). |
 | curl/PHP: what the binding exposes on `REFUSED_STREAM` and `GOAWAY` | DONE | `lesson.md` (entries of 2026-11-20), `docs/transport.md`, `StreamRefusalTest.php`. |
@@ -495,11 +496,11 @@ Every row above with this status, with the smallest work that would close it.
    → Done: Apple states "on the same connection" only.
 6. **§13 IID cessation dates.** Smallest work: record the dates in `lesson.md` when `firebase.google.com` is reachable,
    or mark the point moot in `docs/internal/integration-todo.md` (no FCM migration guide exists).
-   → Blocked: source hosts outside the session network; moot for the package.
+   → Done on 2026-11-22 after the owner allowed the host: dates recorded; the package already uses the replacement API.
 7. **§13 FCM 4096/2048 measuring rule (documentation reading).** Smallest work: read Google's FCM message-size pages
    (needs `firebase.google.com` reachable from the session) and either confirm `tests/Fixtures/fcm/payload-size-rule.json`
    or adjust `FcmPayloadLimits`.
-   → Blocked: source hosts outside the session network; reachable first-party sources state no rule.
+   → Done on 2026-11-22 after the owner allowed the host: Google's documented rule read and matched.
 
 ## Blocked
 

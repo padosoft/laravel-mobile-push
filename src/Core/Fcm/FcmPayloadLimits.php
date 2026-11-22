@@ -22,9 +22,12 @@ use Padosoft\MobilePush\Core\Identity\DestinationKind;
  * No JSON punctuation, no target, no REST envelope (`message`, `validate_only`), no other field is counted.
  * The receipt marker (`mp_r`) and `deep_link` are data entries and therefore counted.
  *
- * UNVERIFIED: Google publishes the numbers (4096 / 2048) but, as of Discovery revision 20261112, not an exact
- * counting rule; the Discovery document says nothing about size. This rule follows the plan ("keys and
- * values of notification and data, not the REST envelope") and is deliberately a simple, conservative one.
+ * What Google documents (ErrorCode reference, "Message too big", and "Set message type"; read on 2026-11-22): "the
+ * total size of the payload data included in a message" may not exceed 4096 bytes for most messages or 2048 bytes
+ * for messages to topics, "this includes both the keys and the values", and 4096 bytes is the maximum payload "for
+ * both message types" (notification and data). The numbers and the counting of keys plus values are therefore
+ * Google's. What is the package's own, conservative reading, not measured against FCM: which fields besides `data`
+ * count (it counts the notification texts too) and the 2048 limit applied to conditions as well as topics.
  */
 final class FcmPayloadLimits
 {

@@ -1,5 +1,5 @@
 {
-  "rule": "bytes = sum over notification, data, android.data, android_v2.data and the title/body/image keys of android.notification and android_v2.remote_notification.notification of strlen(key) + strlen(value) in UTF-8 bytes, for string values only. No JSON punctuation, no target, no REST envelope. Limits: 4096 bytes, 2048 for topic and condition. UNVERIFIED against Google: the Discovery document (rev 20261112) states no size rule.",
+  "rule": "bytes = sum over notification, data, android.data, android_v2.data and the title/body/image keys of android.notification and android_v2.remote_notification.notification of strlen(key) + strlen(value) in UTF-8 bytes, for string values only. No JSON punctuation, no target, no REST envelope. Limits: 4096 bytes, 2048 for topic and condition. Google documents the two numbers and that keys and values both count (ErrorCode reference, 'Message too big', read 2026-11-22); which fields besides data count, and the topic limit applied to conditions, are the package's conservative reading and were not measured against FCM.",
   "limits": {"default": 4096, "topic": 2048, "condition": 2048},
   "cases": [
     {"name": "notification title and body", "message": {"notification": {"title": "Hi", "body": "there"}}, "bytes": 16},

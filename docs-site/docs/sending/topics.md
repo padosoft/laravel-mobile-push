@@ -18,7 +18,7 @@ Two different things, often confused:
 
 Related pages: [sending](/sending/sending), [messages](/sending/messages), [safe mode](/reliability/safe-mode), [outcomes](/reliability/outcomes), [credentials for FCM](/get-started/credentials-fcm), [commands](/operations/commands).
 
-What the test suite does not cover: real FCM. The subscription client follows Google's Discovery document (revision 20261112) and is tested against a mock server. Whether the 2048-byte payload rule counts exactly as the package counts it is **unverified** (below).
+What the test suite does not cover: real FCM. The subscription client follows Google's Discovery document (revision 20261112) and is tested against a mock server. Whether FCM counts the 2048 bytes exactly as the package counts them was **not measured** (below).
 
 ## Publishing to a topic or a condition
 
@@ -53,7 +53,7 @@ In a [campaign](/modules/campaigns), a topic or condition audience entry counts 
 
 | Limit | Value | Status |
 |---|---|---|
-| Payload for a topic or condition message | 2048 bytes (4096 for a token message) | Google publishes the numbers. The **counting rule** (sum of `strlen(key) + strlen(value)` over `notification`, `data`, the Android `data` maps and the `title`/`body`/`image` of the Android notification; no JSON punctuation, no envelope; the receipt marker and `deep_link` count) is the package's own conservative rule and is **unverified** against Google's behaviour |
+| Payload for a topic or condition message | 2048 bytes (4096 for a token message) | Google documents the numbers (2048 bytes "in the case of messages to topics") and that keys and values both count. The rest of the **counting rule** (sum of `strlen(key) + strlen(value)` over `notification`, `data`, the Android `data` maps and the `title`/`body`/`image` of the Android notification; no JSON punctuation, no envelope; the receipt marker and `deep_link` count; conditions treated like topics) is the package's conservative reading and was **not measured** against FCM |
 | Topics in a condition | 5 | enforced by the compiler |
 | iOS-only message capabilities | dropped (lenient mode) or refused | an FCM message has no equivalent for them; see [messages](/sending/messages) |
 
@@ -61,7 +61,7 @@ A message over the limit is refused before the network with a `PayloadTooLargeEx
 
 ## Managing subscriptions
 
-The package uses the FCM **topic subscriptions** resource (`projects.registrations.topicSubscriptions`), not the legacy Instance ID batch API. The consequences are real:
+The package uses the FCM **topic subscriptions** resource (`projects.registrations.topicSubscriptions`), not the legacy Instance ID batch API. Google's Instance ID pages (read on 2026-11-22) say the Instance ID server-side API is turned down on September 29, 2027, that new projects cannot onboard it after October 1, 2026, and that topic subscriptions move to "the new topic subscription API", which is this resource. The consequences are real:
 
 - **One installation per call.** There is no bulk operation. The `*Many()` helpers multiplex single calls inside one transport send and return one result per input, in the same order, without exceptions.
 - The registration is an **FCM registration token or an FID** (`FcmToken` / `FcmFid`).
