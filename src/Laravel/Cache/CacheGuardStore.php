@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Padosoft\MobilePush\Laravel\Cache;
 
+use Illuminate\Cache\FileStore;
 use Illuminate\Cache\Repository;
+use Illuminate\Contracts\Cache\Lock;
 use Padosoft\MobilePush\Core\Guard\GuardStore;
 use Padosoft\MobilePush\Core\Guard\ReportsAvailability;
 use Psr\Clock\ClockInterface;
@@ -19,6 +21,12 @@ use Psr\Clock\ClockInterface;
  * Contention is not unavailability: a deadlock or a lock wait timeout reported by a database-backed store (MySQL
  * answers a contended lock row with error 1213) is a lost compare-and-set, which the caller retries. It never marks
  * the store unavailable: that would make the guards of this process fail open exactly when they are most contended.
+ *
+ * The `file` store needs one more precaution. Laravel creates a cache file empty and only then locks and fills it,
+ * and a reader that meets the empty file takes it for expired and deletes it: the value being written is lost
+ * (measured: 2,511 of 7,188 freshly created entries with six concurrent readers). Eight processes on that store let
+ * 6 pushes through a cap of 5 and handed out badge numbers twice. So on a FileStore the reads and the plain writes
+ * take the same per-key lock as compareAndSet: nobody reads a key while it is being created.
  *
  * Guard state holds counters and timestamps only, no secrets, so values are stored in clear. Real cross-process
  * atomicity needs redis, memcached, database or dynamodb (file: one host; array: one process; null: nothing).
@@ -51,8 +59,10 @@ final class CacheGuardStore implements GuardStore, ReportsAvailability
         if ($this->resting()) {
             return null;
         }
+        $lock = null;
 
         try {
+            $lock = $this->fileStoreLock($key);
             $value = $this->read($key);
             $this->available = true;
 
@@ -63,6 +73,8 @@ final class CacheGuardStore implements GuardStore, ReportsAvailability
             }
 
             return null;
+        } finally {
+            $this->release($lock);
         }
     }
 
@@ -71,14 +83,18 @@ final class CacheGuardStore implements GuardStore, ReportsAvailability
         if ($this->resting()) {
             return;
         }
+        $lock = null;
 
         try {
+            $lock = $this->fileStoreLock($key);
             $this->cache->put($this->entryKey($key), $value, max(1, $ttlSeconds));
             $this->available = true;
         } catch (\Throwable $e) {
             if (! CacheLocks::contention($e)) {
                 $this->down('guard.put', $e);
             }
+        } finally {
+            $this->release($lock);
         }
     }
 
@@ -97,7 +113,7 @@ final class CacheGuardStore implements GuardStore, ReportsAvailability
                 return false;
             }
 
-            $lock = CacheLocks::acquire($this->cache, $this->prefix.':lock:guard:'.hash('sha256', $key), self::CAS_LOCK_SECONDS);
+            $lock = CacheLocks::acquire($this->cache, $this->lockName($key), self::CAS_LOCK_SECONDS);
             if ($lock === null) {
                 return false;
             }
@@ -118,14 +134,42 @@ final class CacheGuardStore implements GuardStore, ReportsAvailability
 
             return false;
         } finally {
-            try {
-                if ($lock !== null) {
-                    CacheLocks::release($lock);
-                }
-            } catch (\Throwable $e) {
-                $this->health->failed('guard.release', $e);
-            }
+            $this->release($lock);
         }
+    }
+
+    /**
+     * On a FileStore: the key's lock, so that a read or a plain write never meets a file that compareAndSet (or
+     * another write) is creating. Null on every other store, and when the lock cannot be had in about 100 ms: the
+     * operation then goes ahead without it rather than stall the send.
+     *
+     * @throws \Throwable backend errors propagate to the caller
+     */
+    private function fileStoreLock(string $key): ?Lock
+    {
+        if (! $this->cache->getStore() instanceof FileStore) {
+            return null;
+        }
+
+        return CacheLocks::acquire($this->cache, $this->lockName($key), self::CAS_LOCK_SECONDS);
+    }
+
+    private function release(?Lock $lock): void
+    {
+        if ($lock === null) {
+            return;
+        }
+
+        try {
+            CacheLocks::release($lock);
+        } catch (\Throwable $e) {
+            $this->health->failed('guard.release', $e);
+        }
+    }
+
+    private function lockName(string $key): string
+    {
+        return $this->prefix.':lock:guard:'.hash('sha256', $key);
     }
 
     private function resting(): bool

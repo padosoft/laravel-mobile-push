@@ -45,9 +45,9 @@ $app = contenderApp($args);
 
 // Diagnostics, always on: the filesystem under the `file` cache store notes every read that came back empty, every
 // write that failed and every delete asked by FileStore::getPayload() (which deletes an entry it reads as expired or
-// corrupt). On 2026-11-22 the badge counter on that store handed out duplicate numbers once on a hosted runner (155
-// distinct of 200, inside a full-suite run) and never again in 320 targeted repetitions there or 50 locally: when it
-// happens again, the events noted here are printed with the failure.
+// corrupt). This is how a defect of 2026-11-22 was chased: on that store a reader could delete an entry at the
+// instant it was created (see FileStoreCreationRaceTest). The guard store now locks its reads there; if a counter
+// ever goes back again, the events noted here are printed with the failure.
 $trace = null;
 if (($args['store'] ?? null) === 'file') {
     $trace = new class extends Filesystem

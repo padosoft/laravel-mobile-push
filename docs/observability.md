@@ -302,7 +302,7 @@ instant, then a scrape: `MetricsCoordinationTest`):
 | redis | 200 | atomic increment, no TTL |
 | database on MySQL, MariaDB, PostgreSQL | 200 | the store does not create a key on increment: the counter is created with `add()` and lives one year, then restarts from zero |
 | memcached, dynamodb | 200 (in the `backends` workflow) | as above |
-| file | 198 to 200 | the store increments by reading and writing a file: the recorder serialises it with the store's lock, which it polls for about half a second; a process starved of the lock that long counts without it |
+| file | 198 to 200 | the store increments by reading and writing a file: the recorder serialises it with the store's lock. A count can still be lost when a counter or the index is created: Laravel's file store creates the file empty before filling it, and a process that reads it at that instant (another recorder, a scrape) deletes it as expired |
 | database on a shared SQLite file | 162 to 198 | SQLite refuses a write while another process writes to the same file; the recorder retries ten times within a few milliseconds, then gives the count up rather than hold the send |
 
 Two **defects were found and fixed** here on 2026-11-22: on the `database` store (the default cache store of a new

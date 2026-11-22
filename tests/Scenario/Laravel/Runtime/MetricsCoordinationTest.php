@@ -57,8 +57,9 @@ it('counts every send result of eight processes that start the same counter at t
     }
     if ($store === 'file') {
         // The file store increments by reading and writing a file; the recorder serialises that with the store's
-        // lock, which it polls for about half a second. A process starved of the lock for that long counts without
-        // it and can overwrite a concurrent count: seen once on a hosted runner (198 of 200), never locally.
+        // lock. A first count can still be lost: Laravel creates a cache file empty before filling it, and a process
+        // that reads the counter or the index at that instant deletes it as expired (see FileStoreCreationRaceTest).
+        // Seen on hosted runners as 198 of 200, never locally.
         expect($read[0]['results'])->toBeGreaterThanOrEqual(190)->toBeLessThanOrEqual(CONTENDERS * RESULTS_EACH)
             ->and($read[0]['window'])->toBeGreaterThanOrEqual(190)->toBeLessThanOrEqual(CONTENDERS * RESULTS_EACH);
 
