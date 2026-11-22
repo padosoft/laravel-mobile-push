@@ -16,6 +16,10 @@ use Psr\Clock\ClockInterface;
  * makes the guards fail open (see StateCell), and the backend is left alone for RETRY_AFTER_SECONDS so that a dead
  * cache server does not cost a connection timeout on every send.
  *
+ * Contention is not unavailability: a deadlock or a lock wait timeout reported by a database-backed store (MySQL
+ * answers a contended lock row with error 1213) is a lost compare-and-set, which the caller retries. It never marks
+ * the store unavailable: that would make the guards of this process fail open exactly when they are most contended.
+ *
  * Guard state holds counters and timestamps only, no secrets, so values are stored in clear. Real cross-process
  * atomicity needs redis, memcached, database or dynamodb (file: one host; array: one process; null: nothing).
  */
@@ -54,7 +58,9 @@ final class CacheGuardStore implements GuardStore, ReportsAvailability
 
             return $value;
         } catch (\Throwable $e) {
-            $this->down('guard.get', $e);
+            if (! CacheLocks::contention($e)) {
+                $this->down('guard.get', $e);
+            }
 
             return null;
         }
@@ -70,7 +76,9 @@ final class CacheGuardStore implements GuardStore, ReportsAvailability
             $this->cache->put($this->entryKey($key), $value, max(1, $ttlSeconds));
             $this->available = true;
         } catch (\Throwable $e) {
-            $this->down('guard.put', $e);
+            if (! CacheLocks::contention($e)) {
+                $this->down('guard.put', $e);
+            }
         }
     }
 
@@ -104,12 +112,16 @@ final class CacheGuardStore implements GuardStore, ReportsAvailability
 
             return true;
         } catch (\Throwable $e) {
-            $this->down('guard.compareAndSet', $e);
+            if (! CacheLocks::contention($e)) {
+                $this->down('guard.compareAndSet', $e);
+            }
 
             return false;
         } finally {
             try {
-                $lock?->release();
+                if ($lock !== null) {
+                    CacheLocks::release($lock);
+                }
             } catch (\Throwable $e) {
                 $this->health->failed('guard.release', $e);
             }

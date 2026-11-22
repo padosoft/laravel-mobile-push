@@ -176,7 +176,7 @@ final class CacheTokenStore implements TokenStore
         }
 
         try {
-            $lock->release();
+            CacheLocks::release($lock);
         } catch (\Throwable $e) {
             $this->health->failed('token.release', $e);
         }

@@ -5,9 +5,12 @@ declare(strict_types=1);
 use Illuminate\Cache\ArrayStore;
 use Illuminate\Cache\Repository;
 use Illuminate\Support\Carbon;
+use Padosoft\MobilePush\Core\Guard\RateLimiter;
+use Padosoft\MobilePush\Core\Guard\TrafficClass;
 use Padosoft\MobilePush\Laravel\Cache\CacheGuardStore;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Cache\CacheKit;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Cache\CollectingLogger;
+use Padosoft\MobilePush\Tests\Scenario\Laravel\Cache\DeadlockingStore;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Cache\DownStore;
 use Padosoft\MobilePush\Tests\Support\FakeClock;
 
@@ -93,4 +96,72 @@ it('stays available when a compare-and-set merely loses to another writer', func
 
     expect($store->compareAndSet('k', 'mine', 'next', 30))->toBeFalse()
         ->and($store->available())->toBeTrue();
+});
+
+/*
+ * Found on MySQL 8.4 with the `database` cache store and eight processes (CacheCoordinationTest): the store's lock
+ * table answers a contended lock with a deadlock. Treated as an outage, it made the guards of that process fail open
+ * for five seconds: 175 permits granted from a budget of 100.
+ */
+it('a deadlock answered while taking the lock is a lost compare-and-set, not an outage', function () {
+    $logger = new CollectingLogger;
+    $backend = new DeadlockingStore(deadlockOnAcquire: [1]);
+    $store = new CacheGuardStore(new Repository($backend), CacheKit::health($logger), 'mobile-push', new FakeClock('2026-11-20T10:00:00Z'));
+
+    // The deadlocked attempt counts as "lock not taken": the bounded wait tries again and gets it.
+    expect($store->compareAndSet('k', null, 'v', 30))->toBeTrue()
+        ->and($backend->acquires)->toBe(2)
+        ->and($store->available())->toBeTrue()
+        ->and($store->get('k'))->toBe('v')
+        ->and($logger->records)->toBe([]);
+});
+
+it('a lock that deadlocks on every attempt costs one lost compare-and-set and leaves the store available', function () {
+    $backend = new DeadlockingStore(everyNthAcquire: 1);
+    $store = new CacheGuardStore(new Repository($backend), CacheKit::health(), 'mobile-push', new FakeClock('2026-11-20T10:00:00Z'));
+
+    expect($store->compareAndSet('k', null, 'v', 30))->toBeFalse()
+        ->and($store->available())->toBeTrue()
+        ->and($store->get('k'))->toBeNull();
+});
+
+it('a deadlock while releasing is retried, so the lock is not left behind for the next writer', function () {
+    $backend = new DeadlockingStore(deadlockOnRelease: [1, 2]);
+    $store = new CacheGuardStore(new Repository($backend), CacheKit::health(), 'mobile-push', new FakeClock('2026-11-20T10:00:00Z'));
+
+    expect($store->compareAndSet('k', null, 'a', 30))->toBeTrue()
+        ->and($backend->releases)->toBe(3)
+        // Had the lock stayed, this would wait its 100 ms and lose.
+        ->and($store->compareAndSet('k', 'a', 'b', 30))->toBeTrue()
+        ->and($store->available())->toBeTrue();
+});
+
+it('the rate limiter never grants above its budget while the lock table keeps deadlocking', function () {
+    $clock = new FakeClock('2026-11-20T10:00:00Z');   // frozen: nothing refills
+    $backend = new DeadlockingStore(everyNthAcquire: 3);
+    $store = new CacheGuardStore(new Repository($backend), CacheKit::health(), 'mobile-push', $clock);
+    $limiter = new RateLimiter($store, $clock, 10, 0.0, 10);
+
+    $granted = 0;
+    for ($i = 0; $i < 30; $i++) {
+        $granted += $limiter->acquire('apns|team:TEAM123456', 1, TrafficClass::Transactional);
+    }
+
+    expect($granted)->toBe(10)
+        ->and($backend->acquires)->toBeGreaterThan(10)   // ten swaps, plus the attempts lost to a deadlock
+        ->and($store->available())->toBeTrue();
+});
+
+it('an error that is not contention still marks the store unavailable', function () {
+    $backend = new class extends ArrayStore
+    {
+        public function lock($name, $seconds = 0, $owner = null)
+        {
+            throw new RuntimeException('SQLSTATE[HY000] [2002] Connection refused');
+        }
+    };
+    $store = new CacheGuardStore(new Repository($backend), CacheKit::health(), 'mobile-push', new FakeClock('2026-11-20T10:00:00Z'));
+
+    expect($store->compareAndSet('k', null, 'v', 30))->toBeFalse()
+        ->and($store->available())->toBeFalse();
 });
