@@ -26,10 +26,12 @@ Where an item has an emulated part and a real-service part, it has two rows.
 **Totals at the audit (commit `18138b7`): 329 rows.** DONE 271; DONE, DIFFERENTLY 31 (17 of them with a deviation
 written down nowhere); NOT DONE, ATTEMPTABLE 7; BLOCKED 20.
 
-**Totals after the closing wave of 2026-11-22: 329 rows.** DONE 278; DONE, DIFFERENTLY 32 (none unwritten: the 17
+**Totals after the release of 2026-11-22: 329 rows.** DONE 281; DONE, DIFFERENTLY 32 (none unwritten: the 17
 are now in the "Deviations kept on purpose" list of `docs/internal/integration-todo.md`, and the facade assertions
-were implemented); NOT DONE, ATTEMPTABLE 0; BLOCKED 19 (the two source-reading rows were closed once the owner
-allowed the documentation hosts). The rows that changed carry "CLOSED 2026-11-22" or the new
+were implemented); NOT DONE, ATTEMPTABLE 0; BLOCKED 16 (the two source-reading rows were closed once the owner
+allowed the documentation hosts; tag, public repository and Packagist were done by the owner). The owner reports
+that real pushes with a real `.p8` key on iOS and on Android were sent and work; the rows about real providers stay
+BLOCKED here because nothing of it was observed from this repository. The rows that changed carry "CLOSED 2026-11-22" or the new
 reason in their evidence cell; the two closing lists below are kept as the audit wrote them, with one line added to
 each entry saying how it ended.
 
@@ -374,9 +376,9 @@ Every command below exists as `mobile-push:<name>` (signatures read from `src/La
 | M9 reproducible benchmarks | DONE | `benchmarks/run.php`, `run-all.sh`, `results/*.json`, `RESULTS.md` (measured at commit `d35d0d2` on a loaded shared machine, stated in `RESULTS.md`). |
 | M9 README and complete documentation | DONE | `README.md`, `docs/*.md` (see §11 documentation rows). |
 | 1.0 gate: every gate passed, no module in preview | DONE, DIFFERENTLY | Code at 1.0 on `main` (pre-release notice removed by the owner's decision, integration-todo "Release 1.0.0"), with the real-device gates above still BLOCKED; the owner chose to release without them. |
-| 1.0 release: tag `v1.0.0` | BLOCKED | The session's GitHub proxy refuses tag pushes (integration-todo). |
-| 1.0 release: public repository | BLOCKED | Repository settings write refused (owner). |
-| 1.0 release: Packagist | BLOCKED | Package not registered (404); needs the owner's Packagist account and a public repository. |
+| 1.0 release: tag `v1.0.0` | DONE | By the owner on 2026-11-22: `refs/tags/v1.0.0` points at `c0ff5ef`, the commit of `main` with CI 27/27. |
+| 1.0 release: public repository | DONE | By the owner on 2026-11-22: `visibility=public`, the repository page answers 200 without authentication. |
+| 1.0 release: Packagist | DONE | By the owner on 2026-11-22: Packagist serves `v1.0.0` (`php ^8.2`, `illuminate/* ^12.0\|^13.0`). Verified by installing it from Packagist into a fresh Laravel 12 application: 38 commands, install, migrate, simulated send, durable queue and worker; the dist archive has no tests, CI or site files. |
 | M10: docmd site in `docs-site/` modelled on laravel-flow | DONE | `docs-site/docmd.config.json`, `package.json`, `scripts/*`. |
 | M10: `npm run build` builds without errors | DONE | `.github/workflows/docs-site.yml` (`npm run build`, `npm run verify`). |
 | M10: pages generated from `README.md` and `docs/*.md`, a check fails when out of sync | DONE | `docs-site/scripts/sync-docs.mjs --check --strict` in `docs-site.yml`; `npm run check`. |
@@ -525,9 +527,9 @@ Grouped by what blocks them.
 - (Not a plan row, listed in integration-todo: Vapor/Lambda, real SQS and DynamoDB.)
 
 **Repository settings, tags and the owner's external accounts**
-- §10 tag `v1.0.0` (proxy refuses tag pushes).
-- §10 public repository (settings write refused).
-- §10 Packagist registration (404, needs the owner's Packagist account and a public repository).
+- §10 tag `v1.0.0`: done by the owner (see the row).
+- §10 public repository: done by the owner (see the row).
+- §10 Packagist registration: done by the owner and verified by an installation (see the row).
 - §10 M10 Cloudflare Pages: NOT blocked after all, the owner's Git integration deploys every commit (see the row).
 - §11 protection of the `live-probes` environment with a reviewer (repository settings) and its secrets.
 
