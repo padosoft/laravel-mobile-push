@@ -101,6 +101,12 @@ jobs:
             min: 85
             classes: 'Padosoft\MobilePush\Laravel\Cache\CacheGuardStore,Padosoft\MobilePush\Laravel\Cache\CacheLocks,Padosoft\MobilePush\Laravel\Cache\CacheTokenStore'
             tests: tests/Unit/Laravel/Cache tests/Scenario/Laravel/Cache
+          # The frequency cap and the badge counter: added on 2026-11-22 after two defects (contention read as a
+          # store failure; a null limit removing the cap). Measured 88.7%.
+          - name: policies
+            min: 84
+            classes: 'Padosoft\MobilePush\Core\Policy\Frequency,Padosoft\MobilePush\Core\Policy\Badge'
+            tests: tests/Unit/Core/Policy/Frequency tests/Unit/Core/Policy/Badge tests/Scenario/Policy/Frequency tests/Scenario/Policy/Badge
     name: Mutation · ${{ matrix.name }}
     steps:
       - uses: actions/checkout@v4

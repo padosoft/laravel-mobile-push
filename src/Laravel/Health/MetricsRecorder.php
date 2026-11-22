@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Padosoft\MobilePush\Laravel\Health;
 
+use Illuminate\Cache\FileStore;
 use Illuminate\Cache\Repository;
 use Illuminate\Contracts\Cache\LockProvider;
 use Padosoft\MobilePush\Core\Driver\GuardTransition;
@@ -11,6 +12,7 @@ use Padosoft\MobilePush\Core\Guard\BreakerTransition;
 use Padosoft\MobilePush\Core\Guard\TrafficClass;
 use Padosoft\MobilePush\Core\Identity\BindingRef;
 use Padosoft\MobilePush\Core\Outcome\SendResult;
+use Padosoft\MobilePush\Laravel\Cache\CacheLocks;
 use Psr\Clock\ClockInterface;
 
 /**
@@ -23,9 +25,10 @@ use Psr\Clock\ClockInterface;
  * Storage: one cache key per series (`<prefix>:metrics:c:<sha1>`), incremented atomically (`Repository::increment`),
  * plus one JSON index key (`<prefix>:metrics:index`) listing the series so a scrape can enumerate them. The series count
  * is capped (`metrics.max_series`, default 1000): beyond it new series are silently not recorded. Counters are
- * monotonic and survive as long as the cache entry does; they carry no TTL on Redis/array/database stores (the cache
- * server is the system of record). A cache flush or eviction resets them to zero, which Prometheus rate()
- * treats as a normal counter reset. Gauges derived from events (open circuits, throttled accounts) are refreshed on each
+ * monotonic and survive as long as the cache entry does (the cache server is the system of record). On the redis,
+ * array and file stores they carry no TTL. The database, memcached and dynamodb stores do not create a key on
+ * increment: there a counter is created with add() and lives one year, then restarts from zero. A restart, a cache
+ * flush or an eviction resets a counter to zero, which Prometheus rate() treats as a normal counter reset. Gauges derived from events (open circuits, throttled accounts) are refreshed on each
  * event and carry a TTL. The per-minute window used for the error rate lives only `window + 120` seconds.
  * `reset()` forgets the series; the window buckets simply expire.
  *
@@ -52,6 +55,12 @@ final class MetricsRecorder
     ];
 
     private const STATE_TTL = 604800;
+
+    /** Life of a counter on the stores where it has to be created with add(): a year, then it restarts from zero. */
+    private const COUNTER_TTL = 31_536_000;
+
+    /** Tries of one increment when a database-backed store answers with a contention error. */
+    private const BUMP_ATTEMPTS = 10;
 
     /** @var array<string, int> series key => timestamp of the last index verification (re-checked every minute so a cache flush heals) */
     private array $known = [];
@@ -264,7 +273,54 @@ final class MetricsRecorder
         if (! $this->ensureIndexed($key, 'c', $name, $labels)) {
             return;
         }
-        $this->cache->increment($key);
+        $this->bump($key, self::COUNTER_TTL, false);
+    }
+
+    /**
+     * Adds one to a counter key, whatever the cache store, without losing counts between processes:
+     *  - the database, memcached and dynamodb stores do not create a key on increment (they answer false): the key
+     *    is created with add(), which those stores do atomically, and incremented again;
+     *  - a database-backed store answers contention with an error (SQLite "database is locked" when two
+     *    transactions upgrade their lock, a MySQL deadlock): the increment ran in a transaction that was rolled
+     *    back, so it is tried again a few times;
+     *  - the file store increments by reading and writing the file: it is serialised with the store's own lock.
+     *
+     * `$createFirst` is for keys that must carry a TTL on every store (the per-minute window buckets).
+     *
+     * @throws \Throwable when the store fails for another reason (the public methods swallow it)
+     */
+    private function bump(string $key, int $ttl, bool $createFirst): void
+    {
+        $lock = $this->cache->getStore() instanceof FileStore ? CacheLocks::acquire($this->cache, $key.':lock', 5) : null;
+
+        try {
+            for ($attempt = 1; ; $attempt++) {
+                try {
+                    if ($createFirst) {
+                        $this->cache->add($key, 0, $ttl);
+                    }
+                    if ($this->cache->increment($key) === false) {
+                        $this->cache->add($key, 0, $ttl);
+                        $this->cache->increment($key);
+                    }
+
+                    return;
+                } catch (\Throwable $e) {
+                    if ($attempt >= self::BUMP_ATTEMPTS || ! CacheLocks::contention($e)) {
+                        throw $e;
+                    }
+                    usleep(random_int(300, 3000));
+                }
+            }
+        } finally {
+            if ($lock !== null) {
+                try {
+                    CacheLocks::release($lock);
+                } catch (\Throwable) {
+                    // the lock expires by itself in a few seconds
+                }
+            }
+        }
     }
 
     /** @param  array<string, string>  $labels */
@@ -288,9 +344,7 @@ final class MetricsRecorder
         $ttl = $this->windowSeconds + 120;
         $kinds = $error ? ['s', 'e'] : ['s'];
         foreach ($kinds as $kind) {
-            $windowKey = $this->windowKey($labels, $bucket, $kind);
-            $this->cache->add($windowKey, 0, $ttl);
-            $this->cache->increment($windowKey);
+            $this->bump($this->windowKey($labels, $bucket, $kind), $ttl, true);
         }
     }
 
@@ -370,14 +424,28 @@ final class MetricsRecorder
         }
         $lock = $store->lock($this->indexKey().':lock', 10);
         $acquired = false;
-        for ($i = 0; $i < 50 && ! ($acquired = $lock->get()); $i++) {
-            usleep(2000);
+        for ($i = 0; $i < 50 && ! $acquired; $i++) {
+            try {
+                $acquired = (bool) $lock->get();
+            } catch (\Throwable $e) {
+                // A database-backed store answers a contended lock with an error (a MySQL deadlock): not taken.
+                if (! CacheLocks::contention($e)) {
+                    throw $e;
+                }
+            }
+            if (! $acquired) {
+                usleep(2000);
+            }
         }
         try {
             $work();
         } finally {
             if ($acquired) {
-                $lock->release();
+                try {
+                    CacheLocks::release($lock);
+                } catch (\Throwable) {
+                    // the lock expires by itself in a few seconds
+                }
             }
         }
     }

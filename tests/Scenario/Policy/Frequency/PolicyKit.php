@@ -10,6 +10,7 @@ use Padosoft\MobilePush\Core\Guard\ReportsAvailability;
 use Padosoft\MobilePush\Core\Guard\TrafficClass;
 use Padosoft\MobilePush\Core\Identity\Destination;
 use Padosoft\MobilePush\Core\Identity\Destination\ApnsDeviceToken;
+use Padosoft\MobilePush\Core\Identity\DestinationKind;
 use Padosoft\MobilePush\Core\Identity\DestinationRef;
 use Padosoft\MobilePush\Core\Message\PushMessage;
 use Padosoft\MobilePush\Core\Outcome\SendResult;
@@ -188,5 +189,160 @@ final class BusyGuardStore implements GuardStore, ReportsAvailability
         }
 
         return $this->inner->compareAndSet($key, $expected, $value, $ttlSeconds);
+    }
+}
+
+/** A store that remembers what it was asked: every compare-and-set and put, with its key and TTL. */
+final class RecordingGuardStore implements GuardStore
+{
+    /** @var list<array{0: string, 1: string, 2: int}> method, key, TTL */
+    public array $writes = [];
+
+    public function __construct(private readonly GuardStore $inner) {}
+
+    public function get(string $key): ?string
+    {
+        return $this->inner->get($key);
+    }
+
+    public function put(string $key, string $value, int $ttlSeconds): void
+    {
+        $this->writes[] = ['put', $key, $ttlSeconds];
+        $this->inner->put($key, $value, $ttlSeconds);
+    }
+
+    public function compareAndSet(string $key, ?string $expected, string $value, int $ttlSeconds): bool
+    {
+        $this->writes[] = ['cas', $key, $ttlSeconds];
+
+        return $this->inner->compareAndSet($key, $expected, $value, $ttlSeconds);
+    }
+}
+
+/**
+ * A cache under memory pressure that has evicted every key starting with `$prefix` (memcached LRU, Redis maxmemory):
+ * reads of those keys miss and writes to them are accepted and forgotten. Everything else goes to the inner store.
+ */
+final class EvictingGuardStore implements GuardStore
+{
+    public function __construct(private readonly GuardStore $inner, private readonly string $prefix) {}
+
+    public function get(string $key): ?string
+    {
+        return str_starts_with($key, $this->prefix) ? null : $this->inner->get($key);
+    }
+
+    public function put(string $key, string $value, int $ttlSeconds): void
+    {
+        if (! str_starts_with($key, $this->prefix)) {
+            $this->inner->put($key, $value, $ttlSeconds);
+        }
+    }
+
+    public function compareAndSet(string $key, ?string $expected, string $value, int $ttlSeconds): bool
+    {
+        return str_starts_with($key, $this->prefix) ? $expected === null : $this->inner->compareAndSet($key, $expected, $value, $ttlSeconds);
+    }
+}
+
+/** Runs `$hook($key)` once, right before the first compare-and-set on a key starting with `$prefix`. */
+final class PrefixInterleavingGuardStore implements GuardStore
+{
+    public ?\Closure $hook = null;
+
+    public function __construct(private readonly GuardStore $inner, private readonly string $prefix) {}
+
+    public function get(string $key): ?string
+    {
+        return $this->inner->get($key);
+    }
+
+    public function put(string $key, string $value, int $ttlSeconds): void
+    {
+        $this->inner->put($key, $value, $ttlSeconds);
+    }
+
+    public function compareAndSet(string $key, ?string $expected, string $value, int $ttlSeconds): bool
+    {
+        if ($this->hook !== null && str_starts_with($key, $this->prefix)) {
+            $hook = $this->hook;
+            $this->hook = null;
+            $hook($key);
+        }
+
+        return $this->inner->compareAndSet($key, $expected, $value, $ttlSeconds);
+    }
+}
+
+/** An installation destination the TokenIndex cannot index (its value cannot be read). */
+final class UnindexableDestination implements Destination
+{
+    public function kind(): DestinationKind
+    {
+        return DestinationKind::ApnsDeviceToken;
+    }
+
+    public function value(): string
+    {
+        throw new \RuntimeException('value unavailable');
+    }
+
+    public function ref(): ?DestinationRef
+    {
+        return null;
+    }
+
+    public function withRef(DestinationRef $ref): static
+    {
+        return $this;
+    }
+
+    public function equals(Destination $other): bool
+    {
+        return $other === $this;
+    }
+}
+
+/** The keys and decoded values an InMemoryGuardStore holds now (expired entries included until read). */
+final class StoreDump
+{
+    /** @return array<string, string> key => raw value, live entries only */
+    public static function of(InMemoryGuardStore $store): array
+    {
+        $keys = array_keys((new \ReflectionProperty($store, 'data'))->getValue($store));
+        $out = [];
+        foreach ($keys as $key) {
+            $value = $store->get((string) $key);
+            if ($value !== null) {
+                $out[(string) $key] = $value;
+            }
+        }
+
+        return $out;
+    }
+
+    /** @return list<string> */
+    public static function keysStartingWith(InMemoryGuardStore $store, string $prefix): array
+    {
+        return array_values(array_filter(array_keys(self::of($store)), static fn (string $k): bool => str_starts_with($k, $prefix)));
+    }
+
+    /** The single key with this prefix (fails loudly otherwise). */
+    public static function onlyKey(InMemoryGuardStore $store, string $prefix): string
+    {
+        $keys = self::keysStartingWith($store, $prefix);
+        if (count($keys) !== 1) {
+            throw new \LogicException(count($keys).' keys start with '.$prefix);
+        }
+
+        return $keys[0];
+    }
+
+    /** @return array<mixed> */
+    public static function decoded(InMemoryGuardStore $store, string $prefix): array
+    {
+        $decoded = json_decode((string) $store->get(self::onlyKey($store, $prefix)), true);
+
+        return is_array($decoded) ? $decoded : [];
     }
 }

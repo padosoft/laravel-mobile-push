@@ -145,3 +145,47 @@ it('sends the message untouched when the counter store is down', function () {
 
     expect($resolver->resolve($message, 'default', 'o:u1', 'e1'))->toBe($message);
 });
+
+it('does not count again when the resolved message goes through the resolver a second time', function () {
+    $kit = new PolicyKit;
+    $counter = new BadgeCounter($kit->store, $kit->clock);
+    $resolver = new BadgeResolver($counter);
+
+    $resolved = $resolver->resolve(badgeOrder(), 'default', 'o:u1', 'e1');
+    $again = $resolver->resolve($resolved, 'default', 'o:u1', 'e2');   // e.g. a continuation handed the resolved message
+
+    expect($resolved->incrementBadge)->toBeFalse()
+        ->and($again)->toBe($resolved)
+        ->and($again->badge)->toBe(1)
+        ->and($counter->current('default', 'o:u1'))->toBe(1);
+});
+
+it('keeps per-binding counters apart for different owners on the same connection', function () {
+    $kit = new PolicyKit;
+    $resolver = new BadgeResolver(new BadgeCounter($kit->store, $kit->clock), perBinding: true);
+    $ios = SendKit::apnsBinding('ios');
+
+    expect($resolver->resolve(badgeOrder(), 'default', 'o:alice', 'e1', $ios)->badge)->toBe(1)
+        ->and($resolver->resolve(badgeOrder(), 'default', 'o:bob', 'e2', $ios)->badge)->toBe(1);
+});
+
+it('never merges the per-binding counters of two owner/connection pairs', function (string $ownerA, string $bindingA, string $ownerB, string $bindingB) {
+    $kit = new PolicyKit;
+    $resolver = new BadgeResolver(new BadgeCounter($kit->store, $kit->clock), perBinding: true);
+
+    expect($resolver->resolve(badgeOrder(), 'default', $ownerA, 'e1', SendKit::apnsBinding($bindingA))->badge)->toBe(1)
+        ->and($resolver->resolve(badgeOrder(), 'default', $ownerB, 'e2', SendKit::apnsBinding($bindingB))->badge)->toBe(1)
+        ->and($resolver->subjectKey($ownerA, SendKit::apnsBinding($bindingA)))->not->toBe($resolver->subjectKey($ownerB, SendKit::apnsBinding($bindingB)));
+})->with([
+    'owner|binding boundary' => ['o:u', 'ios', 'o:ui', 'os'],
+    'binding before owner' => ['o:u', 'ab', 'bo:u', 'a'],
+]);
+
+it('leaves the counter alone when the badge feature is off', function () {
+    $kit = new PolicyKit;
+    $counter = new BadgeCounter($kit->store, $kit->clock);
+    $message = badgeOrder();
+
+    expect((new BadgeResolver($counter, enabled: false))->resolve($message, 'default', 'o:u1', 'e1'))->toBe($message)
+        ->and($counter->current('default', 'o:u1'))->toBe(0);
+});

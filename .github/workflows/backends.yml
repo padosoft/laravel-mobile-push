@@ -64,6 +64,15 @@ jobs:
           grep -q '^\[cap/allow dynamodb\] ' policy-coordination.txt
           grep -q '^\[badge/distinct memcached\] ' policy-coordination.txt
           grep -q '^\[badge/distinct dynamodb\] ' policy-coordination.txt
+      - name: Metric counters of eight processes, memcached and DynamoDB included
+        env:
+          MOBILE_PUSH_TEST_MEMCACHED: 127.0.0.1:11211
+          MOBILE_PUSH_TEST_DYNAMODB: http://127.0.0.1:8000
+          MP_RUNTIME_REPORT: '1'
+        run: |
+          vendor/bin/pest tests/Scenario/Laravel/Runtime/MetricsCoordinationTest.php 2>&1 | tee metrics-coordination.txt
+          grep -q '^\[metrics memcached\] recorded=200 counted=200 series=1' metrics-coordination.txt
+          grep -q '^\[metrics dynamodb\] recorded=200 counted=200 series=1' metrics-coordination.txt
       - name: The APNs provider token signed through the AWS KMS API (local emulator)
         env:
           MOBILE_PUSH_TEST_KMS: http://127.0.0.1:8088

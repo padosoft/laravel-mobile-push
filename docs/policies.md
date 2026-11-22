@@ -102,7 +102,7 @@ be looked up in the devices table or belong to a person.
 | Key | Env | Default | Notes |
 |---|---|---|---|
 | `frequency.enabled` | `MOBILE_PUSH_FREQUENCY_ENABLED` | `false` | |
-| `frequency.limits` | | `default` 5/hour and 20/day; `marketing` 2/day; `security` unlimited | bucket => `['per_hour' => n, 'per_day' => n]` (either or both) or `'unlimited'`. Values must be positive integers (numeric strings from `env()` are accepted); an empty map, a zero or negative number, or an unknown key is a `ConfigurationException`, so a typo cannot silently remove a cap. Without a `default` entry, unlisted buckets are unlimited |
+| `frequency.limits` | | `default` 5/hour and 20/day; `marketing` 2/day; `security` unlimited | bucket => `['per_hour' => n, 'per_day' => n]` (either or both) or `'unlimited'`. Values must be positive integers (numeric strings from `env()` are accepted); an empty map, a zero or negative number, `null` (what `env()` gives for a variable that is not set), a bucket that is `null`, or an unknown key is a `ConfigurationException`, so neither a typo nor a missing environment variable can silently remove a cap. To leave a window out, leave its key out. Without a `default` entry, unlisted buckets are unlimited |
 | `frequency.no_policy_bucket` | `MOBILE_PUSH_FREQUENCY_NO_POLICY_BUCKET` | `default` | |
 | `frequency.on_store_failure` | `MOBILE_PUSH_FREQUENCY_ON_STORE_FAILURE` | `allow` | what to do when the counters cannot be read or written |
 

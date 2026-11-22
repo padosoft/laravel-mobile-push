@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use Padosoft\MobilePush\Core\Exceptions\ConfigurationException;
+use Padosoft\MobilePush\Core\Policy\Frequency\BucketLimits;
+use Padosoft\MobilePush\Core\Policy\Frequency\FrequencyDecision;
 use Padosoft\MobilePush\Core\Policy\Frequency\FrequencyLimits;
 use Padosoft\MobilePush\Core\Policy\Frequency\FrequencyWindow;
 
@@ -47,4 +49,57 @@ it('puts a moment inside the window only when it is strictly newer than now minu
     'one second short of an hour' => [3599, true],
     'exactly an hour' => [3600, false],
     'older' => [3601, false],
+]);
+
+it('rejects a bucket without a name', function () {
+    FrequencyLimits::fromArray(['' => ['per_day' => 1]]);
+})->throws(ConfigurationException::class);
+
+it('accepts a bucket whose name is a number (PHP turns the key into an int)', function () {
+    $limits = FrequencyLimits::fromArray(['7' => ['per_day' => 1]]);
+
+    expect(array_map(fn ($w) => $w->describe(), $limits->forBucket('7')->windows))->toBe(['1 per day'])
+        ->and($limits->forBucket('8')->isUnlimited())->toBeTrue();
+});
+
+it('needs positive seconds and limit for a window, one included', function (int $seconds, int $limit, bool $valid) {
+    $make = fn () => new FrequencyWindow('hour', $seconds, $limit);
+
+    $valid ? expect($make()->describe())->toBe($limit.' per hour') : expect($make)->toThrow(InvalidArgumentException::class);
+})->with([
+    'one second, one effect' => [1, 1, true],
+    'zero seconds' => [0, 1, false],
+    'zero effects' => [1, 0, false],
+    'negative seconds' => [-1, 5, false],
+]);
+
+it('describes an unlimited bucket as having no window and no limit', function () {
+    $unlimited = BucketLimits::unlimited();
+
+    expect($unlimited->isUnlimited())->toBeTrue()
+        ->and($unlimited->longestWindowSeconds())->toBe(0)
+        ->and($unlimited->largestLimit())->toBe(0)
+        ->and($unlimited->windowNamed('day'))->toBeNull();
+});
+
+it('finds a window by name', function () {
+    $limits = BucketLimits::of(perHour: 5, perDay: 20);
+
+    expect($limits->windowNamed('hour')?->limit)->toBe(5)
+        ->and($limits->windowNamed('day')?->seconds)->toBe(86400)
+        ->and($limits->windowNamed('week'))->toBeNull()
+        ->and(BucketLimits::of(perHour: 2)->longestWindowSeconds())->toBe(3600)
+        ->and(BucketLimits::of(perHour: 2)->largestLimit())->toBe(2);
+});
+
+it('round-trips a capped decision with its window and limit', function (string $window, int $limit) {
+    $decoded = FrequencyDecision::decode(FrequencyDecision::capped($window, $limit)->encode());
+
+    expect($decoded?->allowed)->toBeFalse()
+        ->and($decoded?->window)->toBe($window)
+        ->and($decoded?->limit)->toBe($limit)
+        ->and(FrequencyDecision::allowed()->describeLimit())->toBeNull();
+})->with([
+    ['hour', 5],
+    ['day', 120],
 ]);

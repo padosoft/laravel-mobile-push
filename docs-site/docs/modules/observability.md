@@ -21,7 +21,7 @@ Send logs, Pulse, Telescope, health checks, Prometheus metrics, operational aler
 
 Related pages: [outcomes](/reliability/outcomes), [troubleshooting](/operations/troubleshooting), [commands](/operations/commands), [security and privacy](/operations/security-and-privacy), [safe mode](/reliability/safe-mode), [configuration](/get-started/configuration).
 
-What was verified in a browser: on a freshly created Laravel 13 application with Pulse 1.11 and Telescope 5.29, the Pulse dashboard and Telescope were opened in headless Chromium after a few simulated pushes. The card shows the two connections, the top reason codes and the circuit and throttle blocks; Telescope lists `mobile-push.batch` events with their tags and the sanitised payload (no token). That check found and fixed two defects of the card (it came back empty on the second poll with Laravel 13's default `cache.serializable_classes = false`, and its layout relied on CSS classes Pulse does not ship). It was a manual run, not a CI job, with simulated sends only. The OpenTelemetry sink was verified against an in-memory SDK; an absent SDK makes the API a no-op, which the package cannot detect. Databases other than SQLite and caches other than `array` were not exercised for these pieces.
+What was verified in a browser: on a freshly created Laravel 13 application with Pulse 1.11 and Telescope 5.29, the Pulse dashboard and Telescope were opened in headless Chromium after a few simulated pushes. The card shows the two connections, the top reason codes and the circuit and throttle blocks; Telescope lists `mobile-push.batch` events with their tags and the sanitised payload (no token). That check found and fixed two defects of the card (it came back empty on the second poll with Laravel 13's default `cache.serializable_classes = false`, and its layout relied on CSS classes Pulse does not ship). It was a manual run, not a CI job, with simulated sends only. The OpenTelemetry sink was verified against an in-memory SDK; an absent SDK makes the API a no-op, which the package cannot detect. The database log sink and everything else that needs Laravel also runs on MySQL 8.4, MariaDB 11.4 and PostgreSQL 17 in CI; the metric counters were exercised across processes on the cache stores listed under [Prometheus](/modules/observability#observability-prometheus).
 
 ## Send log sinks
 
@@ -200,6 +200,18 @@ The endpoint is `GET /mobile-push/metrics`. The default middleware requires `Aut
 Making it public is an explicit choice: set `metrics.prometheus.middleware` to your own list (`[]` for none). Routes are not registered when your routes are cached.
 
 Counters live in the package cache (`mobile-push.cache.store`), one key per series plus an index. A cache flush or eviction resets them to zero, which Prometheus treats as a counter reset. Labels are bounded: connection, provider, environment, status, reason code, traffic class; never a user, device or campaign. Exposition format 0.0.4.
+
+How the counters behave on each cache store (eight processes recording 25 results each into one series, at the same instant, then a scrape: `MetricsCoordinationTest`):
+
+| Store | Counted of 200 | Notes |
+|---|---|---|
+| redis | 200 | atomic increment, no TTL |
+| database on MySQL, MariaDB, PostgreSQL | 200 | the store does not create a key on increment: the counter is created with `add()` and lives one year, then restarts from zero |
+| memcached, dynamodb | 200 (in the `backends` workflow) | as above |
+| file | 200 | the store increments by reading and writing a file: the recorder serialises it with the store's lock |
+| database on a shared SQLite file | 162 to 198 | SQLite refuses a write while another process writes to the same file; the recorder retries ten times within a few milliseconds, then gives the count up rather than hold the send |
+
+Two **defects were found and fixed** here on 2026-11-22: on the `database` store (the default cache store of a new Laravel application), and on memcached and DynamoDB, **no counter was recorded at all** (`increment` on a missing key answers false and creates nothing); and on the `file` store concurrent processes lost counts. Recording stays best effort: it never throws and never delays a send by more than a few tens of milliseconds.
 
 | Metric | Type | Labels | Meaning |
 |---|---|---|---|

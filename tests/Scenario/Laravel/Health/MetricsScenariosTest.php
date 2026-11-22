@@ -4,6 +4,12 @@ declare(strict_types=1);
 
 require_once __DIR__.'/HealthKit.php';
 
+use Illuminate\Cache\ArrayStore;
+use Illuminate\Cache\Repository;
+use Illuminate\Database\QueryException;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Schema;
 use Padosoft\MobilePush\Core\Driver\GuardKind;
 use Padosoft\MobilePush\Core\Driver\GuardTransition;
 use Padosoft\MobilePush\Core\Guard\BreakerTransition;
@@ -83,6 +89,84 @@ it('exposes what was recorded, with bounded labels, even after 1,000 distinct de
     }
     expect(count(PromText::parse($this->app->make(PrometheusExporter::class)->render())['samples']))->toBe($before);
     expect($text)->not->toContain('device-');
+});
+
+/*
+ * Laravel's database, memcached and dynamodb cache stores do not create a key on increment: they answer false. The
+ * recorder used to call increment() alone, so on the `database` store (the default cache store of a new Laravel
+ * application) no counter was ever recorded. Found on 2026-11-22.
+ */
+it('counts on a store whose increment does not create the key, as the database, memcached and dynamodb stores behave', function (string $kind): void {
+    if ($kind === 'database') {
+        Schema::create('cache', static function (Blueprint $table): void {
+            $table->string('key')->primary();
+            $table->mediumText('value');
+            $table->integer('expiration');
+        });
+        Schema::create('cache_locks', static function (Blueprint $table): void {
+            $table->string('key')->primary();
+            $table->string('owner');
+            $table->integer('expiration');
+        });
+        config()->set('cache.stores.metrics-db', ['driver' => 'database', 'connection' => null, 'table' => 'cache', 'lock_table' => 'cache_locks']);
+        $cache = Cache::store('metrics-db');
+    } else {
+        // What memcached and DynamoDB do, without a server: increment answers false until the key exists.
+        $cache = new Repository(new class extends ArrayStore
+        {
+            public function increment($key, $value = 1)
+            {
+                return $this->get($key) === null ? false : parent::increment($key, $value);
+            }
+        });
+    }
+    $recorder = new MetricsRecorder($cache, $this->app->make(ClockInterface::class));
+    $binding = HealthKit::binding('ios');
+
+    for ($i = 0; $i < 3; $i++) {
+        $recorder->record($binding, HealthKit::result(SendStatus::Accepted), TrafficClass::Bulk);
+    }
+    $recorder->record($binding, HealthKit::result(SendStatus::Rejected, ReasonCode::DestinationUnregistered), TrafficClass::Bulk);
+    $recorder->recordThrottle($binding, TrafficClass::Bulk);
+
+    $values = [];
+    foreach ($recorder->snapshot() as $metric) {
+        $values[$metric->name.'/'.($metric->labels['status'] ?? '-')] = $metric->value;
+    }
+    $rates = $recorder->errorRates();
+
+    expect($values['mobile_push_results_total/accepted'] ?? null)->toBe(3)
+        ->and($values['mobile_push_results_total/rejected'] ?? null)->toBe(1)
+        ->and($values['mobile_push_throttled_total/-'] ?? null)->toBe(1)
+        ->and($rates)->toHaveCount(1)
+        ->and($rates[0]->sample)->toBe(4);
+})->with(['database', 'memcached-like']);
+
+it('counts once when a database-backed store answers an increment with a contention error and then accepts it', function (): void {
+    $store = new class extends ArrayStore
+    {
+        public int $failures = 3;
+
+        public int $increments = 0;
+
+        public function increment($key, $value = 1)
+        {
+            $this->increments++;
+            if ($this->failures-- > 0) {
+                throw new QueryException('sqlite', 'update "cache" set "value" = ?', [], new PDOException('SQLSTATE[HY000]: General error: 5 database is locked'));
+            }
+
+            return parent::increment($key, $value);
+        }
+    };
+    $recorder = new MetricsRecorder(new Repository($store), $this->app->make(ClockInterface::class));
+
+    $recorder->recordThrottle(HealthKit::binding('ios'), TrafficClass::Bulk);
+
+    $counters = array_values(array_filter($recorder->snapshot(), static fn ($m): bool => $m->name === MetricsRecorder::THROTTLED));
+    expect($counters)->toHaveCount(1)
+        ->and($counters[0]->value)->toBe(1)
+        ->and($store->increments)->toBe(4);
 });
 
 it('stops creating series beyond the configured cap', function (): void {
