@@ -3,7 +3,8 @@ name: simulator
 # `mobile-push:simulator` on a real Mac: the command builds an .apns payload file and hands it to
 # `xcrun simctl push` for a booted iOS Simulator. Only by hand from the Actions tab: macOS runners are billed at a
 # multiple of Linux ones, and this checks a developer convenience, not the sending path. The payload is addressed to
-# Safari, which every simulator has installed; nothing is sent to Apple and no credential exists.
+# Safari, which every simulator has installed; nothing is sent to Apple and no credential exists. The same Mac
+# also runs the Swift package that decodes the Live Activity fixtures (tests/Support/SwiftFixtures).
 
 on:
   workflow_dispatch:
@@ -20,6 +21,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: package
+      # The Live Activity fixtures the PHP tests compile against, decoded by Swift into the structs an app would
+      # declare (plain Foundation, no ActivityKit, no device): a key renamed on the PHP side fails here.
+      - name: The Live Activity fixtures decode in Swift
+        working-directory: package/tests/Support/SwiftFixtures
+        run: |
+          swift --version
+          swift test
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'

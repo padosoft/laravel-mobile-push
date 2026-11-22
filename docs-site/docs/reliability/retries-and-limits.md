@@ -131,6 +131,8 @@ Apple's wording, recorded in the classifier from the JSON form of the page "Hand
 | Timeout, reset, GOAWAY or an unreadable answer after the request was written | `OutcomeUnknown`; retried only if replaceable (`unknown_outcome.retry`). |
 | An error string this version does not know | By HTTP class: 429 and 5xx retried, other 4xx `Rejected`, reason code `unknown`. |
 
+FCM's `QUOTA_EXCEEDED` covers three different quotas (the project's message rate, one device's, one topic's), and the package pauses the **whole Firebase project** for all three. It does so because nothing it could read tells them apart in a documented way: the Discovery document (revision 20261112) does not describe the error's details, and Google's own Admin SDKs map the HTTP v1 `QUOTA_EXCEEDED` to one generic "message rate exceeded" error (the separate device and topic errors they know belong to the legacy API; `firebase-admin` 14.5 for Node and 7.8 for Python, read on 2026-11-22). A device that exceeds its own quota therefore pauses the other destinations of the project for at least a minute: safe, but wider than necessary.
+
 The per-reason detail is in the [reason catalog](/operations/troubleshooting#troubleshooting-reason-catalog).
 
 ## Rate limit: messages, per provider account

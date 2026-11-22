@@ -17,6 +17,18 @@ use Padosoft\MobilePush\Laravel\Testing\TestingSession;
  * assertNothingSent(), assertQueued() ...), fakeTransport() verifies BYTES and behaviour (the real pipeline runs, only
  * the transport is replaced; assertApnsRequest(), assertFcmRequest() ...). Both work without any credentials.
  *
+ * @method static void assertSent((callable(\Padosoft\MobilePush\Laravel\Testing\SentPush): bool)|class-string $messageClassOrCallback, ?int $times = null) Intent fake: see PushFake::assertSent(); needs MobilePush::fake() first
+ * @method static void assertNotSent((callable(\Padosoft\MobilePush\Laravel\Testing\SentPush): bool)|class-string $messageClassOrCallback) Intent fake
+ * @method static void assertNothingSent() Intent fake
+ * @method static void assertSentTimes(int $times) Intent fake
+ * @method static void assertSentTo(mixed $notifiableOrDestination, (callable(\Padosoft\MobilePush\Laravel\Testing\SentPush): bool)|null $callback = null) Intent fake
+ * @method static void assertSentOnConnection(string $connection) Intent fake
+ * @method static void assertSentInScope(string $scope) Intent fake
+ * @method static void assertSentToTopic(string $topic) Intent fake
+ * @method static void assertQueued((callable(\Padosoft\MobilePush\Laravel\Testing\SentPush): bool)|class-string|null $messageClassOrCallback = null, ?int $times = null) Intent fake
+ * @method static void assertNotQueued((callable(\Padosoft\MobilePush\Laravel\Testing\SentPush): bool)|class-string|null $messageClassOrCallback = null) Intent fake
+ * @method static \Illuminate\Support\Collection<int, \Padosoft\MobilePush\Laravel\Testing\SentPush> sent((callable(\Padosoft\MobilePush\Laravel\Testing\SentPush): bool)|null $filter = null) Intent fake: pushes sent now
+ * @method static \Illuminate\Support\Collection<int, \Padosoft\MobilePush\Laravel\Testing\SentPush> queued((callable(\Padosoft\MobilePush\Laravel\Testing\SentPush): bool)|null $filter = null) Intent fake: pushes queued
  * @method static \Padosoft\MobilePush\Laravel\Sending\PendingSend connection(?string $name = null)
  * @method static \Padosoft\MobilePush\Laravel\Sending\PendingSend scope(string $scope)
  * @method static \Padosoft\MobilePush\Laravel\Sending\PendingSend to(mixed $target)
@@ -88,6 +100,38 @@ final class MobilePush extends Facade
     public static function fakeTransport(bool $allowOutsideTesting = false): FakeTransportBuilder
     {
         return self::testing()->fakeTransport($allowOutsideTesting);
+    }
+
+    /** Assertion and inspection methods of the intent fake that can be called statically on the facade. */
+    private const FAKE_METHODS = [
+        'assertsent', 'assertnotsent', 'assertnothingsent', 'assertsenttimes', 'assertsentto', 'assertsentonconnection',
+        'assertsentinscope', 'assertsenttotopic', 'assertqueued', 'assertnotqueued', 'sent', 'queued',
+    ];
+
+    /**
+     * Static assertions (`MobilePush::assertSent(...)`) go to the intent fake that is active for this application;
+     * every other static call goes to the manager as usual. The manager itself knows nothing about tests.
+     *
+     * @param  string  $method
+     * @param  array<mixed>  $args
+     *
+     * @throws \LogicException when one of those methods is called and MobilePush::fake() is not active
+     */
+    public static function __callStatic($method, $args): mixed
+    {
+        if (! in_array(strtolower($method), self::FAKE_METHODS, true)) {
+            return parent::__callStatic($method, $args);
+        }
+
+        $fake = self::testing()->intent();
+        if ($fake === null) {
+            throw new \LogicException(sprintf(
+                'MobilePush::%s() needs the intent fake, and none is active: call MobilePush::fake() first (MobilePush::fakeTransport() has its own assertions, on the object it returns).',
+                $method,
+            ));
+        }
+
+        return $fake->{$method}(...$args);
     }
 
     private static function testing(): TestingSession

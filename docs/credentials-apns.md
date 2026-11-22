@@ -34,6 +34,14 @@ What this means for the package:
 
 From the `.p8` key the package signs a provider token (a JWT, `ES256`, `kid` = Key ID, `iss` = Team ID). Apple's rules, which the package follows: a token may not be used more than one hour after it was issued, and must not be renewed more often than every 20 minutes. The package renews it after 45 minutes, by a single process at a time (a lock in the shared cache), while the others keep using the still-valid one; tokens are shared between workers through `mobile-push.cache.store` (encrypted at rest). On `ExpiredProviderToken` it refreshes once and retries once; on `TooManyProviderTokenUpdates` it slows down instead of failing over. Keep the server clock synchronized (NTP): APNs refuses tokens dated more than an hour from its own clock.
 
+What the 20-minute limit is counted on: Apple's page "Establishing a token-based connection to APNs" (read on
+2026-11-22) says that APNs reports an error "if you use a new token more than once every 20 minutes on the same
+connection". The same connection is the only scope Apple states: the page does not say whether the limit is also
+counted per key or per team, and neither does the `TooManyProviderTokenUpdates` row of the error table. The package
+fits the stated scope: a worker keeps the token it is using for at least 20 minutes (45 by default) before it looks at
+the shared cache again, so one connection never sees a second token sooner. How APNs counts beyond that was not
+measured (it needs a real key).
+
 ## Configuring the connection
 
 ```php

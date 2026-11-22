@@ -113,6 +113,29 @@ expect($accepted->status)->toBe(SendStatus::Accepted);
 
 Failure messages list the pushes that were recorded, with masked destinations.
 
+### The static style: `MobilePush::assertSent()`
+
+Every assertion above, and `sent()` / `queued()`, can also be called **statically on the facade**, like `Mail::assertSent()`. The call goes to the intent fake that is active for the application, so you do not have to keep the object `fake()` returned. Both styles can be mixed in one test.
+
+<!-- example: testing-static-assertions -->
+```php
+use Padosoft\MobilePush\Core\Message\PushMessage;
+use Padosoft\MobilePush\Laravel\Facades\MobilePush;
+use Padosoft\MobilePush\Laravel\Testing\SentPush;
+
+MobilePush::fake();
+
+MobilePush::to($user)->send(PushMessage::make('Order shipped', 'Arrives Friday'));
+
+MobilePush::assertSent(PushMessage::class, 2);   // an iPhone and an Android phone
+MobilePush::assertSentTo($user, fn (SentPush $p) => $p->message instanceof PushMessage && $p->message->title === 'Order shipped');
+MobilePush::assertSentOnConnection('ios');
+MobilePush::assertNotQueued();
+expect(MobilePush::sent())->toHaveCount(2);
+```
+
+Calling one of these statically when no intent fake is active (no `MobilePush::fake()` yet, or the fake was switched off) throws a `LogicException` saying to call `MobilePush::fake()` first; it never passes silently. After `MobilePush::fakeTransport()` the intent fake is off too: use the assertions of the object that call returns.
+
 ### Reading what was recorded
 
 `sent(?callable $filter)` and `queued(?callable $filter)` return a Laravel `Collection` of `SentPush`. A `SentPush` has `scope`, `connection`, `binding` (the resolved `BindingRef`), `destination` (typed), `message` (the very object you sent), `options` (`validateOnly`, `trafficClass`, `effectKey`, `expiresAt`), `queued`, `result` (the `SendResult` the fake answered with; null for queued pushes) and `queueOptions` (queue connection, queue, delay, after-commit; queued pushes only).
