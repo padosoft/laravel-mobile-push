@@ -15,6 +15,8 @@ declare(strict_types=1);
  * Argument: JSON {mode, store, ..., appKey, startAt, now, owner, attempts, limit, onFailure, effectPrefix}
  */
 
+use Illuminate\Cache\FileStore;
+use Illuminate\Filesystem\Filesystem;
 use Padosoft\MobilePush\Core\Driver\GateContext;
 use Padosoft\MobilePush\Core\Driver\SendItem;
 use Padosoft\MobilePush\Core\Guard\GuardStore;
@@ -40,6 +42,54 @@ require __DIR__.'/contender-app.php';
 $args = json_decode($argv[1] ?? '{}', true, 8, JSON_THROW_ON_ERROR);
 
 $app = contenderApp($args);
+
+// Diagnostics (MP_POLICY_TRACE=1): the filesystem under the `file` cache store notes every read that came back
+// empty, every write that failed and every delete asked by FileStore::getPayload() (which deletes an entry it reads
+// as expired or corrupt). A counter that restarts from zero on that store must show up here.
+$trace = null;
+if (getenv('MP_POLICY_TRACE') !== false) {
+    $trace = new class extends Filesystem
+    {
+        /** @var list<string> */
+        public array $events = [];
+
+        public function sharedGet($path)
+        {
+            $contents = parent::sharedGet($path);
+            if ($contents === '') {
+                $this->note('read-empty', $path);
+            }
+
+            return $contents;
+        }
+
+        public function put($path, $contents, $lock = false)
+        {
+            $written = parent::put($path, $contents, $lock);
+            if ($written === false || $written === 0) {
+                $this->note('write-failed', $path);
+            }
+
+            return $written;
+        }
+
+        public function delete($paths)
+        {
+            $callers = array_column(debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 6), 'function');
+            if (in_array('getPayload', $callers, true)) {
+                $this->note('delete-by-getPayload', is_array($paths) ? (string) reset($paths) : (string) $paths);
+            }
+
+            return parent::delete(...func_get_args());
+        }
+
+        private function note(string $what, string $path): void
+        {
+            $this->events[] = sprintf('%.6f pid=%d %s %s size=%s', microtime(true), getmypid(), $what, substr(basename($path), 0, 12), is_file($path) ? (string) filesize($path) : 'absent');
+        }
+    };
+    $app->instance('files', $trace);
+}
 $clock = new FakeClock((string) $args['now']);
 $app->instance(ClockInterface::class, $clock);
 $config = $app->make('config');
@@ -120,6 +170,11 @@ if ($args['mode'] === 'frequency' || $args['mode'] === 'read') {
     $out += ['values' => $values, 'contended' => $contended, 'unexpected' => $unexpected];
 }
 
+if ($trace !== null) {
+    $out['trace'] = $trace->events;
+    $cacheStore = $app->make('cache')->store((string) $app->make('config')->get('mobile-push.cache.store'))->getStore();
+    $out['traceActive'] = $cacheStore instanceof FileStore && $cacheStore->getFilesystem() === $trace;
+}
 $out['storeAvailable'] = $app->make(GuardStore::class) instanceof ReportsAvailability ? $app->make(GuardStore::class)->available() : true;
 $out['health'] = $health;
 
