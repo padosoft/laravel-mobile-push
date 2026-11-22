@@ -7,6 +7,7 @@ use Padosoft\MobilePush\Core\Retry\Backoff;
 use Padosoft\MobilePush\Core\Retry\RetryAfter;
 use Padosoft\MobilePush\Core\Retry\RetryBudget;
 use Padosoft\MobilePush\Core\Retry\RetryPolicy;
+use Random\Engine;
 use Random\Engine\Mt19937;
 use Random\Randomizer;
 
@@ -51,6 +52,32 @@ it('spreads retries above a provider minimum instead of stacking them on it', fu
     expect(min($delays))->toBeGreaterThanOrEqual(60_000)
         ->and(max($delays))->toBeLessThanOrEqual(90_000)
         ->and(count(array_unique($delays)))->toBeGreaterThan(100);
+});
+
+/*
+ * The jitter draws 53 random bits and divides them by 2^53 (Randomizer::getFloat() does not exist on PHP 8.2). With
+ * an engine that hands out fixed bits the draw is known exactly: all zeros is 0, all ones is the largest value
+ * below 1. A draw outside [0, 1), half the range, or a range that is not 53 bits wide all show up as another delay
+ * (or as an engine that cannot satisfy the range).
+ */
+it('draws its jitter from exactly 53 bits: the extremes of the engine are the extremes of the spread', function (): void {
+    $engine = static fn (string $byte): Randomizer => new Randomizer(new class($byte) implements Engine
+    {
+        public function __construct(private readonly string $byte) {}
+
+        public function generate(): string
+        {
+            return str_repeat($this->byte, 8);
+        }
+    });
+    $policy = new RetryPolicy(backoffBaseMs: 1000, backoffMaxMs: 1_000_000, jitter: 0.25);
+
+    // Below a provider minimum: exponential part 4,000 ms on the third retry, reduced by at most 25 %.
+    expect((new Backoff($policy, $engine("\x00")))->delayMs(3))->toBe(4000)
+        ->and((new Backoff($policy, $engine("\xFF")))->delayMs(3))->toBe(3000)
+        // At a provider minimum of 10 s: never before it, at most 25 % after it.
+        ->and((new Backoff($policy, $engine("\x00")))->delayMs(1, 10))->toBe(10_000)
+        ->and((new Backoff($policy, $engine("\xFF")))->delayMs(1, 10))->toBe(12_500);
 });
 
 it('computes the deadline as min(logical expiry, first attempt + maxElapsed)', function (?string $expiry, string $deadline, bool $isExpiry): void {
