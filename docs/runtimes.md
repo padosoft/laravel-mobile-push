@@ -257,8 +257,9 @@ and were exposed to the same defect.
 - A worker running for real hours: idle periods were simulated with short pauses and a 1-second `max_idle_seconds`;
   the libcurl default for idle reuse (118 s, overridden by the transport) and TCP keepalive were measured by the
   transport author (see transport.md), not re-measured here.
-- `queue:work` was run in the test process through `Artisan::call()` (the real worker loop), not as a separate
-  `php artisan` process.
+- The connection-reuse measurement of `queue:work` was taken in the test process through `Artisan::call()` (the real
+  worker loop). As a separate `php artisan queue:work` process the worker runs in CI on the database, Redis, SQS and
+  beanstalkd queues with simulated sends, where reuse on the wire is not what is measured.
 - The cache stores against production services: memcached and DynamoDB were run against a local memcached and
   DynamoDB Local, Redis against a local `redis-server`, the `database` store against the MySQL, MariaDB and
   PostgreSQL containers of the CI job. None of them is a production deployment (replication, a managed service, a

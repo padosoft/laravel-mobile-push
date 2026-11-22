@@ -57,13 +57,13 @@ jobs:
           MOBILE_PUSH_TEST_STRICT_CACHE: '1'
         run: vendor/bin/pest tests/Unit/Laravel tests/Scenario/Laravel
 
-  # EXPERIMENTAL. The suite is developed on SQLite; these jobs run the database-backed scenarios on MySQL and
-  # PostgreSQL (row locks, SKIP LOCKED claims, unique constraints, keyset pagination). tests/TestCase.php empties the
-  # schema before each test on a server database. They do not gate a merge until they have been green for a while: a
-  # failure here is a finding to triage, not a broken build.
+  # The suite is developed on SQLite; these jobs run everything that needs Laravel on MySQL, MariaDB and PostgreSQL
+  # (row locks, SKIP LOCKED claims, unique constraints, keyset pagination, the database cache store and its lock
+  # table under eight processes). tests/TestCase.php empties the schema before each test on a server database.
+  # They gate the build since 2026-11-22: while they were allowed to fail, a red MySQL job left the run green, and
+  # that job was reporting a real defect (a deadlock on the cache lock table read as an outage).
   databases:
     runs-on: ubuntu-latest
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
@@ -99,7 +99,7 @@ jobs:
             username: root
             password: ''
             php: '8.2'
-    name: Database scenarios · ${{ matrix.db }} · PHP ${{ matrix.php }} (experimental)
+    name: Laravel layer on ${{ matrix.db }} · PHP ${{ matrix.php }}
     services:
       mariadb:
         image: mariadb:11.4
@@ -141,7 +141,7 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
-          extensions: curl, openssl, json, intl, pdo_mysql, pdo_pgsql, pdo_sqlite
+          extensions: curl, openssl, json, intl, pdo_mysql, pdo_pgsql, pdo_sqlite, redis
           coverage: none
       - uses: actions/setup-node@v4
         with:
@@ -149,17 +149,12 @@ jobs:
       - run: composer update --prefer-dist --no-interaction
       - name: Versions under test
         run: php -v | head -1 && composer show laravel/framework | grep -E '^versions' && composer show pestphp/pest | grep -E '^versions'
-      - name: Database-backed scenarios
-        run: >-
-          vendor/bin/pest
-          tests/Unit/Laravel/Ledger tests/Scenario/Laravel/Ledger
-          tests/Unit/Laravel/Devices tests/Scenario/Laravel/Devices
-          tests/Unit/Laravel/LiveActivities tests/Scenario/Laravel/LiveActivities
-          tests/Unit/Laravel/Campaigns tests/Scenario/Laravel/Campaigns
-          tests/Unit/Laravel/Receipts tests/Scenario/Laravel/Receipts
-          tests/Scenario/Laravel/Queue tests/Scenario/Laravel/Install
-          tests/Scenario/Laravel/Release tests/Scenario/Laravel/Privacy
-          tests/Scenario/Laravel/Runtime/CacheCoordinationTest.php
+      # The cache-coordination scenarios start their own redis-server when the binary exists.
+      - name: Install redis-server
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq redis-server && sudo systemctl stop redis-server || true
+      # Everything that needs Laravel: the framework-free core does not touch a database.
+      - name: The whole Laravel layer on this engine
+        run: vendor/bin/pest tests/Unit/Laravel tests/Scenario/Laravel
 
   # The package as a user gets it: required into a freshly created Laravel application, installed with every module,
   # migrated, and driven through its public surface (commands, facade, helper, device registry, durable queue + worker).
@@ -257,7 +252,8 @@ jobs:
 
   # The runtimes the unit suite cannot stand in for, on a freshly created application: a real Redis as queue and cache
   # store, Laravel Horizon with the supervisors `mobile-push:install` prints, and Laravel Octane on RoadRunner serving
-  # real HTTP requests. Everything is simulated on the provider side: no credential exists.
+  # real HTTP requests, and PHP-FPM serving FastCGI requests. Everything is simulated on the provider side: no
+  # credential exists.
   runtimes:
     runs-on: ubuntu-latest
     strategy:
@@ -268,7 +264,7 @@ jobs:
             php: '8.3'
           - laravel: '12'
             php: '8.2'
-    name: Redis, Horizon and Octane (RoadRunner) · Laravel ${{ matrix.laravel }} on PHP ${{ matrix.php }}
+    name: Redis, Horizon, Octane (RoadRunner) and PHP-FPM · Laravel ${{ matrix.laravel }} on PHP ${{ matrix.php }}
     services:
       redis:
         image: redis:7
@@ -381,6 +377,14 @@ jobs:
           # the log records of each request were flushed when that request ended (database sink, mode all)
           php artisan tinker --execute='echo "logs: ".DB::table("mobile_push_logs")->count()."\n";' | tee logs.txt
           grep -q '^logs: 60$' logs.txt
+      # PHP-FPM, the runtime of a plain web request: two static workers, FastCGI requests without a web server in
+      # between. The local HTTP/2 mock counts the connections: one per HTTP request, shared by the pushes of that request.
+      - name: PHP-FPM, sixty requests through two workers
+        working-directory: app
+        run: |
+          sudo apt-get install -y -qq libfcgi-bin > /dev/null
+          command -v "php-fpm${{ matrix.php }}" > /dev/null || sudo apt-get install -y -qq "php${{ matrix.php }}-fpm" > /dev/null
+          bash ../package/tests/Support/FreshApp/fpm-smoke.sh "$PWD" "$PWD/../package"
 
   static:
     runs-on: ubuntu-latest

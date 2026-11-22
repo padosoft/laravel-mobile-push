@@ -283,7 +283,7 @@ experiment). The parent recovers transparently on its next `send()` (dead connec
 requests in flight on that connection at that moment would come back `Unknown`. Avoid sending before forking; a child
 that must exit without touching inherited connections can end with `posix_kill(getmypid(), SIGKILL)` (as the test does).
 Laravel queue workers and Horizon start workers as new processes (Symfony Process / `proc_open`), not with `fork`, so
-they are not affected: read in Laravel's source, and the real `queue:work` loop and real forked children were exercised afterwards (see [runtimes](runtimes.md)); Horizon itself was not run.
+they are not affected: read in Laravel's source, and the real `queue:work` loop and real forked children were exercised afterwards, and Horizon is run in CI on a real Redis (see [runtimes](runtimes.md)).
 
 ## Mock server (`tests/Support/H2Mock`)
 

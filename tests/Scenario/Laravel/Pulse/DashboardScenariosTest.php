@@ -116,9 +116,10 @@ it('never lets a token, bearer or raw provider text reach Pulse storage or the r
     event(Kit::batch($binding, ['rejected' => 1]));
     Pulse::ingest();
 
+    // On MySQL and MariaDB Pulse keeps a binary hash of each key next to the key: not text, and not what is looked for.
     $dump = json_encode([
         pulseRows('pulse_entries'), pulseRows('pulse_aggregates'), pulseRows('pulse_values'),
-    ], JSON_THROW_ON_ERROR);
+    ], JSON_THROW_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE);
     $html = Livewire::test(MobilePushCard::class)->html();
 
     expect(pulseRows('pulse_entries')->count())->toBeGreaterThan(0);

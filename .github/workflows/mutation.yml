@@ -11,6 +11,11 @@ on:
   schedule:
     - cron: '47 4 * * 1'
   workflow_dispatch:
+    inputs:
+      only:
+        description: 'One group to run (its name in the matrix, or "ledger-database-server"); empty runs them all'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -110,6 +115,7 @@ jobs:
       - run: composer update --prefer-dist --no-interaction
       # Not --parallel: the parallel runner takes a single test path, and each group names several.
       - name: Mutate
+        if: github.event.inputs.only == '' || github.event.inputs.only == matrix.name
         run: vendor/bin/pest --mutate --min=${{ matrix.min }} --class='${{ matrix.classes }}' ${{ matrix.tests }}
 
   # The database ledger again, on the server engines: the mutants that only a server can kill survive the SQLite group
@@ -117,6 +123,7 @@ jobs:
   # row-lock and SKIP LOCKED ones; MySQL the READ COMMITTED statement of the claim and the locking read that follows a
   # lost effect key. Every test drops and migrates the schema, so these are by far the slowest jobs of the workflow.
   mutate-server:
+    if: github.event.inputs.only == '' || github.event.inputs.only == 'ledger-database-server'
     runs-on: ubuntu-latest
     timeout-minutes: 350
     strategy:
