@@ -68,7 +68,7 @@ final class MetricsRecorder
     /** @var array<string, int> series key => timestamp of the last index verification (re-checked every minute so a cache flush heals) */
     private array $known = [];
 
-    /** @var array<string, true> */
+    /** @var array<string, int> series key => timestamp of the refusal by the series cap (re-checked every minute: room may appear after a reset or a flush elsewhere) */
     private array $rejected = [];
 
     public function __construct(
@@ -386,7 +386,7 @@ final class MetricsRecorder
         if (isset($this->known[$key]) && $now - $this->known[$key] < 60) {
             return true;
         }
-        if (isset($this->rejected[$key])) {
+        if (isset($this->rejected[$key]) && $now - $this->rejected[$key] < 60) {
             return false;
         }
 
@@ -409,11 +409,12 @@ final class MetricsRecorder
                 $added = true;
             });
             if (! $added) {
-                $this->rejected[$key] = true;
+                $this->rejected[$key] = $now;
 
                 return false;
             }
         }
+        unset($this->rejected[$key]);
         $this->known[$key] = $now;
 
         return true;

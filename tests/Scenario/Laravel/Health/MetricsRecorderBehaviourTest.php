@@ -589,6 +589,28 @@ it('never indexes more series than the cap, counts the ones it has and refuses t
         ->and($rig->repo->get(Rig::seriesKey('c', MetricsRecorder::RESULTS, $labels('c3'))))->toBeNull();
 });
 
+/*
+ * A long-lived worker used to remember a refusal for its whole life: after another process had reset the metrics (or
+ * the cache had been flushed) there was room again, but that worker went on dropping the series until it restarted.
+ */
+it('looks again a minute after the cap refused a series: room made elsewhere is used by a long-lived worker', function (): void {
+    $rig = new Rig(maxSeries: 1);
+    $rig->recorder->recordThrottle(HealthKit::binding('c1'), TrafficClass::Bulk);
+    $rig->recorder->recordThrottle(HealthKit::binding('c2'), TrafficClass::Bulk);   // refused: the cap is one series
+    $c2 = Rig::seriesKey('c', MetricsRecorder::THROTTLED, ['class' => 'bulk'] + Rig::labels('c2'));
+    expect($rig->index())->toHaveCount(1)->and($rig->repo->get($c2))->toBeNull();
+
+    $rig->repo->forget(Rig::indexKey());   // another process reset the metrics
+    $rig->advance(59);
+    $rig->recorder->recordThrottle(HealthKit::binding('c2'), TrafficClass::Bulk);   // still inside the minute: not looked up
+    expect($rig->repo->get($c2))->toBeNull();
+
+    $rig->advance(1);
+    $rig->recorder->recordThrottle(HealthKit::binding('c2'), TrafficClass::Bulk);
+    expect($rig->repo->get($c2))->toBe(1)
+        ->and(array_keys($rig->index()))->toBe([$c2]);
+});
+
 it('applies the cap exactly: a cap of N allows N series and not N+1', function (int $cap): void {
     $rig = new Rig(maxSeries: $cap);
     foreach (range(1, 8) as $i) {
