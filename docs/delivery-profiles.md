@@ -292,7 +292,7 @@ orders of magnitude. The assertions are the ratios, not the absolute times.
 
 | Guard | PostgreSQL 17 | MySQL 8.4, 2 GB buffer pool | MySQL 8.4, 128 MB (image default) |
 |---|---|---|---|
-| Campaign, 25,000 then 200,000 devices (linear = 8 times) | 33.9 s, 259.2 s (7.6 times) | 35.8 s, 293.7 s (8.2 times) | 38.8 s, 630.5 s (16.2 times, **guard failed**) |
+| Campaign, 25,000 then 200,000 devices (linear = 8 times), two runs | 33.9 s, 259.2 s (7.6 times); 20.5 s, 184.3 s (9.0 times) | 35.8 s, 293.7 s (8.2 times); 45.0 s, 375.8 s (8.4 times) | 38.8 s, 630.5 s (16.2 times, **guard failed**) |
 | One effect: seconds per 1,000 destinations at 25,000, then at 200,000 | 1.13, 1.25 (ratio 1.11) | 1.61, 1.91 (ratio 1.18) | 1.43, 2.98 (ratio 2.08, **guard failed**) |
 | One-destination effects: ms per effect for the first 2,000, then for 2,000 after 48,000 | 17.8, 16.4 | 18.0, 19.9 | 17.6, 24.4 |
 | 10,000 effects deferred at the same instant: follow-up relay jobs | 21 | 21 | 21 |
@@ -302,7 +302,13 @@ orders of magnitude. The assertions are the ratios, not the absolute times.
 Until 2026-11-22 the campaign guard did not empty a server database between its two runs, so its second campaign
 also planned the 25,000 devices of the first one (225,000 deliveries, 25,000 of them `Skipped`). Measured that way
 the campaign row read 33.6 s and 293.7 s on PostgreSQL and 47.1 s and 430.0 s on MySQL with 2 GB; the 128 MB column
-was measured that way and not repeated.
+was measured that way and not repeated. The two runs of 2026-11-22 differ by more than a third in absolute time on
+the same engine: that is the noise of a hosted runner, and the reason the guard asserts a ratio.
+
+**MariaDB 11.4** (2 GB buffer pool, run of 2026-11-22) passes the same guards: campaign 36.8 s and 309.8 s (8.4
+times); one effect 1.38 and 1.49 seconds per 1,000 destinations (ratio 1.08); one-destination effects 18.2 and
+19.1 ms; 21 follow-up jobs for 10,000 deferred effects; the health, count and probe reads between 0.6 and 2.3 ms and
+a claim with its sweeps 3.7 ms next to 1.2 million final rows.
 
 With the 2 GB buffer pool MySQL made about a thousand disk reads for 300 million page requests. With 128 MB the
 deliveries table and its indexes no longer fit in memory at 200,000 rows, and the per-destination cost doubles: size
@@ -313,8 +319,9 @@ below).
 
 - **MySQL and PostgreSQL under load.** What was run: the database-backed scenarios (ledger contract in both claim
   strategies, relay, crash recovery, campaigns, devices, Live Activities, receipts, install) pass on **MySQL 8.4 and
-  PostgreSQL 17 in CI** (and, since 2026-11-21, on **MariaDB 11.4**, concurrency and query-plan scenarios included;
-  the scaling guards and mutation testing were not run there), and the whole suite passed once on a local PostgreSQL 16. One scenario uses two real
+  PostgreSQL 17 in CI** (and, since 2026-11-21, on **MariaDB 11.4**, concurrency and query-plan scenarios included,
+  and since 2026-11-22 its scaling guards; mutation testing of the ledger runs on SQLite, MySQL and PostgreSQL only).
+  Since 2026-11-22 those CI jobs run everything that needs Laravel, on PHP 8.2 and 8.3, and gate the build. One scenario uses two real
   connections: a second worker claims while the first one is inside its `FOR UPDATE SKIP LOCKED` transaction, and every
   delivery is claimed exactly once. On MySQL that scenario first failed with a lock wait timeout: at InnoDB's default
   REPEATABLE READ a locking read also locks index gaps, and the other claimer's `UPDATE` waited for them; the claim
@@ -350,7 +357,8 @@ below).
   funnel and a claim with its sweeps reads the whole deliveries table, on PostgreSQL 17 and on MySQL 8.4 (run of
   2026-11-21). The reads a campaign makes on the device registry (the upper bound, the first slice, a slice from the
   middle, the devices of one chunk) are checked the same way with 200,000 devices: none of the 4 statements reads
-  the whole devices table, on PostgreSQL 17 and on MySQL 8.4 (run of 2026-11-22).
+  the whole devices table, on PostgreSQL 17, MySQL 8.4 and MariaDB 11.4 (runs of 2026-11-22; MariaDB also for the
+  14 statements next to 1.2 million final rows).
 - Behaviour with a database that has a very high write latency, or read replicas for the ledger connection.
 - The fingerprint hashing cost on very large messages.
 

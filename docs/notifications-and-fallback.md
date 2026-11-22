@@ -281,6 +281,11 @@ try again. A notification without an effect key has no claim and is therefore no
 no token, no content). `FallbackOutcome` (returned by `FallbackEvaluator::evaluate()`) lists `dispatched` channels and
 `withheld` ones (`policy_denied`, `already_sent`).
 
+If the cache store **fails** while the claim is taken (it throws), the claim was not taken: nothing is sent on that
+channel and the exception leaves the notification. It is not swallowed (the fallback would be lost) and the message
+is not sent unclaimed (a retry would send it twice). A queued notification is then retried by the queue and sends the
+fallback once the store answers again; a notification sent inline hands the exception to your code.
+
 Configuration:
 
 | Key | Env | Default |

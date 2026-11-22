@@ -2,8 +2,10 @@
 
 declare(strict_types=1);
 
+use Illuminate\Cache\ArrayStore;
 use Illuminate\Notifications\Events\NotificationSending;
 use Illuminate\Notifications\Events\NotificationSent;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 use Padosoft\MobilePush\Core\Driver\GateDenial;
@@ -167,6 +169,43 @@ it('deferred now, decided later: the light profile triggers nothing now; the eva
         ->and($second->dispatched)->toBe([])
         ->and($second->withheld)->toBe(['mail' => 'already_sent'])
         ->and($this->world->mailCount())->toBe(1);
+});
+
+/*
+ * The fallback is sent only under its idempotency claim. When the cache store behind the claim fails, the claim was
+ * not taken: nothing is sent on that channel and the error leaves the notification, so a queued notification is
+ * retried by the queue. It is not swallowed (the fallback would be lost) and the mail is not sent unclaimed (a
+ * retry would send it twice).
+ */
+it('the cache behind the fallback claim is down: no unclaimed email, the error surfaces, and the retry sends it once', function () {
+    $store = new class extends ArrayStore
+    {
+        public bool $down = true;
+
+        public function get($key)
+        {
+            if ($this->down) {
+                throw new RuntimeException('cache down');
+            }
+
+            return parent::get($key);
+        }
+    };
+    Cache::extend('flaky', fn () => Cache::repository($store));
+    config()->set('cache.stores.fallback-flaky', ['driver' => 'flaky']);
+    config()->set('mobile-push.fallback.cache_store', 'fallback-flaky');
+    $notification = ($this->notification)();
+
+    expect(fn () => $this->user->notify($notification))->toThrow(RuntimeException::class, 'cache down')
+        ->and($this->world->mailCount())->toBe(0)
+        ->and($this->world->fellBack)->toBe([]);
+
+    $store->down = false;
+    $this->user->notify($notification); // the queue's retry of the same notification
+    $this->user->notify($notification);
+
+    expect($this->world->mailCount())->toBe(1)
+        ->and($this->world->fellBack)->toHaveCount(1);
 });
 
 it('canary: no device token appears in PushFellBack or in the notification handed to the mail channel', function () {

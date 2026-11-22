@@ -280,11 +280,13 @@ What to know:
   claim, audience and lookup queries read by index and their plans were checked on SQLite (the claim's plan also on PostgreSQL and MySQL in CI). On a local
   **PostgreSQL 16** the same guard run took 32.4 seconds for 25,000 destinations and 277.1 seconds for 200,000 (8.6
   times for 8 times the audience: 1.30 and 1.39 seconds per 1,000 destinations). The guard also runs weekly on
-  GitHub-hosted runners (the `scaling` workflow, run of 2026-11-22): on **PostgreSQL 17** 33.9 and 259.2 seconds
-  (7.6 times), on **MySQL 8.4** 35.8 and 293.7 seconds (8.2 times) with a 2 GB InnoDB buffer pool. With MySQL's image
+  GitHub-hosted runners (the `scaling` workflow, two runs on 2026-11-22): on **PostgreSQL 17** 33.9 and 259.2
+  seconds (7.6 times), then 20.5 and 184.3 (9.0 times); on **MySQL 8.4** with a 2 GB InnoDB buffer pool 35.8 and
+  293.7 seconds (8.2 times), then 45.0 and 375.8 (8.4 times); on **MariaDB 11.4** 36.8 and 309.8 seconds (8.4
+  times). With MySQL's image
   default of 128 MB an earlier run took 38.8 and 630.5 seconds (16.2 times) and the guard failed: the deliveries
   table and its indexes no longer fit in memory at 200,000 rows. Give `innodb_buffer_pool_size` room for the ledger
-  before a large campaign. With 200,000 devices in the registry the planner of both engines serves the campaign's
+  before a large campaign. With 200,000 devices in the registry the planner of the three engines serves the campaign's
   reads on it (the upper bound, a slice, the devices of one chunk) without reading the whole table. These numbers describe this implementation on that setup, not a provider and not your database, and are not a
   promise: size and test your own campaigns before relying on them.
 
