@@ -6,6 +6,12 @@ namespace Padosoft\MobilePush\Tests\Scenario\Laravel\Campaigns;
 
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\DB;
+use Padosoft\MobilePush\Core\Identity\BindingRef;
+use Padosoft\MobilePush\Core\Ledger\RecordedDestination;
+use Padosoft\MobilePush\Laravel\Campaigns\Audience\AudienceContext;
+use Padosoft\MobilePush\Laravel\Campaigns\Audience\DeviceAudience;
+use Padosoft\MobilePush\Laravel\Campaigns\Audience\KeysetCursor;
+use Padosoft\MobilePush\Laravel\Devices\DeviceEligibility;
 
 /**
  * Measures where the time of a durable send goes: every SQL statement is timed (DB::listen) and filed under the phase
@@ -124,6 +130,56 @@ final class CampaignProfiler
             }
             $plan = DB::select('explain query plan '.$q['raw'], $q['bindings']);
             $out[$sql] = implode(' | ', array_map(static fn (object $r): string => (string) $r->detail, $plan));
+        }
+
+        return $out;
+    }
+
+    /**
+     * On a server engine: the plans the planner CHOOSES, with fresh statistics, for the reads a campaign makes on the
+     * device registry as it is now (the upper bound, the first slice, a slice from the middle, the devices of one
+     * chunk).
+     *
+     * @return list<array{sql: string, wholeTable: bool, plan: string}>
+     */
+    public static function devicePlans(BindingRef $binding): array
+    {
+        $driver = DB::connection()->getDriverName();
+        $table = 'mobile_push_devices';
+        DB::statement($driver === 'pgsql' ? 'analyze '.$table : 'analyze table '.$table);
+        $audience = DeviceAudience::all();
+        $context = new AudienceContext($binding->scope, $binding, 'plans');
+        $seen = [];
+        $on = true;
+        DB::listen(static function (QueryExecuted $q) use (&$seen, &$on, $table): void {
+            if ($on && str_contains($q->sql, $table) && preg_match('/^select/i', $q->sql) === 1) {
+                $seen[] = [$q->sql, $q->bindings];
+            }
+        });
+        $bound = $audience->upperBound($context);
+        $middle = intdiv(KeysetCursor::decode(DeviceAudience::CURSOR, $bound), 2);
+        $audience->slice($context, null, $bound, 1000);
+        $slice = $audience->slice($context, KeysetCursor::encode(DeviceAudience::CURSOR, $middle), $bound, 1000);
+        $refs = [];
+        foreach (array_slice($slice->destinations, 0, 100) as $destination) {
+            if ($destination instanceof RecordedDestination && $destination->ref() !== null) {
+                $refs[] = $destination->ref();
+            }
+        }
+        (new DeviceEligibility)->resolveMany($refs, $binding);
+        $on = false;
+
+        $out = [];
+        foreach ($seen as [$sql, $bindings]) {
+            $rows = DB::select(($driver === 'pgsql' ? 'explain (format json) ' : 'explain format=json ').$sql, $bindings);
+            $plan = implode("\n", array_map(static fn (object $row): string => (string) array_values((array) $row)[0], $rows));
+            $out[] = [
+                'sql' => $sql,
+                'wholeTable' => $driver === 'pgsql'
+                    ? preg_match('/"Node Type": "Seq Scan"[^}]*"Relation Name": "'.$table.'"/s', $plan) === 1
+                    : preg_match('/"table_name": "'.$table.'"[^{}]*"access_type": "ALL"|"access_type": "ALL"[^{}]*"table_name": "'.$table.'"/s', $plan) === 1,
+                'plan' => $plan,
+            ];
         }
 
         return $out;

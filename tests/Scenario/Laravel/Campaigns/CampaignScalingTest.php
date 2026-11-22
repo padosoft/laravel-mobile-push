@@ -9,6 +9,7 @@ use Padosoft\MobilePush\Laravel\Campaigns\CampaignStatus;
 use Padosoft\MobilePush\Laravel\Campaigns\Events\CampaignCompleted;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Campaigns\CampaignProfiler;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Campaigns\CampaignWorld;
+use Padosoft\MobilePush\Tests\Scenario\Send\SendKit;
 
 require_once __DIR__.'/CampaignWorld.php';
 require_once __DIR__.'/CampaignProfiler.php';
@@ -35,6 +36,10 @@ function profiledCampaign(int $devices, bool $file = false): array
 {
     // A fresh database for every run (an in-memory SQLite database lives as long as its connection).
     DB::purge((string) config('database.default'));
+    if (in_array(DB::connection()->getDriverName(), ['pgsql', 'mysql', 'mariadb'], true)) {
+        // A server keeps the tables of the previous run: without this the next run would also plan its devices.
+        DB::connection()->getSchemaBuilder()->dropAllTables();
+    }
     $path = $file ? useSqliteFile() : null;
     Event::fake([CampaignCompleted::class]);
     $w = CampaignWorld::boot();
@@ -88,4 +93,17 @@ it('a campaign scales linearly: 200,000 devices take at most a generous multiple
     // quadratic paths this guards against (a sort of every due row per claim, a scan of every device per slice or
     // chunk, a state index walked per UPDATE) made it far larger: 25,000 -> 50,000 alone was 3.1x before W5-P.
     expect($ratio)->toBeLessThan(8 * 1.75);
+
+    // On a server engine (the `scaling` workflow) the registry now holds 200,000 devices: ask the planner what it
+    // CHOSE for the reads a campaign makes on it. None may read the whole devices table.
+    $driver = DB::connection()->getDriverName();
+    if (in_array($driver, ['pgsql', 'mysql', 'mariadb'], true)) {
+        expect(DB::table('mobile_push_devices')->count())->toBe(200_000);
+        $plans = CampaignProfiler::devicePlans(SendKit::apnsBinding());
+        expect($plans)->toHaveCount(4);
+        foreach ($plans as $plan) {
+            expect($plan['wholeTable'])->toBeFalse('the planner chose to read the whole devices table for: '.$plan['sql'].' => '.$plan['plan']);
+        }
+        fwrite(STDERR, sprintf("\n   chosen plans checked at 200,000 devices on %s: %d statements, none reads the whole table\n", $driver, count($plans)));
+    }
 })->group('slow');

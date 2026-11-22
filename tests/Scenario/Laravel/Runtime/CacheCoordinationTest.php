@@ -3,6 +3,9 @@
 declare(strict_types=1);
 
 use Aws\DynamoDb\DynamoDbClient;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Padosoft\MobilePush\Tests\Scenario\Laravel\Sending\SendingWorld;
 
 /*
@@ -11,7 +14,8 @@ use Padosoft\MobilePush\Tests\Scenario\Laravel\Sending\SendingWorld;
  * store they must agree on ONE provider token (the compare-and-swap winner; the losers adopt it) and the permits
  * granted in total must stay within the budget. Exercised on every store that can be run in this container: a real
  * redis-server when its binary exists, the database store on a shared SQLite file, the file store on a shared
- * directory. Two more stores run where a server for them is announced by the environment (the `backends` CI
+ * directory. The database store runs a second time on the server engine of the run (MySQL, MariaDB, PostgreSQL: the
+ * `databases` CI job), where eight connections really write at once. Two more stores run where a server for them is announced by the environment (the `backends` CI
  * workflow): memcached (MOBILE_PUSH_TEST_MEMCACHED=host:port, ext-memcached) and DynamoDB (MOBILE_PUSH_TEST_DYNAMODB=
  * endpoint of a DynamoDB Local, aws/aws-sdk-php installed).
  */
@@ -75,6 +79,21 @@ function sharedSqlite(string $path): void
     $pdo->exec('PRAGMA journal_mode=WAL');
     $pdo->exec('CREATE TABLE cache ("key" varchar NOT NULL PRIMARY KEY, "value" text NOT NULL, "expiration" integer NOT NULL)');
     $pdo->exec('CREATE TABLE cache_locks ("key" varchar NOT NULL PRIMARY KEY, "owner" varchar NOT NULL, "expiration" integer NOT NULL)');
+}
+
+/** Laravel's cache and lock tables (the layout of `php artisan make:cache-table`) on the default connection. */
+function serverCacheTables(string $cache, string $locks): void
+{
+    Schema::create($cache, static function (Blueprint $table): void {
+        $table->string('key')->primary();
+        $table->mediumText('value');
+        $table->integer('expiration');
+    });
+    Schema::create($locks, static function (Blueprint $table): void {
+        $table->string('key')->primary();
+        $table->string('owner');
+        $table->integer('expiration');
+    });
 }
 
 function removeTree(string $dir): void
@@ -148,6 +167,13 @@ it('eight processes on a cold shared store agree on one provider token and stay 
         } elseif ($store === 'database') {
             $args['sqlitePath'] = $dir.'/shared.sqlite';
             sharedSqlite($args['sqlitePath']);
+        } elseif ($store === 'database-server') {
+            if (! in_array(DB::connection()->getDriverName(), ['mysql', 'mariadb', 'pgsql'], true)) {
+                $this->markTestSkipped('Runs where DB_CONNECTION names a server engine (the `databases` CI job).');
+            }
+            // The contenders are other processes with the same DB_* environment: they open their own connections.
+            $args['serverTables'] = ['cache' => 'mp_race_cache', 'locks' => 'mp_race_cache_locks'];
+            serverCacheTables($args['serverTables']['cache'], $args['serverTables']['locks']);
         } elseif ($store === 'memcached') {
             $server = getenv('MOBILE_PUSH_TEST_MEMCACHED');
             if (! is_string($server) || $server === '' || ! extension_loaded('memcached')) {
@@ -191,7 +217,7 @@ it('eight processes on a cold shared store agree on one provider token and stay 
         ->and($granted)->toBeGreaterThan(BUDGET / 2);                               // and the budget is really used
     // Under this hot loop (8 processes, back-to-back takes, no network in between) some takes may give up with
     // "Guard state is too contended to update" on redis: measured and reported in docs/runtimes.md.
-})->with(['redis', 'database', 'file', 'memcached', 'dynamodb']);
+})->with(['redis', 'database', 'database-server', 'file', 'memcached', 'dynamodb']);
 
 it('with the shared store unreachable, each process uses its own token and the rate limiter fails open: every take is granted, none throws', function (): void {
     $dir = sys_get_temp_dir().'/mp-cache-down-'.bin2hex(random_bytes(5));

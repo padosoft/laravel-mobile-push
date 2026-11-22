@@ -12,8 +12,8 @@ declare(strict_types=1);
  * It prints one JSON line: the number of signatures, a hash of the token it ended up using (never the token) and the
  * permits granted (and how many takes gave up because the guard state was too contended).
  *
- * Argument: JSON {store, redisPort?, sqlitePath?, cacheDir?, memcached?, dynamodb?, prefix?, keyPath, appKey, startAt,
- * now, takes, rate}
+ * Argument: JSON {store, redisPort?, sqlitePath?, serverTables?, cacheDir?, memcached?, dynamodb?, prefix?, keyPath,
+ * appKey, startAt, now, takes, rate}
  */
 
 use Illuminate\Contracts\Foundation\Application;
@@ -31,7 +31,7 @@ use Padosoft\MobilePush\Tests\Support\FakeClock;
 
 require dirname(__DIR__, 4).'/vendor/autoload.php';
 
-/** @var array{store: string, redisPort?: int, sqlitePath?: string, cacheDir?: string, memcached?: array{host: string, port: int}, dynamodb?: array{endpoint: string, table: string}, prefix?: string, keyPath: string, appKey: string, startAt: float, now: string, takes: int, rate: int} $args */
+/** @var array{store: string, redisPort?: int, sqlitePath?: string, serverTables?: array{cache: string, locks: string}, cacheDir?: string, memcached?: array{host: string, port: int}, dynamodb?: array{endpoint: string, table: string}, prefix?: string, keyPath: string, appKey: string, startAt: float, now: string, takes: int, rate: int} $args */
 $args = json_decode($argv[1] ?? '{}', true, 8, JSON_THROW_ON_ERROR);
 
 $app = Testbench::create(null, null, ['extra' => ['providers' => [MobilePushServiceProvider::class]]]);
@@ -48,6 +48,10 @@ $app = Testbench::create(null, null, ['extra' => ['providers' => [MobilePushServ
     }
     $config->set('cache.stores.shared-redis', ['driver' => 'redis', 'connection' => 'cache', 'lock_connection' => 'default']);
     $config->set('cache.stores.shared-database', ['driver' => 'database', 'connection' => 'shared', 'table' => 'cache', 'lock_connection' => 'shared', 'lock_table' => 'cache_locks']);
+    if (isset($args['serverTables'])) {
+        // The default connection: the server engine named by the DB_* environment this process inherited.
+        $config->set('cache.stores.shared-database-server', ['driver' => 'database', 'connection' => null, 'table' => $args['serverTables']['cache'], 'lock_connection' => null, 'lock_table' => $args['serverTables']['locks']]);
+    }
     $config->set('cache.stores.shared-file', ['driver' => 'file', 'path' => $args['cacheDir'] ?? sys_get_temp_dir(), 'lock_path' => $args['cacheDir'] ?? sys_get_temp_dir()]);
     if (isset($args['memcached'])) {
         $config->set('cache.stores.shared-memcached', ['driver' => 'memcached', 'servers' => [['host' => $args['memcached']['host'], 'port' => $args['memcached']['port'], 'weight' => 100]]]);
