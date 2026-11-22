@@ -302,12 +302,12 @@ instant, then a scrape: `MetricsCoordinationTest`):
 | redis | 200 | atomic increment, no TTL |
 | database on MySQL, MariaDB, PostgreSQL | 200 | the store does not create a key on increment: the counter is created with `add()` and lives one year, then restarts from zero |
 | memcached, dynamodb | 200 (in the `backends` workflow) | as above |
-| file | 200 | the store increments by reading and writing a file: the recorder serialises it with the store's lock |
+| file | 198 to 200 | the store increments by reading and writing a file: the recorder serialises it with the store's lock, which it polls for about half a second; a process starved of the lock that long counts without it |
 | database on a shared SQLite file | 162 to 198 | SQLite refuses a write while another process writes to the same file; the recorder retries ten times within a few milliseconds, then gives the count up rather than hold the send |
 
 Two **defects were found and fixed** here on 2026-11-22: on the `database` store (the default cache store of a new
 Laravel application), and on memcached and DynamoDB, **no counter was recorded at all** (`increment` on a missing key
-answers false and creates nothing); and on the `file` store concurrent processes lost counts. Recording stays best
+answers false and creates nothing); and on the `file` store concurrent processes lost more than half of the counts. Recording stays best
 effort: it never throws and never delays a send by more than a few tens of milliseconds.
 
 | Metric | Type | Labels | Meaning |

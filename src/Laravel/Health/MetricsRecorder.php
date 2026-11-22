@@ -62,6 +62,9 @@ final class MetricsRecorder
     /** Tries of one increment when a database-backed store answers with a contention error. */
     private const BUMP_ATTEMPTS = 10;
 
+    /** Rounds of about 100 ms spent waiting for the file store's lock before counting without it. */
+    private const FILE_LOCK_ROUNDS = 5;
+
     /** @var array<string, int> series key => timestamp of the last index verification (re-checked every minute so a cache flush heals) */
     private array $known = [];
 
@@ -291,7 +294,14 @@ final class MetricsRecorder
      */
     private function bump(string $key, int $ttl, bool $createFirst): void
     {
-        $lock = $this->cache->getStore() instanceof FileStore ? CacheLocks::acquire($this->cache, $key.':lock', 5) : null;
+        $lock = null;
+        if ($this->cache->getStore() instanceof FileStore) {
+            // Each round waits about 100 ms. A process that still has no lock counts without it (and may then
+            // overwrite a concurrent count) rather than hold the send any longer.
+            for ($round = 0; $round < self::FILE_LOCK_ROUNDS && $lock === null; $round++) {
+                $lock = CacheLocks::acquire($this->cache, $key.':lock', 5);
+            }
+        }
 
         try {
             for ($attempt = 1; ; $attempt++) {
