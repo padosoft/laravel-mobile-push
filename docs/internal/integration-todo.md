@@ -273,6 +273,8 @@ Deviations kept on purpose:
 
 ## Release 1.0.0 (2026-11-22)
 
+- [x] Roadmap closed on 2026-11-23: asked how to close the 14 rows of `plan-closure.md` that need their key, device or accounts, the owner chose to keep those checks on their side (status OWNER-SIDE in that list). No row of the plan is open.
+
 - [x] Owner's decision: the pre-release notice is removed and the package is released as 1.0.0 (the owner reported a successful production test; nothing about it is stated in the public docs, by the owner's choice).
 - [x] PHP 8.2 support, asked by the owner before the release (an application on Laravel 12 + PHP 8.2): `Randomizer::getFloat()` replaced, three `modify()` calls replaced by `add()`, `php ^8.2`, Pest 3 allowed on 8.2. Verified on a real PHP 8.2.36 in CI: 3,728 tests with Laravel 12 (lowest and latest dependencies, Pest 3.8, PHPUnit 11.5) and a freshly created Laravel 12 application; static analysis also at the 8.2 language level (`phpstan.php82.neon.dist`). The server-database and runtimes jobs run on 8.2 too since 2026-11-22 (see below); the `backends`, `scaling` and `mutation` workflows run on 8.3 only.
 - [x] Mutation scores before the verification wave of 2026-11-22 (run 44960379703; superseded by the list below): signatures and signers 97.0%, outcome 97.3%, ledger rules 98.2%, APNs compiler 97.9%, token providers 95.0%, FCM compiler 94.8%, retry 92.5%, guards 91.3%, safe mode 90.6%, send pipeline 90.4%, ledger core 90.1%, database ledger 90.6% (SQLite) and 91.0% (PostgreSQL), APNs outcome 89.4%, privacy 87.7%, FCM outcome 84.9%, message support 71.4%, transport parsers 52.9% (constants reported as uncovered). Every group is above its floor.
