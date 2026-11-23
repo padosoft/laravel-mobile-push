@@ -22,8 +22,8 @@ Statuses:
   Packagist/Cloudflare account, repository settings or tags).
 - **OWNER-SIDE** (since 2026-11-23): a check on the real providers that needs the owner's key, device or account. Asked
   how to close the rows then BLOCKED, the owner chose on 2026-11-23 to keep them on their side (they had already sent
-  real pushes on iOS and Android): these rows are not open work of the roadmap. Each one still says what is needed and
-  what was attempted without credentials.
+  real pushes on iOS and Android). The status means "held by the owner", not "verified": each row still says what is
+  needed and what was attempted without credentials.
 
 Where an item has an emulated part and a real-service part, it has two rows.
 
@@ -51,8 +51,10 @@ left need the owner's APNs key, certificate or device (10), a Firebase service a
 or a typed human confirmation with the owner's secrets (1).
 
 **Closing totals (2026-11-23, after the owner's decision): 354 rows.** DONE 304; DONE, DIFFERENTLY 36; OWNER-SIDE 14;
-BLOCKED 0; NOT DONE, ATTEMPTABLE 0. The 14 rows that were BLOCKED are now OWNER-SIDE (see the legend): the roadmap has
-no open row.
+BLOCKED 0; NOT DONE, ATTEMPTABLE 0. Read this precisely: 340 rows are closed with evidence in the repository. The 14
+OWNER-SIDE rows are NOT verified: the status records who holds them, not that they were done. They are the rows that
+were BLOCKED, they cannot be closed from the repository or from a session without the owner's key, device or accounts,
+and the owner chose to keep them. No row is left that can be worked on without those.
 
 ## §1-§3 Header, context, review outcome, existing packages
 

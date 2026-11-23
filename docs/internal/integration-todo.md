@@ -273,7 +273,7 @@ Deviations kept on purpose:
 
 ## Release 1.0.0 (2026-11-22)
 
-- [x] Roadmap closed on 2026-11-23: asked how to close the 14 rows of `plan-closure.md` that need their key, device or accounts, the owner chose to keep those checks on their side (status OWNER-SIDE in that list). No row of the plan is open.
+- [x] Roadmap closed on 2026-11-23: asked how to close the 14 rows of `plan-closure.md` that need their key, device or accounts, the owner chose to keep those checks on their side (status OWNER-SIDE in that list: held by the owner, not verified from the repository). 340 of 354 rows are closed with evidence; no row is left that can be worked on without the owner's key, device or accounts.
 
 - [x] Owner's decision: the pre-release notice is removed and the package is released as 1.0.0 (the owner reported a successful production test; nothing about it is stated in the public docs, by the owner's choice).
 - [x] PHP 8.2 support, asked by the owner before the release (an application on Laravel 12 + PHP 8.2): `Randomizer::getFloat()` replaced, three `modify()` calls replaced by `add()`, `php ^8.2`, Pest 3 allowed on 8.2. Verified on a real PHP 8.2.36 in CI: 3,728 tests with Laravel 12 (lowest and latest dependencies, Pest 3.8, PHPUnit 11.5) and a freshly created Laravel 12 application; static analysis also at the 8.2 language level (`phpstan.php82.neon.dist`). The server-database and runtimes jobs run on 8.2 too since 2026-11-22 (see below); the `backends`, `scaling` and `mutation` workflows run on 8.3 only.
