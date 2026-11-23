@@ -37,6 +37,49 @@ cover (token refresh after expiry, the other-environment probe, broadcast channe
 reason in their evidence cell; the two closing lists below are kept as the audit wrote them, with one line added to
 each entry saying how it ended.
 
+**Totals on 2026-11-23: 354 rows.** DONE 304; DONE, DIFFERENTLY 36; NOT DONE, ATTEMPTABLE 0; BLOCKED 14. What changed:
+an independent read of the whole plan against this list (a second agent, read-only) found every commitment of §4-§13
+covered and no table for the header and §1-§3: the table below adds 25 rows for them (22 DONE, 3 DONE, DIFFERENTLY: PHP
+8.2, the 1.0 tagged with blocked rows open, VoIP without a message class). It also checked 26 DONE rows against the
+files: all held, two counts were stale and are corrected. The KMS/HSM row moved from BLOCKED to DONE, DIFFERENTLY (a
+PKCS#11 token instead of a cloud KMS). The session has no computer of the owner attached and no credentials: the 14 rows
+left need the owner's APNs key, certificate or device (10), a Firebase service account (2), a Google Cloud project (1)
+or a typed human confirmation with the owner's secrets (1).
+
+## §1-§3 Header, context, review outcome, existing packages
+
+Added on 2026-11-23 after an independent read of `docs/PLAN.md` against this list found that these sections had no
+table. Most of their sentences are restated as commitments in §4-§13; the rows below are the ones that are not, plus one
+row per group that points to where the rest is covered.
+
+| Plan item | Status | Evidence or what is missing |
+|---|---|---|
+| Header: namespace `Padosoft\MobilePush`, facade `MobilePush`, config `mobile-push.php`, commands `mobile-push:*`, env `MOBILE_PUSH_*`, tables `mobile_push_*` | DONE | `composer.json` autoload, `src/Laravel/Facades/MobilePush.php`, `config/mobile-push.php`, the 38 `protected $signature` under `src/Laravel`, `database/migrations/`. |
+| Header: PHP 8.3+, Laravel 12-13 | DONE, DIFFERENTLY | `composer.json` requires `php ^8.2`: PHP 8.2 is supported with Laravel 12, asked by the owner before the release; Laravel 13 needs 8.3 by itself. Written in `docs/internal/integration-todo.md` ("PHP 8.2 support") and in its deviations list. |
+| Header: MIT licence | DONE | `LICENSE`; `composer.json` `"license": "MIT"`. |
+| §1 scope: APNs + FCM + Live Activities (broadcast included); Web Push after 1.0 | DONE | Drivers `src/Core/Apns`, `src/Core/Fcm`; Live Activities and channels rows of §6.5; no Web Push driver exists. |
+| §1 release by gates, 1.0 only when every module has passed its criteria | DONE, DIFFERENTLY | Gates: §10 rows. `v1.0.0` was tagged by the owner after their own pushes on real devices, while the rows still BLOCKED in this list (specific behaviours of the real providers) had not been observed from the repository. Written in the deviations list of `docs/internal/integration-todo.md`. |
+| §1 light profile by default (no tables, declared best effort); durable profile by choice | DONE | `config/mobile-push.php` `delivery.profile` default `light`; rows of §4.3. |
+| §1 APNs environment: no automatic switch; declared environment + quarantine + explicit probe | DONE | Rows of §4.4 (`devices:probe-environment`, quarantine is not invalidation). |
+| §2 table R01-R15, §5, §6: each outcome names the section that carries it | DONE | Every line of the table points to one of §4.1-§10; the commitments are the rows of those sections below. |
+| §2 variant 1: no JOSE library, internal signer behind `Signer`, RFC vectors, cross-check in development | DONE | `src/Core/Auth/{Signer,DerSignature,OpenSslEs256Signer}.php`; `tests/Unit/Core/Auth/SignersTest.php` (RFC 7515 A.3, cross-check with `firebase/php-jwt`, a development dependency only). |
+| §2 variant 2: platform inferred from the token only as a proposal of the interactive command; mandatory in non-interactive mode, helpers and facade | DONE | `PushManager::toToken(Platform $platform, string $token)` and `toTokens()`, `mobile_push_to_token(Platform $platform, ...)` in `src/Laravel/helpers.php`: the platform is a required typed argument; `mobile-push:send` row of §9 ("refuses to guess"). |
+| §2 variant 3: global helpers kept, renamed `mobile_push()` and `mobile_push_to_token()`, `function_exists` guard | DONE | `src/Laravel/helpers.php`; row of §7. |
+| §3 comparisons anchored to tag/commit and exact path before they go in the README; performance comparisons need a repeatable benchmark | DONE | `docs/comparison.md` (tag, commit, file per library); benchmark rows of §11. |
+| §3 idea: sliding-window loop on `curl_multi` with multiplexed HTTP/2 | DONE | `src/Core/Transport/Curl/CurlTransport.php`, `transport.window` (default 100); rows of §6.1. |
+| §3 idea: topic suffix derived from the push type; catalog of error reasons | DONE | `src/Core/Apns/PushType.php` `topicSuffix()`, `TopicResolver.php`; `src/Core/Apns/Outcome/ApnsReasonCatalog.php`, `src/Core/Fcm/Outcome/FcmReasonCatalog.php`. |
+| §3 idea: enums for push type, priority, interruption level | DONE | `src/Core/Apns/{PushType,Priority,InterruptionLevel}.php`. |
+| §3 idea: separate classes for Live Activity and VoIP | DONE, DIFFERENTLY | Live Activity: `src/Core/Apns/LiveActivity/LiveActivityMessage.php`. VoIP has no message class of its own: it is the typed destination `Core/Identity/Destination/ApnsVoipToken.php` plus `PushType::Voip`, with the ordinary `ApnsMessage`. Written in the deviations list of `docs/internal/integration-todo.md`. |
+| §3 idea: optional truncation of the payload; permanent versus transient errors | DONE | Truncation rows of §6.3 (`TruncatorTest`); the single classifier of §4.4 (`Decision`). |
+| §3 idea: per-message outcome tied to an ID of the caller | DONE | Each `Exchange` is keyed by `Request::$id`; each `SendResult` carries the caller's `Destination` object and, when given through `SendItem`, the caller's `deliveryId`. |
+| §3 limits not to repeat: provider token renewed, header `alg` ES256 | DONE | `src/Core/Apns/Auth/ApnsTokenProvider.php`; rows of §6.2 and §4.5 (`ExpiredProviderToken`). |
+| §3 limits not to repeat: a transport error does not throw inside the loop nor discard collected answers; a curl error is never recorded as success | DONE | `Transport` contract (one `Exchange` per request, never throws for one request); rows of §4.1 (`OutcomeUnknown`, "no target disappears from the report"). |
+| §3 limits not to repeat: retry on 429/5xx | DONE | Rows of §4.5. |
+| §3 limits not to repeat: the connection is kept between sends | DONE | Pool rows of §6.1. |
+| §3 limits not to repeat: `apns-expiration` absolute | DONE | `ApnsCompiler::expirationHeader()`; logical-expiry row of §6.3. |
+| §3 limits not to repeat: all push types and `aps` keys; broadcast/channels API | DONE | `PushType` (every type Apple lists), `ApnsMessage`; rows of §6.5. |
+| §3 dependencies: runtime `ext-curl`, `ext-openssl`, `ext-json`, `psr/log`, `psr/clock`, `illuminate/*`; suggested `ext-intl`, `google/auth`, `open-telemetry/api`, `laravel/pulse`, `laravel/telescope`, `spatie/laravel-health`; development only `firebase/php-jwt` | DONE | `composer.json`: `require` and `suggest` are exactly these (eight `illuminate/*` components); `firebase/php-jwt` is in `require-dev` only, next to the suggested packages and `edamov/pushok` (needed by tests and the comparison benchmark). |
+
 ## §4.1 Outcomes
 
 | Plan item | Status | Evidence or what is missing |
@@ -173,7 +216,7 @@ each entry saying how it ended.
 |---|---|---|
 | `Signer` (`sign()`, `algorithm()`, `keyId()`), internal OpenSSL implementations | DONE | `Core/Auth/Signer.php`, `OpenSslEs256Signer.php`, `OpenSslRs256Signer.php`. |
 | A non-exportable KMS integrates by implementing `Signer` (emulated) | DONE | `connections.*.signer` (ConfigSchema line for `signer`); `tests/Scenario/Laravel/Sending/ExternalSignerTest.php`, `KmsSignerTest.php` (AWS KMS API emulator), `Console/ExternalSignerConsoleTest.php`. |
-| ... against a real KMS/HSM | BLOCKED | Needs an AWS (or other KMS) account: none was supplied. A look for cloud credentials in the session on 2026-11-22 was refused by the session's permission system and not repeated. The emulated part is DONE (`KmsSignerTest`). |
+| ... against a real KMS/HSM | DONE, DIFFERENTLY | HSM half done on 2026-11-23 without a cloud account: `tests/Scenario/Laravel/Sending/HsmSignerTest.php` generates the P-256 key inside a PKCS#11 token (SoftHSM 2), the token reports the private key as "never extractable", the signer asks the token for the signature and the provider token on the wire verifies against the token's public key; a wrong PIN gives `Failed` / `auth_token_invalid` with nothing sent. Run by the `backends` workflow. SoftHSM is a software token: the PKCS#11 interface and the non-extractable key are real, the hardware is not. A cloud KMS (AWS, Google Cloud, Azure) was not used: no account was supplied, and a look for cloud credentials in the session on 2026-11-22 was refused by the session's permission system and not repeated; that API is covered by the emulator (`KmsSignerTest`). Written in the deviations list of `docs/internal/integration-todo.md`. |
 | `SecretResolver` for exportable secrets | DONE | `Core/Auth/SecretResolver.php`. |
 | APNs ES256 on P-256, JWS `R\|\|S` 64 bytes from OpenSSL DER | DONE | `Auth/DerSignature.php`; `tests/Unit/Core/Auth/DerSignatureTest.php` (leading-zero cases), `SignersTest.php` (RFC 7515 A.3, cross-check with `firebase/php-jwt`). |
 | Google: RS256 service-account assertion exchanged for an OAuth access token (native provider) | DONE | `Fcm/Auth/ServiceAccountTokenProvider.php`; `tests/Scenario/Auth/GoogleTokenExchangeTest.php`, `GoogleServiceAccountRulesTest.php`. |
@@ -415,7 +458,7 @@ Every command below exists as `mobile-push:<name>` (signatures read from `src/La
 | Release table: safe mode: a sandbox command with production configuration opens no connection | DONE | `SafeModeScenarioTest.php` ("Sandbox command, production configuration: blocked before any connection", guard decision), `SendTest.php` ("opens no connection": fake transport count 0). The oracle is the fake transport's count, not sockets counted by the mock server. |
 | README and `docs/` describe every possibility and every configuration | DONE | `docs/configuration.md` (generated, every key), 31 public pages under `docs/` (PLAN excluded), `docs/commands.md` (38 commands). Completeness of prose against every feature was not verified exhaustively by this audit. |
 | `docs/configuration.md` generated from `ConfigSchema` (key, env, default, allowed values); CI fails if stale | DONE | `Integration/ConfigSchema.php`, `ConfigReference.php`; `tests/Scenario/Laravel/Integration/ConfigReferenceTest.php` (`isCurrent()`, part of the `tests.yml` suite). |
-| README and docs examples extracted and run in a clean app (`DocExamplesTest`) | DONE | `tests/Scenario/Laravel/Docs/DocExamplesTest.php` runs every `<!-- example: -->` block (84 markers: 9 in README, 75 in 22 docs pages) in a Testbench application with the fake. |
+| README and docs examples extracted and run in a clean app (`DocExamplesTest`) | DONE | `tests/Scenario/Laravel/Docs/DocExamplesTest.php` runs every `<!-- example: -->` block (85 markers: 9 in README, 76 in 22 docs pages) in a Testbench application with the fake. |
 | README: why choose it (comparisons anchored to commits and benchmarks) | DONE | README "Why this package", "How it compares"; `docs/comparison.md` (tag, commit, file per library). |
 | README: features | DONE | README "Features at a glance". |
 | README: junior-proof step-by-step setup (`.p8`, Firebase service account, `composer require`, `install`, `.env`, `doctor`, simulated first send, then real) | DONE | README "Quick start" steps 1-9; `docs/getting-started.md`. |
@@ -439,7 +482,7 @@ Every command below exists as `mobile-push:<name>` (signatures read from `src/La
 | Targeted unit tests only where logic is dense: signatures and DER, truncation, byte limits, classifier, retry planner, parser | DONE | `tests/Unit/Core/{Auth,Message,Apns/Outcome,Fcm/Outcome,Retry,Transport}`. |
 | No tests that restate the implementation or only check their own mocks | DONE | Rule in `AGENTS.md` "Testing style"; not audited test by test. |
 | `progress.md`: status per milestone and task, last wave, next step, verification commands | DONE | `progress.md` (status table, "Prossimo passo", "Verifica rapida", log). |
-| `lesson.md`: discoveries and mistakes with date, context and rule | DONE | `lesson.md` (695 lines, dated entries with Contesto/Fatto/Regola). |
+| `lesson.md`: discoveries and mistakes with date, context and rule | DONE | `lesson.md` (dated entries with Contesto/Fatto/Regola). |
 | `AGENTS.md` and `CLAUDE.md` with the operating instructions, passed into every sub-agent brief | DONE | Both files present; `CLAUDE.md` asks to paste the sections into every brief. |
 | `docs/PLAN.md`: copy of plan v2 | DONE | `docs/PLAN.md` (336 lines). |
 | Persistence: a GitHub repository attached to the session | DONE | `origin` = `https://github.com/padosoft/laravel-mobile-push` (private). |
@@ -464,7 +507,7 @@ Every command below exists as `mobile-push:<name>` (signatures read from `src/La
 | curl/PHP: libcurl internal automatic retries | DONE | `lesson.md` (`Curl_retry_request()`, `REQUEST_SIZE` cumulative), `docs/transport.md`, `LibcurlBehaviourTest.php`. |
 | curl/PHP: behaviour with Swoole | DONE | `lesson.md` "Swoole con hook di coroutine"; `backends.yml` `swoole-coroutine-hooks` and `octane` jobs; integration-todo deviation (unsupported with coroutine hooks). |
 | curl/PHP: mTLS blob support | DONE | `lesson.md` (`CURLOPT_SSLCERT_BLOB` available), `CurlCapabilities`, `tests/Scenario/Transport/MutualTlsTest.php`. |
-| curl/PHP: decoding of Apple certificate topic/environment extensions on a real certificate | BLOCKED | `Credentials/ApnsCertificateInspector.php` tested on generated certificates only (README "Project status"); needs a real Apple push certificate. A real APNs certificate exists only inside an Apple developer account; none is public. |
+| curl/PHP: decoding of Apple certificate topic/environment extensions on a real certificate | BLOCKED | `Credentials/ApnsCertificateInspector.php` tested on generated certificates only (README "Project status"); needs a real Apple push certificate. A real APNs certificate exists only inside an Apple developer account. Attempted on 2026-11-23 with the nearest public material: the certificates in the test suite of the npm library `apn` 2.2.0 (written by other people, not issued by Apple) were read by the inspector as `sandbox` and `production` with the right team ID; they carry the old per-environment extensions only, so the universal extension with the topic list still has no sample outside the package's own generated ones. The session has no computer of the owner attached (`list_computer_folders` returned none). |
 | Laravel: Pulse API on Laravel 13 | DONE | `lesson.md` "Pulse e Telescope: contratti reali" (Pulse 1.11); the Pulse tests run in the Laravel 13 matrix of `tests.yml`. |
 | Laravel: custom entries in Telescope | DONE | Same `lesson.md` entry; `Telescope/PushWatcher.php`; `FailedPushScenariosTest.php`. |
 | Laravel: stability of the Notification UUID across retries | DONE | `lesson.md` (id assigned once per notifiable and serialised in `SendQueuedNotifications`); `QueueOwnershipTest.php` ("a retry reuses the same effect and apns-id"). |
@@ -525,7 +568,7 @@ Grouped by what blocks them.
 - §13 FCM size rule measured against the real FCM.
 
 **An AWS or Google Cloud account**
-- §6.2 a real KMS/HSM signer (AWS); ADC and Workload Identity Federation on Google Cloud itself (GCP).
+- §6.2 ADC and Workload Identity Federation on Google Cloud itself (GCP). The KMS/HSM signer row was closed on 2026-11-23 with a PKCS#11 token (see the row).
 - (Not a plan row, listed in integration-todo: Vapor/Lambda, real SQS and DynamoDB.)
 
 **Repository settings, tags and the owner's external accounts**
@@ -563,5 +606,5 @@ modules on by default (metrics, badge, fallback, Telescope `auto`; README "Featu
 
 ## Not classified
 
-None. Every commitment of §4-§13 has a row. Rows that are processes rather than code (§12) are classified from the files
+None. Every commitment of §4-§13 has a row, and since 2026-11-23 the header and §1-§3 have their own table. Rows that are processes rather than code (§12) are classified from the files
 that record them and say so.

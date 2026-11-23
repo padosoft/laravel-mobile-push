@@ -79,6 +79,12 @@ jobs:
         run: |
           vendor/bin/pest --colors=never tests/Scenario/Laravel/Sending/KmsSignerTest.php 2>&1 | tee kms.txt
           grep -Eq 'Tests: +1 passed' kms.txt
+      - name: The APNs provider token signed inside a PKCS#11 token (SoftHSM 2, key never extractable)
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq softhsm2 opensc
+          module="$(dpkg -L softhsm2 | grep -m1 'libsofthsm2\.so$')"
+          MOBILE_PUSH_TEST_PKCS11="$module" vendor/bin/pest --colors=never tests/Scenario/Laravel/Sending/HsmSignerTest.php 2>&1 | tee hsm.txt
+          grep -Eq 'Tests: +2 passed' hsm.txt
 
   queue-and-cache:
     runs-on: ubuntu-latest
